@@ -1,0 +1,10 @@
+[package]
+name = "nova_ai-templates"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nova_ai-core = { path = "../nova_ai-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }

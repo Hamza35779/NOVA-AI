@@ -1,0 +1,20 @@
+[package]
+name = "nova_ai-agents"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nova_ai-core = { path = "../nova_ai-core" }
+nova_ai-engine = { path = "../nova_ai-engine" }
+nova_ai-tools = { path = "../nova_ai-tools" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }
+sha2 = { workspace = true }
+once_cell = { workspace = true }
+parking_lot = { workspace = true }
+rig-core = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }

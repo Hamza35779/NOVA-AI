@@ -1,0 +1,118 @@
+name: Installer integration
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/install/**'
+      - 'src/nova_ai/cli/**'
+      - 'tests/install/**'
+      - '.github/workflows/installer-integration.yml'
+  schedule:
+    - cron: '0 6 * * *'
+
+jobs:
+  container-matrix:
+    name: ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - fedora:40
+
+    container: ${{ matrix.image }}
+
+    steps:
+      - name: Install prereqs (Ubuntu/Debian)
+        if: contains(matrix.image, 'ubuntu') || contains(matrix.image, 'debian')
+        run: |
+          apt-get update
+          apt-get install -y curl git python3 sudo
+
+      - name: Install prereqs (Fedora)
+        if: contains(matrix.image, 'fedora')
+        run: |
+          dnf install -y curl git python3 sudo
+
+      - name: Create non-root user
+        run: useradd -m -s /bin/bash testuser
+
+      - uses: actions/checkout@v4
+        with:
+          path: nova_ai-src
+
+      - name: Install Ollama mock
+        run: install -m 755 "$GITHUB_WORKSPACE/nova_ai-src/tests/install/bash/stubs/ollama-mock" /usr/local/bin/ollama
+
+      - name: Run installer
+        run: |
+          chown -R testuser:testuser /home/testuser "$GITHUB_WORKSPACE/nova_ai-src"
+          su testuser -c '
+            export NOVA_AI_REPO_URL=file://'"$GITHUB_WORKSPACE"'/nova_ai-src
+            cd '"$GITHUB_WORKSPACE"'/nova_ai-src
+            bash scripts/install/install.sh --no-bg-orchestrator
+          '
+
+      - name: Verify install state
+        run: |
+          su testuser -c '
+            test -d ~/.nova_ai/src
+            test -d ~/.nova_ai/.venv
+            test -f ~/.nova_ai/config.toml
+            test -f ~/.nova_ai/.state/install-state.json
+            test -L ~/.local/bin/nova
+          '
+
+      - name: Verify nova --version
+        run: su testuser -c '~/.local/bin/nova --version'
+
+      - name: Verify nova doctor exits 0
+        run: su testuser -c '~/.local/bin/nova doctor'
+
+      - name: Verify uninstall is clean
+        run: |
+          su testuser -c '
+            ~/.local/bin/nova-uninstall
+            test ! -d ~/.nova_ai
+            test ! -L ~/.local/bin/nova
+          '
+
+  macos:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ollama mock
+        run: sudo install -m 755 tests/install/bash/stubs/ollama-mock /usr/local/bin/ollama
+
+      - name: Run installer
+        run: |
+          export NOVA_AI_REPO_URL=file://$(pwd)
+          bash scripts/install/install.sh --no-bg-orchestrator
+
+      - name: Verify install state
+        run: |
+          test -d ~/.nova_ai/src
+          test -d ~/.nova_ai/.venv
+          test -f ~/.nova_ai/config.toml
+          test -L ~/.local/bin/nova
+
+      - name: Verify nova --version
+        run: ~/.local/bin/nova --version
+
+      - name: Verify nova doctor exits 0
+        run: ~/.local/bin/nova doctor
+
+      - name: Verify uninstall is clean
+        run: |
+          ~/.local/bin/nova-uninstall
+          test ! -d ~/.nova_ai
+          test ! -L ~/.local/bin/nova
