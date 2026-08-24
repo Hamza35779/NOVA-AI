@@ -188,6 +188,22 @@ def serve(
 
             cloud_engine = CloudEngine()
             if cloud_engine.health():
+                # Redaction-before-cloud: the raw cloud engine sits OUTSIDE the
+                # setup_security() wrapper below (that only wraps the primary
+                # engine), so wrap it here or prompts would reach providers
+                # unscanned. Output scanning stays off — redacting model
+                # generations would corrupt legitimate content.
+                if config.security.enabled and config.security.redact_before_cloud:
+                    from nova_ai.security.guardrails import GuardrailsEngine
+                    from nova_ai.security.types import RedactionMode
+
+                    cloud_engine = GuardrailsEngine(
+                        cloud_engine,
+                        mode=RedactionMode.REDACT,
+                        scan_input=True,
+                        scan_output=False,
+                        bus=bus,
+                    )
                 console.print("  Cloud:  [cyan]enabled[/cyan] (API keys detected)")
             else:
                 console.print(

@@ -347,8 +347,20 @@ async def stream_cloud(
     messages: Sequence[Message],
     temperature: float = 0.7,
     max_tokens: int = 1024,
+    *,
+    redact: bool = True,
 ) -> AsyncIterator[str]:
-    """Stream tokens from a cloud provider for the given model."""
+    """Stream tokens from a cloud provider for the given model.
+
+    Redaction-before-cloud (roadmap WS3): *messages* are scrubbed of
+    secrets/PII before any bytes leave the machine. Mandatory by default;
+    callers may only opt out explicitly (``redact=False``) — e.g. tests.
+    """
+    if redact:
+        from nova_ai.security.guardrails import redact_messages
+
+        messages = redact_messages(messages)
+
     provider = get_provider(model)
 
     if provider == "openai":

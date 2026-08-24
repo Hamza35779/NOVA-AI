@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any, Dict, List, Optional, Sequence
+from functools import lru_cache
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from nova_ai.core.events import EventBus, EventType
 from nova_ai.core.types import Message
@@ -15,6 +16,55 @@ from nova_ai.security.types import RedactionMode, ScanResult
 
 class SecurityBlockError(Exception):
     """Raised when mode is BLOCK and security findings are detected."""
+
+
+@lru_cache(maxsize=1)
+def _default_redact_scanners() -> Tuple[List[BaseScanner], ...]:
+    """Build the shared secret/PII scanner pair once per process."""
+    return (SecretScanner(), PIIScanner())
+
+
+def redact_messages(
+    messages: Sequence[Message],
+    *,
+    scanners: Optional[List[BaseScanner]] = None,
+) -> List[Message]:
+    """Return copies of *messages* with secret/PII findings redacted.
+
+    The mandatory pre-step for any transmission to a cloud provider
+    (roadmap WS3 "redaction-before-cloud"): content that leaves the machine
+    must never carry API keys, credentials, or personally identifying data,
+    even when the caller forgot to run it through a ``GuardrailsEngine``.
+    Originals are untouched — only the outbound copies are rewritten.
+    """
+    active_scanners: List[BaseScanner] = (
+        list(scanners)
+        if scanners is not None
+        else list(_default_redact_scanners())
+    )
+    out: List[Message] = []
+    for msg in messages:
+        if not msg.content:
+            out.append(msg)
+            continue
+        text = msg.content
+        for scanner in active_scanners:
+            text = scanner.redact(text)
+        if text == msg.content:
+            out.append(msg)
+            continue
+        out.append(
+            Message(
+                role=msg.role,
+                content=text,
+                name=msg.name,
+                tool_calls=msg.tool_calls,
+                tool_call_id=msg.tool_call_id,
+                metadata=msg.metadata,
+                images=msg.images,
+            )
+        )
+    return out
 
 
 class GuardrailsEngine(InferenceEngine):
@@ -69,6 +119,12 @@ class GuardrailsEngine(InferenceEngine):
     def engine_id(self) -> str:  # type: ignore[override]
         """Delegate to the wrapped engine."""
         return self._engine.engine_id
+
+    @property
+    def is_cloud(self) -> bool:
+        """Delegate — a guarded cloud engine must still classify as cloud
+        (MultiEngine auto-routing and local-fallback checks read this)."""
+        return bool(getattr(self._engine, "is_cloud", False))
 
     # -- scanning helpers ----------------------------------------------------
 
@@ -315,4 +371,4 @@ class GuardrailsEngine(InferenceEngine):
         return self._engine.health()
 
 
-__all__ = ["GuardrailsEngine", "SecurityBlockError"]
+__all__ = ["GuardrailsEngine", "SecurityBlockError", "redact_messages"]

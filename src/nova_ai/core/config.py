@@ -1252,6 +1252,11 @@ class SecurityConfig:
     scan_input: bool = True
     scan_output: bool = True
     mode: str = "redact"  # "redact" | "warn" | "block"
+    # Redaction-before-cloud (roadmap WS3): scrub secrets/PII from prompts
+    # before anything is transmitted to a cloud provider. Independent of
+    # ``mode`` — cloud egress always redacts while this is on, even when the
+    # general guardrail mode is only "warn".
+    redact_before_cloud: bool = True
     secret_scanner: bool = True
     pii_scanner: bool = True
     audit_log_path: str = field(

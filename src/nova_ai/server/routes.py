@@ -601,7 +601,13 @@ async def _handle_stream(
             # is_cloud attribute.
             if use_cloud:
                 token_iter = stream_cloud(
-                    model, messages, req.temperature, req.max_tokens
+                    model,
+                    messages,
+                    req.temperature,
+                    req.max_tokens,
+                    redact=getattr(
+                        app_config.security, "redact_before_cloud", True
+                    ),
                 )
             else:
                 # Use engine.stream() by default (preserves mock-engine
@@ -843,6 +849,24 @@ async def reload_cloud_engine(request: Request):
                 "status": "no_cloud",
                 "message": "No cloud models available (check API keys)",
             }
+
+        # Redaction-before-cloud: match the startup wiring in cli/serve.py so
+        # hot-reloaded cloud engines keep the mandatory egress guardrail.
+        config = getattr(request.app.state, "config", None)
+        if (
+            config is not None
+            and getattr(config.security, "enabled", True)
+            and getattr(config.security, "redact_before_cloud", True)
+        ):
+            from nova_ai.security.guardrails import GuardrailsEngine
+            from nova_ai.security.types import RedactionMode
+
+            cloud = GuardrailsEngine(
+                cloud,
+                mode=RedactionMode.REDACT,
+                scan_input=True,
+                scan_output=False,
+            )
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
 
