@@ -1,0 +1,110 @@
+name: Debug CI
+
+# Temporary diagnostic lane: the clippy, maturin-extension, and Windows-test
+# lanes of ci.yml fail only on GitHub runners and their logs need
+# authentication to read. This workflow re-runs each failing step with
+# `|| true` and tees the output tail into GITHUB_STEP_SUMMARY, which is
+# publicly readable without login. Delete once the underlying CI failures are
+# fixed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/debug-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  clippy-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: rust-${{ runner.os }}-
+
+      - name: Clippy (captured)
+        shell: bash
+        run: |
+          cargo clippy --workspace --all-targets -- -D warnings > /tmp/clippy.log 2>&1 || true
+          {
+            echo "## clippy tail"
+            echo '```'
+            tail -80 /tmp/clippy.log
+            echo '```'
+            echo "exit-marker: $(grep -c '^error' /tmp/clippy.log || true) error lines"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  maturin-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.0.0
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra framework-comparison --extra server
+
+      - name: Maturin develop (captured)
+        shell: bash
+        run: |
+          set +e
+          uv run maturin develop --manifest-path rust/crates/nova_ai-python/Cargo.toml > /tmp/maturin.log 2>&1
+          CODE=$?
+          {
+            echo "## maturin develop tail (exit $CODE)"
+            echo '```'
+            tail -60 /tmp/maturin.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  win-test-probe:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.0.0
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra server
+
+      - name: Windows tests (captured)
+        shell: bash
+        run: |
+          set +e
+          uv run pytest tests/hardware/test_hardware_profiles.py tests/cli/test_cli.py -m "not live and not cloud" --tb=short -q > /tmp/win-tests.log 2>&1
+          CODE=$?
+          {
+            echo "## windows tests tail (exit $CODE)"
+            echo '```'
+            tail -80 /tmp/win-tests.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -63,6 +63,13 @@ jobs:
         with:
           workspaces: 'frontend/src-tauri -> target'
 
+      # Validate never runs Vite, but compiling the app evaluates
+      # tauri::generate_context!, which embeds frontendDist at build time and
+      # fails when the directory is absent. A stub satisfies the macro; the
+      # real build jobs get the genuine bundle from beforeBuildCommand.
+      - name: Create frontend dist stub
+        run: mkdir -p frontend/dist && echo '<html><body></body></html>' > frontend/dist/index.html
+
       # `cargo test` builds the crate (same coverage as the old `cargo check`)
       # and runs the unit tests, including the #331 uv-sync error-formatting
       # helpers. Static command, no untrusted input — no injection surface.
