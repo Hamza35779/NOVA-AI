@@ -1,0 +1,62 @@
+name: Debug Desktop Build
+
+# Temporary diagnostic lane: reproduces the desktop.yml build on one runner
+# and publishes the output tail to $GITHUB_STEP_SUMMARY so failures are
+# readable publicly without an authenticated log session.
+# Delete once the desktop build is green.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/debug-desktop.yml'
+      - 'frontend/src-tauri/**'
+  workflow_dispatch:
+
+jobs:
+  debug-build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libappindicator3-dev librsvg2-dev patchelf libxdo-dev
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download Ollama sidecar
+        shell: bash
+        run: |
+          cd frontend/src-tauri/scripts && chmod +x download-ollama.sh
+          ./download-ollama.sh
+
+      - name: Tauri build (captured)
+        shell: bash
+        run: |
+          set -o pipefail
+          cd frontend
+          npx tauri build 2>&1 | tee /tmp/tauri-build.log || true
+          {
+            echo "## Tauri build output (last 120 lines)"
+            echo '```'
+            tail -120 /tmp/tauri-build.log
+            echo '```'
+            echo "## Error lines"
+            echo '```'
+            grep -n -i -A3 "^error" /tmp/tauri-build.log | head -60 || echo "(no ^error lines)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
