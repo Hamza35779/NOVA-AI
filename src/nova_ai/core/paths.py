@@ -23,18 +23,27 @@ should call :func:`get_config_dir` (or :func:`get_data_dir` /
 
 Defense in depth: the resolved root must never live inside the NOVA AI
 source tree (a misconfigured ``$NOVA_AI_HOME`` pointing at the repo would
-otherwise scatter runtime artifacts into the working tree). This mirrors the
-guard in ``learning/spec_search/storage/paths.py`` and fails loudly per
-REVIEW.md's no-silent-failure discipline.
+otherwise scatter runtime artifacts into the working tree). The detector is
+shared with ``learning/spec_search/storage/paths.py`` (which imports it from
+here) and fails loudly per REVIEW.md's no-silent-failure discipline.
 """
 
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 _DEFAULT_DIR_NAME = ".nova_ai"
 _XDG_SUBDIR_NAME = "nova_ai"
+
+# Matches the ``[project] name`` line of this project's pyproject.toml in
+# either spelling (``"nova-ai"`` as published / ``"nova_ai"`` as imported).
+# Anchored to a whole TOML key-value line so a stray mention elsewhere in
+# the file can never false-positive.
+_PROJECT_NAME_LINE = re.compile(
+    r"^name\s*=\s*[\"']nova[-_]ai[\"']\s*$", re.MULTILINE | re.IGNORECASE
+)
 
 
 class ConfigurationError(RuntimeError):
@@ -56,7 +65,7 @@ def _find_source_root() -> Path | None:
                 content = py.read_text(encoding="utf-8")
             except OSError:
                 continue
-            if 'name = "nova_ai"' in content.lower():
+            if _PROJECT_NAME_LINE.search(content):
                 return candidate
     return None
 
