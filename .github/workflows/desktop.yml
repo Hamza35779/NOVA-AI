@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Install system dependencies
         run: |
@@ -43,13 +43,13 @@ jobs:
             libxdo-dev
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: npm install --no-audit --no-fund
 
       - name: TypeScript type-check
         working-directory: frontend
@@ -62,9 +62,6 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: 'frontend/src-tauri -> target'
-
-      - name: Create frontend dist stub
-        run: mkdir -p frontend/dist && echo '<html><body></body></html>' > frontend/dist/index.html
 
       # `cargo test` builds the crate (same coverage as the old `cargo check`)
       # and runs the unit tests, including the #331 uv-sync error-formatting
@@ -95,77 +92,26 @@ jobs:
             gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$id" || true
           done
 
-  build-and-release:
-    needs: [validate, clean-release]
+  # Version/channel/updater decisions live here so both the build matrix and
+  # the publish job can consume them.
+  release-info:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
     outputs:
-      has_updater: ${{ steps.release-info.outputs.has_updater }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: ubuntu-22.04
-            args: ''
-          - platform: macos-14
-            args: '--target universal-apple-darwin'
-          - platform: windows-latest
-            args: ''
-
-    runs-on: ${{ matrix.platform }}
-
+      version: ${{ steps.info.outputs.version }}
+      tauri_version: ${{ steps.info.outputs.tauri_version }}
+      tauri_config: ${{ steps.info.outputs.tauri_config }}
+      tag: ${{ steps.info.outputs.tag }}
+      name: ${{ steps.info.outputs.name }}
+      prerelease: ${{ steps.info.outputs.prerelease }}
+      has_updater: ${{ steps.info.outputs.has_updater }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
-          # Full history + tags so the workflow_dispatch fallback in
-          # "Determine release info" can derive the dev version from the
-          # latest release tag (#526).
           fetch-depth: 0
 
-      - name: Install system dependencies (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libxdo-dev
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-14' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: 'frontend/src-tauri -> target'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm install
-
-      - name: Download Ollama sidecar
-        shell: bash
-        run: |
-          cd frontend/src-tauri/scripts && chmod +x download-ollama.sh
-          if [[ "${{ matrix.platform }}" == "macos-14" ]]; then
-            ./download-ollama.sh aarch64-apple-darwin
-            ./download-ollama.sh x86_64-apple-darwin
-          else
-            ./download-ollama.sh
-          fi
-
       - name: Determine release info
-        id: release-info
+        id: info
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         shell: bash
@@ -192,9 +138,6 @@ jobs:
             # workflow_dispatch fallback (manual UI dispatch without --ref).
             # Derive a PEP 440 dev version aligned with autotag.yml so we
             # don't burn the X.Y.Z release-version namespace.
-            # pyproject.toml no longer carries a static version (#526), so the
-            # base comes from the latest plain release tag (vX.Y.Z), matching
-            # autotag.yml. .dev/.rc/desktop-* tags are excluded.
             LATEST_RELEASE=$(git tag --list 'v[0-9]*' --merged HEAD \
               | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
             if [[ -z "$LATEST_RELEASE" ]]; then
@@ -208,22 +151,23 @@ jobs:
             NEXT_PATCH=$((PATCH + 1))
             BUILD=$(git rev-list --count HEAD)
             VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}.dev${BUILD}"
-            # Manual dispatches are also dev builds -> the edge channel.
             echo "tag=desktop-edge" >> "$GITHUB_OUTPUT"
             echo "name=Desktop (Edge Build)" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          # Tauri's build script requires strict SemVer (MAJOR.MINOR.PATCH[-pre][+build]).
-          # PEP 440 dev releases (`1.0.2.dev661`) are NOT valid SemVer, so we
-          # translate `.devN` to the SemVer-equivalent `-dev.N` prerelease form.
-          # PyPI keeps the PEP 440 form; only the Tauri bundle uses SemVer.
+          # Tauri requires strict SemVer; PEP 440 `.devN` becomes `-dev.N`.
           TAURI_VERSION="${VERSION/.dev/-dev.}"
           echo "tauri_version=${TAURI_VERSION}" >> "$GITHUB_OUTPUT"
           # Updater artifacts need the minisign private key. Without it, build
           # plain installers and disable createUpdaterArtifacts via the
           # TAURI_CONFIG override below — otherwise the bundler fails with
           # "A public key has been found, but no private key".
+          #
+          # NOTE: without tauri-action, a signed build still needs latest.json
+          # assembled manually before refresh-stable-channel can mirror it;
+          # until then treat has_updater=true as producing signed artifacts
+          # only (the in-app updater stays dormant without the manifest).
           if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             echo "has_updater=true" >> "$GITHUB_OUTPUT"
             UPDATER_BUNDLE=true
@@ -234,6 +178,68 @@ jobs:
           fi
           printf 'tauri_config={"version":"%s","bundle":{"externalBin":["binaries/ollama"],"createUpdaterArtifacts":%s}}\n' \
             "$TAURI_VERSION" "$UPDATER_BUNDLE" >> "$GITHUB_OUTPUT"
+
+  build-and-release:
+    needs: [validate, clean-release, release-info]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            args: ''
+          - platform: macos-14
+            args: '--target universal-apple-darwin'
+          - platform: windows-latest
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-14' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'frontend/src-tauri -> target'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Download Ollama sidecar
+        shell: bash
+        run: |
+          cd frontend/src-tauri/scripts && chmod +x download-ollama.sh
+          if [[ "${{ matrix.platform }}" == "macos-14" ]]; then
+            ./download-ollama.sh aarch64-apple-darwin
+            ./download-ollama.sh x86_64-apple-darwin
+          else
+            ./download-ollama.sh
+          fi
 
       - name: Configure Apple signing
         if: runner.os == 'macOS'
@@ -259,35 +265,65 @@ jobs:
             echo "No Apple certificate configured, skipping code signing"
           fi
 
-      - name: Build and release
-        timeout-minutes: 120
-        uses: tauri-apps/tauri-action@v0
+      # Raw CLI build instead of tauri-action: a standalone `npx tauri build`
+      # with this project was proven green while tauri-action failed on all
+      # three platforms; the action layer (config injection / release API)
+      # was isolated as the failing component by the debug-desktop bisect.
+      - name: Build Tauri app
+        shell: bash
+        env:
+          TAURI_CONFIG: ${{ needs.release-info.outputs.tauri_config }}
+        run: |
+          set -o pipefail
+          cd frontend
+          npx tauri build ${{ matrix.args }} 2>&1 | tee /tmp/tauri-build.log
+          mkdir -p ../bundles-out
+          find src-tauri/target -path '*bundle*' -type f \
+            \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \
+               -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \) \
+            -exec cp {} ../bundles-out/ \;
+          ls -lh ../bundles-out/
+
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.platform }}
+          path: bundles-out/*
+          if-no-files-found: error
+
+  publish-desktop:
+    needs: [build-and-release, release-info]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download built bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -lh release-assets/
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release-info.outputs.tag }}
+          name: ${{ needs.release-info.outputs.name }}
+          body: 'Desktop application built from ${{ github.sha }}'
+          draft: false
+          prerelease: ${{ needs.release-info.outputs.prerelease == 'true' }}
+          files: release-assets/*
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_CONFIG: ${{ steps.release-info.outputs.tauri_config }}
-        with:
-          projectPath: frontend
-          tauriScript: npx tauri
-          tagName: ${{ steps.release-info.outputs.tag }}
-          releaseName: ${{ steps.release-info.outputs.name }}
-          releaseBody: 'Desktop application built from ${{ github.sha }}'
-          releaseDraft: false
-          prerelease: ${{ steps.release-info.outputs.prerelease }}
-          includeUpdaterJson: ${{ steps.release-info.outputs.has_updater == 'true' }}
-          args: ${{ matrix.args }}
 
   # When a stable `desktop-v*` release is published, repoint the
   # `desktop-latest` auto-update channel (the endpoint the installed app
-  # polls) at it. The stable release's own `latest.json` already references
-  # this release's signed assets, so we copy it verbatim — installed apps are
-  # only ever offered vetted stable builds, never `desktop-edge` dev builds.
+  # polls) at it. Only meaningful for signed builds that produced an updater
+  # manifest; without the signing key there is no latest.json to mirror.
   refresh-stable-channel:
-    needs: [build-and-release]
-    # Only meaningful when this build produced a signed latest.json; without
-    # the updater signing key there is no manifest to mirror.
-    if: startsWith(github.ref, 'refs/tags/desktop-v') && needs.build-and-release.outputs.has_updater == 'true'
+    needs: [publish-desktop, release-info]
+    if: startsWith(github.ref, 'refs/tags/desktop-v') && needs.release-info.outputs.has_updater == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Mirror stable latest.json into desktop-latest
@@ -297,8 +333,6 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # The stable release's updater manifest may take a moment to become
-          # downloadable after tauri-action publishes it; retry briefly.
           URL="https://github.com/${REPO}/releases/download/${STABLE_TAG}/latest.json"
           for attempt in 1 2 3 4 5; do
             if curl -fsSL -o latest.json "$URL"; then
@@ -309,8 +343,6 @@ jobs:
             sleep 15
           done
           test -s latest.json || { echo "::error::Could not fetch ${URL}"; exit 1; }
-          # Ensure the channel release exists (prerelease so it never usurps
-          # the stable "Latest" badge), then replace its manifest in place.
           if ! gh release view desktop-latest --repo "$REPO" >/dev/null 2>&1; then
             gh release create desktop-latest --repo "$REPO" \
               --prerelease \
