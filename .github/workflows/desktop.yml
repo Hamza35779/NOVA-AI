@@ -301,36 +301,6 @@ jobs:
           path: bundles-out/*
           if-no-files-found: error
 
-      # TEMPORARY diagnostic: action logs are unreadable without login, so on
-      # failure push the captured build log to a public branch where it can be
-      # fetched anonymously via raw.githubusercontent.com. Delete once the
-      # macOS/Windows lanes are green.
-      - name: Push build log to ci-debug-logs-desktop
-        if: failure()
-        shell: bash
-        run: |
-          OUT="./tauri-build-${{ matrix.platform }}.log"
-          {
-            if [ -f /tmp/sidecar.log ]; then
-              echo "=== Ollama sidecar download ==="
-              cat /tmp/sidecar.log
-              echo
-            fi
-            if [ -f /tmp/tauri-build.log ]; then
-              echo "=== Tauri build ==="
-              cat /tmp/tauri-build.log
-            fi
-          } > "$OUT"
-          if [ ! -s "$OUT" ]; then
-            echo "::warning::Neither sidecar nor build log exists to push"
-            exit 1
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f "$OUT"
-          git commit -m "desktop build log (${{ matrix.platform }})"
-          git push origin "HEAD:refs/heads/ci-debug-logs-desktop-${{ matrix.platform }}" --force
-
   publish-desktop:
     needs: [build-and-release, release-info]
     runs-on: ubuntu-latest
