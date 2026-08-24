@@ -32,12 +32,6 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    # The temporary log-push step needs write access to publish captured
-    # pytest output to ci-debug-logs-linux-test; the repo's default workflow
-    # token is read-only, which silently defeated the first capture attempt.
-    # Scoped to this job only.
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
 
@@ -75,22 +69,7 @@ jobs:
             --cov=nova_ai \
             --cov-report=term-missing \
             --cov-report=xml \
-            --cov-fail-under=60 2>&1 | tee /tmp/pytest.log
-
-      # TEMPORARY diagnostic: action logs are unreadable without login, so on
-      # failure push the captured pytest output to a public branch readable
-      # anonymously via raw.githubusercontent.com. Remove once the linux test
-      # lane is stably green.
-      - name: Push test log to ci-debug-logs-linux-test
-        if: failure()
-        run: |
-          [ -s /tmp/pytest.log ] || { echo "::warning::no pytest log captured"; exit 1; }
-          cp /tmp/pytest.log ./pytest-linux-test.log
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f pytest-linux-test.log
-          git commit -m "linux test lane log"
-          git push origin "HEAD:refs/heads/ci-debug-logs-linux-test" --force
+            --cov-fail-under=60
 
       - name: Upload coverage report
         if: always()
