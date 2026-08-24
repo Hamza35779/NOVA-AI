@@ -138,3 +138,6 @@ desktop/src-tauri/binaries/
 
 # TypeScript incremental build cache
 frontend/tsconfig.tsbuildinfo
+
+# PyInstaller build debris
+*.spec

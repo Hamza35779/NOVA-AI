@@ -3,6 +3,10 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
+    paths:
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 jobs:
   build-and-release:
@@ -12,7 +16,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: nova-ai-windows-x64.exe
+            artifact_name: nova-ai-windows-x64.zip
           - os: ubuntu-latest
             artifact_name: nova-ai-linux-amd64.deb
           - os: macos-latest
@@ -31,13 +35,18 @@ jobs:
           pip install -e .
           pip install pyinstaller
       # Windows .exe
+      # --onedir (not --onefile): botocore's deep data paths exceed Windows
+      # MAX_PATH during onefile temp extraction ("decompression resulted in
+      # return code -1"). Zip the folder so users get one download; they
+      # extract and run nova-ai-windows-x64.exe inside.
+      # NOTE: no separate copy step — the pyinstaller output name already
+      # matches artifact_name, and copying a file onto itself fails cmd.
       - name: Build Windows .exe
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller --noconfirm --onefile --name "nova-ai-windows-x64" src/nova_ai/cli/__init__.py
-          if not exist dist mkdir dist
-          copy dist\nova-ai-windows-x64.exe dist\${{ matrix.artifact_name }}
-        shell: cmd
+          pyinstaller --noconfirm --onedir --name "nova-ai-windows-x64" src/nova_ai/cli/__init__.py
+          Compress-Archive -Path dist\nova-ai-windows-x64\* -DestinationPath dist\${{ matrix.artifact_name }}.zip -Force
+        shell: pwsh
       # Linux .deb
       - name: Build Debian (.deb) Package
         if: matrix.os == 'ubuntu-latest'
@@ -67,6 +76,7 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: dist/${{ matrix.artifact_name }}
   publish-release:
+    if: startsWith(github.ref, 'refs/tags/')
     name: Create GitHub Release
     needs: build-and-release
     runs-on: ubuntu-latest
