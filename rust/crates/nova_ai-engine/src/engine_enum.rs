@@ -9,7 +9,7 @@ use crate::openai_compat::OpenAICompatEngine;
 use crate::sglang::SGLangEngine;
 use crate::vllm::VLLMEngine;
 use crate::traits::{InferenceEngine, TokenStream};
-use nova_ai_core::error::NOVA AIError;
+use nova_ai_core::error::NovaError;
 use nova_ai_core::{GenerateResult, Message};
 use serde_json::Value;
 
@@ -71,7 +71,7 @@ impl InferenceEngine for Engine {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<GenerateResult, NOVA AIError> {
+    ) -> Result<GenerateResult, NovaError> {
         delegate_engine!(self, generate, messages, model, temperature, max_tokens, extra)
     }
 
@@ -82,7 +82,7 @@ impl InferenceEngine for Engine {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<TokenStream, NOVA AIError> {
+    ) -> Result<TokenStream, NovaError> {
         match self {
             Engine::Ollama(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
             Engine::VLLM(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
@@ -100,7 +100,7 @@ impl InferenceEngine for Engine {
         }
     }
 
-    fn list_models(&self) -> Result<Vec<String>, NOVA AIError> {
+    fn list_models(&self) -> Result<Vec<String>, NovaError> {
         delegate_engine!(self, list_models)
     }
 

@@ -1,6 +1,6 @@
 //! MemoryBackend trait for all storage backends.
 
-use nova_ai_core::{NOVA AIError, RetrievalResult};
+use nova_ai_core::{NovaError, RetrievalResult};
 use serde_json::Value;
 
 pub trait MemoryBackend: Send + Sync {
@@ -10,13 +10,13 @@ pub trait MemoryBackend: Send + Sync {
         content: &str,
         source: &str,
         metadata: Option<&Value>,
-    ) -> Result<String, NOVA AIError>;
+    ) -> Result<String, NovaError>;
     fn retrieve(
         &self,
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, NOVA AIError>;
-    fn delete(&self, doc_id: &str) -> Result<bool, NOVA AIError>;
-    fn clear(&self) -> Result<(), NOVA AIError>;
-    fn count(&self) -> Result<usize, NOVA AIError>;
+    ) -> Result<Vec<RetrievalResult>, NovaError>;
+    fn delete(&self, doc_id: &str) -> Result<bool, NovaError>;
+    fn clear(&self) -> Result<(), NovaError>;
+    fn count(&self) -> Result<usize, NovaError>;
 }

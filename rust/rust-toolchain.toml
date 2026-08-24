@@ -1,10 +1,12 @@
 # Pin the Rust toolchain for the nova_ai_rust workspace.
 #
 # The workspace requires Rust >= 1.88: rig-core uses let-chains and
-# nova_ai-skills uses `is_multiple_of`, both stabilized in 1.88. On older
-# stable toolchains the build fails with cryptic E0658 errors deep inside a
-# transitive dependency (see #252). Pinning here makes rustup install/select a
-# compatible toolchain automatically and gives a clear requirement up front.
+# nova_ai-skills uses `is_multiple_of`, both stabilized in 1.88 (see #252).
+# 1.90 is required because the workspace has no committed Cargo.lock, so
+# fresh resolution picks transitive deps by their MSRV — e.g.
+# ordered-float 5.x declares rust-version = 1.90 and cargo refuses to build
+# with anything older. Pinning here makes rustup install/select a compatible
+# toolchain automatically and gives a clear requirement up front.
 [toolchain]
-channel = "1.88"
+channel = "1.90"
 components = ["rustfmt", "clippy"]

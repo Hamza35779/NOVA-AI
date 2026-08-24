@@ -53,7 +53,7 @@ impl BaseTool for BuiltinTool {
     fn spec(&self) -> &ToolSpec {
         delegate_tool!(self, spec)
     }
-    fn execute(&self, params: &Value) -> Result<ToolResult, nova_ai_core::NOVA AIError> {
+    fn execute(&self, params: &Value) -> Result<ToolResult, nova_ai_core::NovaError> {
         delegate_tool!(self, execute, params)
     }
 }

@@ -1,6 +1,6 @@
 //! Learning trait definitions.
 
-use nova_ai_core::{NOVA AIError, RoutingContext};
+use nova_ai_core::{NovaError, RoutingContext};
 use nova_ai_traces::TraceStore;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -14,5 +14,5 @@ pub trait LearningPolicy: Send + Sync {
     fn update(
         &self,
         trace_store: &TraceStore,
-    ) -> Result<HashMap<String, Value>, NOVA AIError>;
+    ) -> Result<HashMap<String, Value>, NovaError>;
 }

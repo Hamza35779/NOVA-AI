@@ -4,7 +4,7 @@
 
 use crate::traits::OjAgent;
 use crate::utils::strip_think_tags;
-use nova_ai_core::{AgentContext, AgentResult, NOVA AIError};
+use nova_ai_core::{AgentContext, AgentResult, NovaError};
 use rig::agent::AgentBuilder;
 use rig::completion::request::{Chat, CompletionModel};
 use std::collections::HashMap;
@@ -38,7 +38,7 @@ impl<M: CompletionModel + 'static> OjAgent for SimpleAgent<M> {
         &self,
         input: &str,
         context: Option<&AgentContext>,
-    ) -> Result<AgentResult, NOVA AIError> {
+    ) -> Result<AgentResult, NovaError> {
         let history: Vec<rig::completion::message::Message> = context
             .map(|ctx| {
                 ctx.conversation
@@ -62,7 +62,7 @@ impl<M: CompletionModel + 'static> OjAgent for SimpleAgent<M> {
             .chat(input, history)
             .await
             .map_err(|e| {
-                NOVA AIError::Agent(nova_ai_core::error::AgentError::Execution(
+                NovaError::Agent(nova_ai_core::error::AgentError::Execution(
                     e.to_string(),
                 ))
             })?;

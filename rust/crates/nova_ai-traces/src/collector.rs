@@ -51,7 +51,7 @@ impl TraceCollector {
         trace_id: &str,
         result: &str,
         outcome: Option<&str>,
-    ) -> Result<(), nova_ai_core::NOVA AIError> {
+    ) -> Result<(), nova_ai_core::NovaError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()

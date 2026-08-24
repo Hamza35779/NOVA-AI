@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Top-level error type for all NOVA AI operations.
 #[derive(Error, Debug)]
-pub enum NOVA AIError {
+pub enum NovaError {
     #[error("Registry error: {0}")]
     Registry(#[from] RegistryError),
 
@@ -254,9 +254,9 @@ mod tests {
 
     #[test]
     fn test_error_from_registry() {
-        let e: NOVA AIError =
+        let e: NovaError =
             RegistryError::DuplicateKey("foo".into(), "ToolRegistry").into();
-        assert!(matches!(e, NOVA AIError::Registry(_)));
+        assert!(matches!(e, NovaError::Registry(_)));
     }
 
     #[test]

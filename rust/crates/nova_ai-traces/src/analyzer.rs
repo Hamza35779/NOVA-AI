@@ -1,7 +1,7 @@
 //! TraceAnalyzer — compute statistics from stored traces.
 
 use crate::store::TraceStore;
-use nova_ai_core::NOVA AIError;
+use nova_ai_core::NovaError;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -23,7 +23,7 @@ impl<'a> TraceAnalyzer<'a> {
         Self { store }
     }
 
-    pub fn overall_stats(&self) -> Result<TraceStats, NOVA AIError> {
+    pub fn overall_stats(&self) -> Result<TraceStats, NovaError> {
         let traces = self.store.list_traces(10000, 0)?;
         if traces.is_empty() {
             return Ok(TraceStats::default());
@@ -58,7 +58,7 @@ impl<'a> TraceAnalyzer<'a> {
         })
     }
 
-    pub fn stats_by_agent(&self) -> Result<HashMap<String, TraceStats>, NOVA AIError> {
+    pub fn stats_by_agent(&self) -> Result<HashMap<String, TraceStats>, NovaError> {
         let traces = self.store.list_traces(10000, 0)?;
         let mut by_agent: HashMap<String, Vec<_>> = HashMap::new();
 
@@ -107,7 +107,7 @@ impl<'a> TraceAnalyzer<'a> {
         Ok(result)
     }
 
-    pub fn stats_by_model(&self) -> Result<HashMap<String, TraceStats>, NOVA AIError> {
+    pub fn stats_by_model(&self) -> Result<HashMap<String, TraceStats>, NovaError> {
         let traces = self.store.list_traces(10000, 0)?;
         let mut by_model: HashMap<String, Vec<_>> = HashMap::new();
 

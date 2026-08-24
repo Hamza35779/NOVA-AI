@@ -1,7 +1,7 @@
 //! Shell execution tool.
 
 use crate::traits::BaseTool;
-use nova_ai_core::{NOVA AIError, ToolResult, ToolSpec};
+use nova_ai_core::{NovaError, ToolResult, ToolSpec};
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -36,7 +36,7 @@ impl BaseTool for ShellExecTool {
     fn spec(&self) -> &ToolSpec {
         &SPEC
     }
-    fn execute(&self, params: &Value) -> Result<ToolResult, NOVA AIError> {
+    fn execute(&self, params: &Value) -> Result<ToolResult, NovaError> {
         let command = params["command"].as_str().unwrap_or("");
         let cwd = params["cwd"].as_str();
 

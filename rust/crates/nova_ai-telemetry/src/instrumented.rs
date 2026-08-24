@@ -1,7 +1,7 @@
 //! InstrumentedEngine — wraps any InferenceEngine with telemetry recording.
 
 use crate::store::TelemetryStore;
-use nova_ai_core::error::NOVA AIError;
+use nova_ai_core::error::NovaError;
 use nova_ai_core::{GenerateResult, Message, TelemetryRecord};
 use nova_ai_engine::traits::{InferenceEngine, TokenStream};
 use serde_json::Value;
@@ -51,7 +51,7 @@ impl<E: InferenceEngine> InferenceEngine for InstrumentedEngine<E> {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<GenerateResult, NOVA AIError> {
+    ) -> Result<GenerateResult, NovaError> {
         let start = Instant::now();
         let result = self
             .inner
@@ -93,13 +93,13 @@ impl<E: InferenceEngine> InferenceEngine for InstrumentedEngine<E> {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<TokenStream, NOVA AIError> {
+    ) -> Result<TokenStream, NovaError> {
         self.inner
             .stream(messages, model, temperature, max_tokens, extra)
             .await
     }
 
-    fn list_models(&self) -> Result<Vec<String>, NOVA AIError> {
+    fn list_models(&self) -> Result<Vec<String>, NovaError> {
         self.inner.list_models()
     }
 

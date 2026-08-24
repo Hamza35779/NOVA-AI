@@ -1,7 +1,7 @@
 //! File read/write tools.
 
 use crate::traits::BaseTool;
-use nova_ai_core::{NOVA AIError, ToolResult, ToolSpec};
+use nova_ai_core::{NovaError, ToolResult, ToolSpec};
 use nova_ai_security::file_policy::is_sensitive_file;
 use once_cell::sync::Lazy;
 use serde_json::Value;
@@ -56,7 +56,7 @@ impl BaseTool for FileReadTool {
     fn spec(&self) -> &ToolSpec {
         &READ_SPEC
     }
-    fn execute(&self, params: &Value) -> Result<ToolResult, NOVA AIError> {
+    fn execute(&self, params: &Value) -> Result<ToolResult, NovaError> {
         let path_str = params["path"].as_str().unwrap_or("");
         let path = Path::new(path_str);
 
@@ -86,7 +86,7 @@ impl BaseTool for FileWriteTool {
     fn spec(&self) -> &ToolSpec {
         &WRITE_SPEC
     }
-    fn execute(&self, params: &Value) -> Result<ToolResult, NOVA AIError> {
+    fn execute(&self, params: &Value) -> Result<ToolResult, NovaError> {
         let path_str = params["path"].as_str().unwrap_or("");
         let content = params["content"].as_str().unwrap_or("");
         let path = Path::new(path_str);

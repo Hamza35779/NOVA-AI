@@ -39,7 +39,7 @@ impl AgentEnum {
         &self,
         input: &str,
         context: Option<&nova_ai_core::AgentContext>,
-    ) -> Result<nova_ai_core::AgentResult, nova_ai_core::NOVA AIError> {
+    ) -> Result<nova_ai_core::AgentResult, nova_ai_core::NovaError> {
         match self {
             AgentEnum::Simple(a) => a.run(input, context).await,
             AgentEnum::Orchestrator(a) => a.run(input, context).await,

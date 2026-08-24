@@ -1,7 +1,7 @@
 //! TelemetryAggregator — read-only SQL aggregation queries.
 
 use crate::store::TelemetryStore;
-use nova_ai_core::NOVA AIError;
+use nova_ai_core::NovaError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -17,7 +17,7 @@ pub struct AggregateStats {
 pub struct TelemetryAggregator;
 
 impl TelemetryAggregator {
-    pub fn stats(_store: &TelemetryStore) -> Result<AggregateStats, NOVA AIError> {
+    pub fn stats(_store: &TelemetryStore) -> Result<AggregateStats, NovaError> {
         Ok(AggregateStats::default())
     }
 }

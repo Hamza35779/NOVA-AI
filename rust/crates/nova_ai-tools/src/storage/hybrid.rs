@@ -11,7 +11,7 @@
 //! of the document in backend `i`'s result list (or absent if not returned).
 
 use crate::storage::traits::MemoryBackend;
-use nova_ai_core::{NOVA AIError, RetrievalResult};
+use nova_ai_core::{NovaError, RetrievalResult};
 use std::collections::HashMap;
 
 /// Default RRF smoothing constant.
@@ -84,7 +84,7 @@ impl MemoryBackend for HybridMemory {
         content: &str,
         source: &str,
         metadata: Option<&serde_json::Value>,
-    ) -> Result<String, NOVA AIError> {
+    ) -> Result<String, NovaError> {
         let mut last_id = String::new();
         for backend in &self.backends {
             last_id = backend.store(content, source, metadata)?;
@@ -96,7 +96,7 @@ impl MemoryBackend for HybridMemory {
         &self,
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, NOVA AIError> {
+    ) -> Result<Vec<RetrievalResult>, NovaError> {
         // Ask each backend for a generous number of results to give RRF enough data.
         let fetch_k = top_k * 3;
         let mut per_backend: Vec<Vec<RetrievalResult>> = Vec::with_capacity(self.backends.len());
@@ -106,7 +106,7 @@ impl MemoryBackend for HybridMemory {
         Ok(self.fuse_results(per_backend, top_k))
     }
 
-    fn delete(&self, doc_id: &str) -> Result<bool, NOVA AIError> {
+    fn delete(&self, doc_id: &str) -> Result<bool, NovaError> {
         let mut any_deleted = false;
         for backend in &self.backends {
             if backend.delete(doc_id)? {
@@ -116,14 +116,14 @@ impl MemoryBackend for HybridMemory {
         Ok(any_deleted)
     }
 
-    fn clear(&self) -> Result<(), NOVA AIError> {
+    fn clear(&self) -> Result<(), NovaError> {
         for backend in &self.backends {
             backend.clear()?;
         }
         Ok(())
     }
 
-    fn count(&self) -> Result<usize, NOVA AIError> {
+    fn count(&self) -> Result<usize, NovaError> {
         // Return count from the first backend (all should be in sync after store/delete).
         self.backends
             .first()

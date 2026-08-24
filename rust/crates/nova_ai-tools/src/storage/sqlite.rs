@@ -1,7 +1,7 @@
 //! SQLite + FTS5 memory backend.
 
 use crate::storage::traits::MemoryBackend;
-use nova_ai_core::{NOVA AIError, RetrievalResult};
+use nova_ai_core::{NovaError, RetrievalResult};
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use serde_json::Value;
@@ -14,11 +14,11 @@ pub struct SQLiteMemory {
 }
 
 impl SQLiteMemory {
-    pub fn new(db_path: &Path) -> Result<Self, NOVA AIError> {
+    pub fn new(db_path: &Path) -> Result<Self, NovaError> {
         // Expand leading ~ to the user's home directory
         let db_path = if db_path.starts_with("~") {
             let home = std::env::var("HOME").map_err(|_| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     "HOME environment variable not set",
                 ))
             })?;
@@ -30,12 +30,12 @@ impl SQLiteMemory {
 
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(e))
+                NovaError::Io(std::io::Error::other(e))
             })?;
         }
 
         let conn = Connection::open(db_path).map_err(|e| {
-            NOVA AIError::Io(std::io::Error::other(
+            NovaError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -53,7 +53,7 @@ impl SQLiteMemory {
             );",
         )
         .map_err(|e| {
-            NOVA AIError::Io(std::io::Error::other(
+            NovaError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -79,7 +79,7 @@ impl SQLiteMemory {
                      SELECT id, content, source FROM documents;",
             )
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;
@@ -91,7 +91,7 @@ impl SQLiteMemory {
         })
     }
 
-    pub fn in_memory() -> Result<Self, NOVA AIError> {
+    pub fn in_memory() -> Result<Self, NovaError> {
         Self::new(Path::new(":memory:"))
     }
 }
@@ -106,7 +106,7 @@ impl MemoryBackend for SQLiteMemory {
         content: &str,
         source: &str,
         metadata: Option<&Value>,
-    ) -> Result<String, NOVA AIError> {
+    ) -> Result<String, NovaError> {
         let doc_id = Uuid::new_v4().to_string();
         let meta_str =
             metadata.map(|m| serde_json::to_string(m).unwrap_or_default())
@@ -118,7 +118,7 @@ impl MemoryBackend for SQLiteMemory {
             rusqlite::params![doc_id, content, source, meta_str],
         )
         .map_err(|e| {
-            NOVA AIError::Io(std::io::Error::other(
+            NovaError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -129,7 +129,7 @@ impl MemoryBackend for SQLiteMemory {
             rusqlite::params![rowid, content, source],
         )
         .map_err(|e| {
-            NOVA AIError::Io(std::io::Error::other(
+            NovaError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -141,7 +141,7 @@ impl MemoryBackend for SQLiteMemory {
         &self,
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, NOVA AIError> {
+    ) -> Result<Vec<RetrievalResult>, NovaError> {
         let conn = self.conn.lock();
 
         let words: Vec<String> = query
@@ -166,7 +166,7 @@ impl MemoryBackend for SQLiteMemory {
                  LIMIT ?2",
             )
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;
@@ -185,7 +185,7 @@ impl MemoryBackend for SQLiteMemory {
                 })
             })
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?
@@ -195,7 +195,7 @@ impl MemoryBackend for SQLiteMemory {
         Ok(results)
     }
 
-    fn delete(&self, doc_id: &str) -> Result<bool, NOVA AIError> {
+    fn delete(&self, doc_id: &str) -> Result<bool, NovaError> {
         let conn = self.conn.lock();
         // Delete from FTS5 using the rowid from the documents table
         conn.execute(
@@ -203,7 +203,7 @@ impl MemoryBackend for SQLiteMemory {
             rusqlite::params![doc_id],
         )
         .map_err(|e| {
-            NOVA AIError::Io(std::io::Error::other(
+            NovaError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -213,30 +213,30 @@ impl MemoryBackend for SQLiteMemory {
                 rusqlite::params![doc_id],
             )
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;
         Ok(changes > 0)
     }
 
-    fn clear(&self) -> Result<(), NOVA AIError> {
+    fn clear(&self) -> Result<(), NovaError> {
         let conn = self.conn.lock();
         conn.execute_batch("DELETE FROM documents_fts; DELETE FROM documents")
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;
         Ok(())
     }
 
-    fn count(&self) -> Result<usize, NOVA AIError> {
+    fn count(&self) -> Result<usize, NovaError> {
         let conn = self.conn.lock();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;

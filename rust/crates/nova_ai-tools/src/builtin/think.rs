@@ -1,7 +1,7 @@
 //! Think tool — allows the agent to express reasoning steps.
 
 use crate::traits::BaseTool;
-use nova_ai_core::{NOVA AIError, ToolResult, ToolSpec};
+use nova_ai_core::{NovaError, ToolResult, ToolSpec};
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -39,7 +39,7 @@ impl BaseTool for ThinkTool {
         &SPEC
     }
 
-    fn execute(&self, params: &Value) -> Result<ToolResult, NOVA AIError> {
+    fn execute(&self, params: &Value) -> Result<ToolResult, NovaError> {
         let thought = params["thought"].as_str().unwrap_or("(empty thought)");
         Ok(ToolResult::success("think", thought))
     }

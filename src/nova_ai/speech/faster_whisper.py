@@ -4,22 +4,40 @@ from __future__ import annotations
 
 import logging
 import tempfile
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from nova_ai.core.registry import SpeechRegistry
 from nova_ai.speech._stubs import Segment, SpeechBackend, TranscriptionResult
 
-try:
+if TYPE_CHECKING:
     from faster_whisper import WhisperModel
-except ImportError:
-    WhisperModel = None  # type: ignore[assignment, misc]
-
-try:
-    import ctranslate2
-except ImportError:
-    ctranslate2 = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
+
+# Heavy libraries load lazily on first use instead of at module load: the
+# speech package imports every backend while registering it, so eager imports
+# here pull numpy into every `nova` command — crashing startup outright when
+# numpy is broken or slow to import on Windows (#404, #309).
+_whisper_cls: Optional[type] = None
+_ct2: Optional[object] = None
+_deps_attempted = False
+
+
+def _load_deps() -> None:
+    global _whisper_cls, _ct2, _deps_attempted
+    if _deps_attempted:
+        return
+    _deps_attempted = True
+    try:
+        from faster_whisper import WhisperModel as _WhisperModel
+    except ImportError:
+        return
+    _whisper_cls = _WhisperModel
+    try:
+        import ctranslate2 as _CTranslate2
+    except ImportError:
+        return
+    _ct2 = _CTranslate2
 
 
 @SpeechRegistry.register("faster-whisper")
@@ -42,11 +60,12 @@ class FasterWhisperBackend(SpeechBackend):
 
     def _resolve_compute_type(self) -> str:
         """Pick a CTranslate2 compute type supported by the configured device."""
-        if ctranslate2 is None:
+        _load_deps()
+        if _ct2 is None:
             return self._compute_type
 
         try:
-            supported = set(ctranslate2.get_supported_compute_types(self._device))
+            supported = set(_ct2.get_supported_compute_types(self._device))
         except Exception as exc:
             logger.debug(
                 "Could not inspect CTranslate2 compute types for %s: %s",
@@ -79,14 +98,15 @@ class FasterWhisperBackend(SpeechBackend):
     def _ensure_model(self) -> WhisperModel:
         """Lazy-load the Whisper model on first use."""
         if self._model is None:
-            if WhisperModel is None:
+            _load_deps()
+            if _whisper_cls is None:
                 self._last_error = (
                     "faster-whisper is not installed. "
                     "Install with: uv sync --extra desktop"
                 )
                 raise ImportError(self._last_error)
             compute_type = self._resolve_compute_type()
-            self._model = WhisperModel(
+            self._model = _whisper_cls(
                 self._model_size,
                 device=self._device,
                 compute_type=compute_type,

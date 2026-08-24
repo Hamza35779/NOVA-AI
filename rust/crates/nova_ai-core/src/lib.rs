@@ -12,7 +12,7 @@ pub mod registry;
 pub mod types;
 
 pub use config::{load_config, NovaConfig};
-pub use error::NOVA AIError;
+pub use error::NovaError;
 pub use events::{Event, EventBus, EventType};
 pub use model_catalog::{merge_discovered_models, register_builtin_models, BUILTIN_MODELS};
 pub use registry::TypedRegistry;

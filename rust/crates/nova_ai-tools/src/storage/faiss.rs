@@ -1,7 +1,7 @@
 //! FAISS-style vector similarity memory backend — pure Rust brute-force cosine similarity.
 
 use crate::storage::traits::MemoryBackend;
-use nova_ai_core::{NOVA AIError, RetrievalResult};
+use nova_ai_core::{NovaError, RetrievalResult};
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use serde_json::Value;
@@ -29,15 +29,15 @@ pub struct FAISSMemory {
 }
 
 impl FAISSMemory {
-    pub fn new(db_path: &Path, dim: usize) -> Result<Self, NOVA AIError> {
+    pub fn new(db_path: &Path, dim: usize) -> Result<Self, NovaError> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(e))
+                NovaError::Io(std::io::Error::other(e))
             })?;
         }
 
         let conn = Connection::open(db_path).map_err(|e| {
-            NOVA AIError::Io(std::io::Error::other(
+            NovaError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -53,7 +53,7 @@ impl FAISSMemory {
             );",
         )
         .map_err(|e| {
-            NOVA AIError::Io(std::io::Error::other(
+            NovaError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -65,11 +65,11 @@ impl FAISSMemory {
         })
     }
 
-    pub fn in_memory() -> Result<Self, NOVA AIError> {
+    pub fn in_memory() -> Result<Self, NovaError> {
         Self::new(Path::new(":memory:"), DEFAULT_DIM)
     }
 
-    pub fn with_dim(dim: usize) -> Result<Self, NOVA AIError> {
+    pub fn with_dim(dim: usize) -> Result<Self, NovaError> {
         Self::new(Path::new(":memory:"), dim)
     }
 
@@ -98,7 +98,7 @@ impl FAISSMemory {
         source: &str,
         metadata: Option<&Value>,
         embedding: &[f64],
-    ) -> Result<String, NOVA AIError> {
+    ) -> Result<String, NovaError> {
         let doc_id = Uuid::new_v4().to_string();
         let meta_str = metadata
             .map(|m| serde_json::to_string(m).unwrap_or_default())
@@ -112,7 +112,7 @@ impl FAISSMemory {
             rusqlite::params![doc_id, content, source, meta_str, emb_bytes],
         )
         .map_err(|e| {
-            NOVA AIError::Io(std::io::Error::other(
+            NovaError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -125,7 +125,7 @@ impl FAISSMemory {
         &self,
         query_embedding: &[f64],
         top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, NOVA AIError> {
+    ) -> Result<Vec<RetrievalResult>, NovaError> {
         let conn = self.conn.lock();
 
         let mut stmt = conn
@@ -133,7 +133,7 @@ impl FAISSMemory {
                 "SELECT id, content, source, metadata, embedding FROM faiss_documents",
             )
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;
@@ -147,7 +147,7 @@ impl FAISSMemory {
                 Ok((content, source, meta_str, bytes_to_embedding(&emb_bytes)))
             })
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?
@@ -189,7 +189,7 @@ impl MemoryBackend for FAISSMemory {
         content: &str,
         source: &str,
         metadata: Option<&Value>,
-    ) -> Result<String, NOVA AIError> {
+    ) -> Result<String, NovaError> {
         let embedding = self.embed(content);
         self.store_with_embedding(content, source, metadata, &embedding)
     }
@@ -198,12 +198,12 @@ impl MemoryBackend for FAISSMemory {
         &self,
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, NOVA AIError> {
+    ) -> Result<Vec<RetrievalResult>, NovaError> {
         let query_embedding = self.embed(query);
         self.retrieve_by_embedding(&query_embedding, top_k)
     }
 
-    fn delete(&self, doc_id: &str) -> Result<bool, NOVA AIError> {
+    fn delete(&self, doc_id: &str) -> Result<bool, NovaError> {
         let conn = self.conn.lock();
         let changes = conn
             .execute(
@@ -211,30 +211,30 @@ impl MemoryBackend for FAISSMemory {
                 rusqlite::params![doc_id],
             )
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;
         Ok(changes > 0)
     }
 
-    fn clear(&self) -> Result<(), NOVA AIError> {
+    fn clear(&self) -> Result<(), NovaError> {
         let conn = self.conn.lock();
         conn.execute_batch("DELETE FROM faiss_documents")
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;
         Ok(())
     }
 
-    fn count(&self) -> Result<usize, NOVA AIError> {
+    fn count(&self) -> Result<usize, NovaError> {
         let conn = self.conn.lock();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM faiss_documents", [], |row| row.get(0))
             .map_err(|e| {
-                NOVA AIError::Io(std::io::Error::other(
+                NovaError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;

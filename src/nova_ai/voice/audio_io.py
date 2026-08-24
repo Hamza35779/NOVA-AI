@@ -5,20 +5,39 @@ from __future__ import annotations
 import io
 import time
 import wave
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-try:
+if TYPE_CHECKING:
     import numpy as np
     import sounddevice as sd
 
-    HAS_AUDIO_DEPS = True
-except ImportError:
-    HAS_AUDIO_DEPS = False
+# numpy/sounddevice load lazily on first use instead of at module load: the
+# CLI imports this module eagerly via the voice command chain, so an eager
+# import pulls numpy into every `nova` command — crashing startup outright
+# when numpy is broken or slow to import on Windows (#404, #309).
+_np: Optional[object] = None
+_sd: Optional[object] = None
+_deps_resolved = False
+
+
+def _audio_modules() -> bool:
+    """Probe for numpy and sounddevice, importing them only once."""
+    global _np, _sd, _deps_resolved
+    if not _deps_resolved:
+        _deps_resolved = True
+        try:
+            import numpy as _numpy
+            import sounddevice as _sounddevice
+        except ImportError:
+            return False
+        _np = _numpy
+        _sd = _sounddevice
+    return _np is not None
 
 
 def check_audio_deps() -> bool:
     """Check if sounddevice and numpy are available."""
-    return HAS_AUDIO_DEPS
+    return _audio_modules()
 
 
 def record_until_silence(
@@ -38,8 +57,9 @@ def record_until_silence(
     Returns:
         WAV-encoded bytes.
     """
-    if not HAS_AUDIO_DEPS:
+    if not _audio_modules():
         raise RuntimeError("sounddevice and numpy are required for audio I/O.")
+    assert _np is not None and _sd is not None
 
     frames: list[np.ndarray] = []
 
@@ -59,7 +79,7 @@ def record_until_silence(
     start_time = time.time()
     silence_start: Optional[float] = None
 
-    with sd.InputStream(
+    with _sd.InputStream(
         samplerate=sample_rate, channels=1, dtype="int16", callback=callback
     ):
         while True:
@@ -70,7 +90,7 @@ def record_until_silence(
                 data = q.get(timeout=0.1)
                 frames.append(data)
 
-                rms = np.sqrt(np.mean(data.astype(np.float32) ** 2))
+                rms = _np.sqrt(_np.mean(data.astype(_np.float32) ** 2))
 
                 if rms < silence_threshold:
                     if silence_start is None:
@@ -88,7 +108,7 @@ def record_until_silence(
     if not frames:
         return b""
 
-    audio_data = np.concatenate(frames, axis=0)
+    audio_data = _np.concatenate(frames, axis=0)
 
     wav_io = io.BytesIO()
     with wave.open(wav_io, "wb") as wf:
@@ -107,12 +127,13 @@ def play_audio(audio_bytes: bytes, sample_rate: int = 24000) -> None:
         audio_bytes: Raw PCM audio bytes.
         sample_rate: Sample rate for playback.
     """
-    if not HAS_AUDIO_DEPS:
+    if not _audio_modules():
         raise RuntimeError("sounddevice and numpy are required for audio I/O.")
+    assert _np is not None and _sd is not None
 
     if not audio_bytes:
         return
 
-    audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
-    sd.play(audio_array, samplerate=sample_rate)
-    sd.wait()
+    audio_array = _np.frombuffer(audio_bytes, dtype=_np.int16)
+    _sd.play(audio_array, samplerate=sample_rate)
+    _sd.wait()

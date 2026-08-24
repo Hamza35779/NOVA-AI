@@ -7,7 +7,7 @@ use super::hybrid::HybridMemory;
 use super::knowledge_graph::KnowledgeGraphMemory;
 use super::sqlite::SQLiteMemory;
 use super::traits::MemoryBackend;
-use nova_ai_core::{NOVA AIError, RetrievalResult};
+use nova_ai_core::{NovaError, RetrievalResult};
 use serde_json::Value;
 
 /// Closed enum of all supported memory/storage backends.
@@ -43,7 +43,7 @@ impl MemoryBackend for MemoryBackendEnum {
         content: &str,
         source: &str,
         metadata: Option<&Value>,
-    ) -> Result<String, NOVA AIError> {
+    ) -> Result<String, NovaError> {
         delegate_memory!(self, store, content, source, metadata)
     }
 
@@ -51,19 +51,19 @@ impl MemoryBackend for MemoryBackendEnum {
         &self,
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<RetrievalResult>, NOVA AIError> {
+    ) -> Result<Vec<RetrievalResult>, NovaError> {
         delegate_memory!(self, retrieve, query, top_k)
     }
 
-    fn delete(&self, doc_id: &str) -> Result<bool, NOVA AIError> {
+    fn delete(&self, doc_id: &str) -> Result<bool, NovaError> {
         delegate_memory!(self, delete, doc_id)
     }
 
-    fn clear(&self) -> Result<(), NOVA AIError> {
+    fn clear(&self) -> Result<(), NovaError> {
         delegate_memory!(self, clear)
     }
 
-    fn count(&self) -> Result<usize, NOVA AIError> {
+    fn count(&self) -> Result<usize, NovaError> {
         delegate_memory!(self, count)
     }
 }

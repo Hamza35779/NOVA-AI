@@ -6,7 +6,7 @@
 use crate::loop_guard::LoopGuard;
 use crate::traits::OjAgent;
 use crate::utils::strip_think_tags;
-use nova_ai_core::{AgentContext, AgentResult, NOVA AIError, ToolResult};
+use nova_ai_core::{AgentContext, AgentResult, NovaError, ToolResult};
 use nova_ai_tools::executor::ToolExecutor;
 use regex::Regex;
 use rig::agent::AgentBuilder;
@@ -95,7 +95,7 @@ impl<M: CompletionModel + 'static> OjAgent for NativeReActAgent<M> {
         &self,
         input: &str,
         context: Option<&AgentContext>,
-    ) -> Result<AgentResult, NOVA AIError> {
+    ) -> Result<AgentResult, NovaError> {
         let mut history: Vec<RigMessage> = context
             .map(|ctx| {
                 ctx.conversation
@@ -124,7 +124,7 @@ impl<M: CompletionModel + 'static> OjAgent for NativeReActAgent<M> {
                 .chat(&current_input, history.clone())
                 .await
                 .map_err(|e| {
-                    NOVA AIError::Agent(nova_ai_core::error::AgentError::Execution(
+                    NovaError::Agent(nova_ai_core::error::AgentError::Execution(
                         e.to_string(),
                     ))
                 })?;

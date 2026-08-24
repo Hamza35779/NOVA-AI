@@ -4,7 +4,7 @@ use crate::traits::InferenceEngine;
 use crate::ollama::OllamaEngine;
 use crate::openai_compat::OpenAICompatEngine;
 use nova_ai_core::config::NovaConfig;
-use nova_ai_core::NOVA AIError;
+use nova_ai_core::NovaError;
 
 /// Engine endpoint descriptor discovered at runtime.
 #[derive(Debug, Clone)]
@@ -63,7 +63,7 @@ pub fn discover_engines(config: &NovaConfig) -> Vec<EngineInfo> {
 pub fn get_engine_static(
     config: &NovaConfig,
     engine_key: Option<&str>,
-) -> Result<crate::engine_enum::Engine, NOVA AIError> {
+) -> Result<crate::engine_enum::Engine, NovaError> {
     use crate::engine_enum::Engine;
 
     let key = engine_key
@@ -102,7 +102,7 @@ pub fn get_engine_static(
         "apple_fm" => Ok(Engine::AppleFm(OpenAICompatEngine::apple_fm(
             &config.engine.apple_fm.host,
         ))),
-        other => Err(NOVA AIError::Engine(
+        other => Err(NovaError::Engine(
             nova_ai_core::error::EngineError::ModelNotFound(format!(
                 "Unknown engine: {other}"
             )),

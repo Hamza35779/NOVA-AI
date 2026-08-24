@@ -2,7 +2,7 @@
 
 use crate::builtin::BuiltinTool;
 use crate::traits::BaseTool;
-use nova_ai_core::error::{NOVA AIError, ToolError};
+use nova_ai_core::error::{NovaError, ToolError};
 use nova_ai_core::{EventBus, EventType, ToolResult};
 use nova_ai_security::capabilities::CapabilityPolicy;
 use nova_ai_security::taint::{TaintSet, check_taint};
@@ -54,9 +54,9 @@ impl ToolExecutor {
         params: &Value,
         agent_id: Option<&str>,
         taint: Option<&TaintSet>,
-    ) -> Result<ToolResult, NOVA AIError> {
+    ) -> Result<ToolResult, NovaError> {
         let tool = self.tools.get(tool_name).ok_or_else(|| {
-            NOVA AIError::Tool(ToolError::NotFound(tool_name.to_string()))
+            NovaError::Tool(ToolError::NotFound(tool_name.to_string()))
         })?;
 
         // RBAC check
@@ -64,7 +64,7 @@ impl ToolExecutor {
             let spec = tool.spec();
             for cap in &spec.required_capabilities {
                 if !policy.check(aid, cap, "") {
-                    return Err(NOVA AIError::Tool(ToolError::CapabilityDenied(
+                    return Err(NovaError::Tool(ToolError::CapabilityDenied(
                         aid.to_string(),
                         format!("{cap} (tool: {tool_name})"),
                     )));
@@ -75,7 +75,7 @@ impl ToolExecutor {
         // Taint check
         if let Some(taint_set) = taint {
             if let Some(violation) = check_taint(tool_name, taint_set) {
-                return Err(NOVA AIError::Tool(ToolError::TaintViolation(
+                return Err(NovaError::Tool(ToolError::TaintViolation(
                     tool_name.to_string(),
                     violation,
                 )));
@@ -102,7 +102,7 @@ impl ToolExecutor {
                 data.insert("tool_name".to_string(), Value::String(tool_name.to_string()));
                 bus.publish(EventType::ToolTimeout, data);
             }
-            return Err(NOVA AIError::Tool(ToolError::Timeout(
+            return Err(NovaError::Tool(ToolError::Timeout(
                 timeout.as_secs_f64(),
                 tool_name.to_string(),
             )));
@@ -142,6 +142,6 @@ mod tests {
         let err = exec
             .execute("nonexistent", &serde_json::json!({}), None, None)
             .unwrap_err();
-        assert!(matches!(err, NOVA AIError::Tool(ToolError::NotFound(_))));
+        assert!(matches!(err, NovaError::Tool(ToolError::NotFound(_))));
     }
 }

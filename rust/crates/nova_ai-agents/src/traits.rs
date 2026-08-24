@@ -1,6 +1,6 @@
 //! OjAgent trait — interface for all agent implementations.
 
-use nova_ai_core::{AgentContext, AgentResult, NOVA AIError};
+use nova_ai_core::{AgentContext, AgentResult, NovaError};
 
 /// Core agent trait for all NOVA AI agents.
 ///
@@ -16,5 +16,5 @@ pub trait OjAgent: Send + Sync {
         &self,
         input: &str,
         context: Option<&AgentContext>,
-    ) -> Result<AgentResult, NOVA AIError>;
+    ) -> Result<AgentResult, NovaError>;
 }

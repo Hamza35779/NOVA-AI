@@ -168,8 +168,9 @@ jobs:
           echo "tauri_version=${TAURI_VERSION}" >> "$GITHUB_OUTPUT"
           # Updater artifacts need the minisign private key. Without it, build
           # plain installers and disable createUpdaterArtifacts via the
-          # TAURI_CONFIG override below — otherwise the bundler fails with
-          # "A public key has been found, but no private key".
+          # --config override consumed by the build jobs — otherwise the
+          # bundler fails with "A public key has been found, but no private
+          # key".
           #
           # NOTE: without tauri-action, a signed build still needs latest.json
           # assembled manually before refresh-stable-channel can mirror it;
@@ -272,18 +273,16 @@ jobs:
             echo "No Apple certificate configured, skipping code signing"
           fi
 
-      # Raw CLI build instead of tauri-action: a standalone `npx tauri build`
-      # with this project was proven green while tauri-action failed on all
-      # three platforms; the action layer (config injection / release API)
-      # was isolated as the failing component by the debug-desktop bisect.
+      # Raw CLI build. The config override MUST go through the v2 `--config`
+      # flag: Tauri v1's TAURI_CONFIG environment variable is not read by the
+      # v2 CLI, which left createUpdaterArtifacts active with no signing key
+      # and failed every platform at the updater-signing step.
       - name: Build Tauri app
         shell: bash
-        env:
-          TAURI_CONFIG: ${{ needs.release-info.outputs.tauri_config }}
         run: |
           set -o pipefail
           cd frontend
-          npx tauri build ${{ matrix.args }} 2>&1 | tee /tmp/tauri-build.log
+          npx tauri build ${{ matrix.args }} --config '${{ needs.release-info.outputs.tauri_config }}' 2>&1 | tee /tmp/tauri-build.log
           mkdir -p ../bundles-out
           find src-tauri/target -path '*bundle*' -type f \
             \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \

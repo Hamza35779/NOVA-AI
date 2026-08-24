@@ -40,7 +40,7 @@ impl<E: InferenceEngine> AgentHelpers<E> {
         &self,
         messages: &[Message],
         extra: Option<&serde_json::Value>,
-    ) -> Result<GenerateResult, nova_ai_core::NOVA AIError> {
+    ) -> Result<GenerateResult, nova_ai_core::NovaError> {
         self.engine.generate(messages, &self.model, self.temperature, self.max_tokens, extra)
     }
 

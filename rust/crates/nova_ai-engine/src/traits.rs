@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::pin::Pin;
 use tokio_stream::Stream;
 
-pub type StreamItem = Result<String, nova_ai_core::NOVA AIError>;
+pub type StreamItem = Result<String, nova_ai_core::NovaError>;
 pub type TokenStream = Pin<Box<dyn Stream<Item = StreamItem> + Send>>;
 
 /// ABC for all inference engine backends.
@@ -22,7 +22,7 @@ pub trait InferenceEngine: Send + Sync {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<GenerateResult, nova_ai_core::NOVA AIError>;
+    ) -> Result<GenerateResult, nova_ai_core::NovaError>;
 
     async fn stream(
         &self,
@@ -31,9 +31,9 @@ pub trait InferenceEngine: Send + Sync {
         temperature: f64,
         max_tokens: i64,
         extra: Option<&Value>,
-    ) -> Result<TokenStream, nova_ai_core::NOVA AIError>;
+    ) -> Result<TokenStream, nova_ai_core::NovaError>;
 
-    fn list_models(&self) -> Result<Vec<String>, nova_ai_core::NOVA AIError>;
+    fn list_models(&self) -> Result<Vec<String>, nova_ai_core::NovaError>;
 
     fn health(&self) -> bool;
 
