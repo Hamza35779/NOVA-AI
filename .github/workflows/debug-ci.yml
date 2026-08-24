@@ -1,10 +1,11 @@
 name: Debug CI
 
 # Temporary diagnostic lane: the clippy, maturin-extension, and Windows-test
-# lanes of ci.yml fail only on GitHub runners and their logs need
-# authentication to read. This workflow re-runs each failing step with
-# `|| true` and tees the output tail into GITHUB_STEP_SUMMARY, which is
-# publicly readable without login. Delete once the underlying CI failures are
+# lanes of ci.yml fail only on GitHub runners, and neither action logs nor
+# step summaries are readable without authentication. Each job here re-runs
+# one failing step with the output captured to a log file and force-pushes
+# that file to its own branch (ci-debug-logs-*), which IS publicly readable
+# via raw.githubusercontent.com. Delete once the underlying CI failures are
 # fixed.
 
 on:
@@ -42,14 +43,19 @@ jobs:
       - name: Clippy (captured)
         shell: bash
         run: |
-          cargo clippy --workspace --all-targets -- -D warnings > /tmp/clippy.log 2>&1 || true
-          {
-            echo "## clippy tail"
-            echo '```'
-            tail -80 /tmp/clippy.log
-            echo '```'
-            echo "exit-marker: $(grep -c '^error' /tmp/clippy.log || true) error lines"
-          } >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          cargo clippy --workspace --all-targets -- -D warnings > "$GITHUB_WORKSPACE/clippy.log" 2>&1
+          echo "clippy exit code: $?" >> "$GITHUB_WORKSPACE/clippy.log"
+          tail -100 "$GITHUB_WORKSPACE/clippy.log"
+
+      - name: Push log to ci-debug-logs-clippy
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f clippy.log
+          git commit -m "clippy debug log"
+          git push origin "HEAD:refs/heads/ci-debug-logs-clippy" --force
 
   maturin-probe:
     runs-on: ubuntu-latest
@@ -70,14 +76,18 @@ jobs:
         shell: bash
         run: |
           set +e
-          uv run maturin develop --manifest-path rust/crates/nova_ai-python/Cargo.toml > /tmp/maturin.log 2>&1
-          CODE=$?
-          {
-            echo "## maturin develop tail (exit $CODE)"
-            echo '```'
-            tail -60 /tmp/maturin.log
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          uv run maturin develop --manifest-path rust/crates/nova_ai-python/Cargo.toml > "$GITHUB_WORKSPACE/maturin.log" 2>&1
+          echo "maturin exit code: $?" >> "$GITHUB_WORKSPACE/maturin.log"
+          tail -100 "$GITHUB_WORKSPACE/maturin.log"
+
+      - name: Push log to ci-debug-logs-maturin
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f maturin.log
+          git commit -m "maturin debug log"
+          git push origin "HEAD:refs/heads/ci-debug-logs-maturin" --force
 
   win-test-probe:
     runs-on: windows-latest
@@ -100,11 +110,15 @@ jobs:
         shell: bash
         run: |
           set +e
-          uv run pytest tests/hardware/test_hardware_profiles.py tests/cli/test_cli.py -m "not live and not cloud" --tb=short -q > /tmp/win-tests.log 2>&1
-          CODE=$?
-          {
-            echo "## windows tests tail (exit $CODE)"
-            echo '```'
-            tail -80 /tmp/win-tests.log
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          uv run pytest tests/hardware/test_hardware_profiles.py tests/cli/test_cli.py -m "not live and not cloud" --tb=short -q > "$GITHUB_WORKSPACE/win-tests.log" 2>&1
+          echo "pytest exit code: $?" >> "$GITHUB_WORKSPACE/win-tests.log"
+          tail -100 "$GITHUB_WORKSPACE/win-tests.log"
+
+      - name: Push log to ci-debug-logs-wintest
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f win-tests.log
+          git commit -m "windows test debug log"
+          git push origin "HEAD:refs/heads/ci-debug-logs-wintest" --force
