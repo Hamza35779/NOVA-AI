@@ -163,8 +163,10 @@ jobs:
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          # Tauri requires strict SemVer; PEP 440 `.devN` becomes `-dev.N`.
-          TAURI_VERSION="${VERSION/.dev/-dev.}"
+          # Tauri requires strict SemVer, and the MSI target additionally
+          # requires a NUMERIC-only pre-release identifier ("dev" breaks WiX),
+          # so PEP 440 `1.0.3.dev24` becomes `1.0.3-24`.
+          TAURI_VERSION="${VERSION/.dev/-}"
           echo "tauri_version=${TAURI_VERSION}" >> "$GITHUB_OUTPUT"
           # Updater artifacts need the minisign private key. Without it, build
           # plain installers and disable createUpdaterArtifacts via the
@@ -243,8 +245,9 @@ jobs:
         run: |
           cd frontend/src-tauri/scripts && chmod +x download-ollama.sh
           if [[ "${{ matrix.platform }}" == "macos-14" ]]; then
-            ./download-ollama.sh aarch64-apple-darwin
-            ./download-ollama.sh x86_64-apple-darwin
+            # Universal builds need one lipo-merged sidecar; the script
+            # downloads both arches and merges them.
+            ./download-ollama.sh universal-apple-darwin
           else
             ./download-ollama.sh
           fi

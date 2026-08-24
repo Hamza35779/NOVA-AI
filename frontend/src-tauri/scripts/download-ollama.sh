@@ -50,6 +50,24 @@ fi
 
 echo "Target triple: $TARGET"
 
+# Universal macOS builds need one fat binary under the pseudo-triple
+# `universal-apple-darwin`; Tauri does not merge per-arch sidecars itself.
+# Download both halves, then lipo them together.
+if [ "$TARGET" = "universal-apple-darwin" ]; then
+    "$0" aarch64-apple-darwin
+    "$0" x86_64-apple-darwin
+    UNIVERSAL_FILE="$BINARIES_DIR/ollama-universal-apple-darwin"
+    lipo -create \
+        -output "$UNIVERSAL_FILE" \
+        "$BINARIES_DIR/ollama-aarch64-apple-darwin" \
+        "$BINARIES_DIR/ollama-x86_64-apple-darwin"
+    chmod +x "$UNIVERSAL_FILE"
+    echo "Saved to: $UNIVERSAL_FILE"
+    ls -lh "$UNIVERSAL_FILE"
+    lipo -info "$UNIVERSAL_FILE"
+    exit 0
+fi
+
 # Tauri externalBin naming: <name>-<target-triple>[.exe]
 SUFFIX=""
 case "$TARGET" in
