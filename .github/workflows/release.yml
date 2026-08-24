@@ -8,6 +8,10 @@ on:
     paths:
       - '.github/workflows/release.yml'
   workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     name: Build (${{ matrix.os }})
