@@ -52,19 +52,44 @@ echo "Target triple: $TARGET"
 
 # Universal macOS builds need one fat binary under the pseudo-triple
 # `universal-apple-darwin`; Tauri does not merge per-arch sidecars itself.
-# Download both halves, then lipo them together.
+#
+# Ollama publishes a SINGLE fat (multi-arch) darwin archive covering both
+# architectures, so there is nothing to lipo together — merging two copies
+# of the same fat binary makes lipo abort with duplicate architectures.
+# Fetch the archive once and derive every sidecar name from that binary;
+# macOS picks the matching slice from a fat binary regardless of filename.
 if [ "$TARGET" = "universal-apple-darwin" ]; then
-    "$0" aarch64-apple-darwin
-    "$0" x86_64-apple-darwin
-    UNIVERSAL_FILE="$BINARIES_DIR/ollama-universal-apple-darwin"
-    lipo -create \
-        -output "$UNIVERSAL_FILE" \
-        "$BINARIES_DIR/ollama-aarch64-apple-darwin" \
-        "$BINARIES_DIR/ollama-x86_64-apple-darwin"
-    chmod +x "$UNIVERSAL_FILE"
-    echo "Saved to: $UNIVERSAL_FILE"
-    ls -lh "$UNIVERSAL_FILE"
-    lipo -info "$UNIVERSAL_FILE"
+    TMPDIR="$(mktemp -d)"
+    trap 'rm -rf "$TMPDIR"' EXIT
+    ASSET_URL="https://github.com/ollama/ollama/releases/latest/download/ollama-darwin.tgz"
+    echo "Downloading: $ASSET_URL"
+    curl -fSL --retry 5 --retry-delay 10 --retry-all-errors \
+        --progress-bar "$ASSET_URL" -o "$TMPDIR/ollama.tgz"
+    tar xzf "$TMPDIR/ollama.tgz" -C "$TMPDIR"
+
+    FAT_BIN=""
+    for candidate in "$TMPDIR/bin/ollama" "$TMPDIR/ollama" "$TMPDIR/ollama.exe"; do
+        if [ -f "$candidate" ]; then
+            FAT_BIN="$candidate"
+            break
+        fi
+    done
+    if [ -z "$FAT_BIN" ]; then
+        echo "Could not find ollama binary in archive. Contents:"
+        find "$TMPDIR" -type f | head -20
+        exit 1
+    fi
+
+    for NAME in \
+        ollama-aarch64-apple-darwin \
+        ollama-x86_64-apple-darwin \
+        ollama-universal-apple-darwin; do
+        cp "$FAT_BIN" "$BINARIES_DIR/$NAME"
+        chmod +x "$BINARIES_DIR/$NAME"
+    done
+    echo "Saved to: $BINARIES_DIR/ollama-universal-apple-darwin"
+    ls -lh "$BINARIES_DIR"/ollama-*-apple-darwin
+    command -v lipo >/dev/null 2>&1 && lipo -info "$FAT_BIN" || true
     exit 0
 fi
 
@@ -112,7 +137,8 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 echo "Downloading: $ASSET_URL"
 ARCHIVE_FILE="$TMPDIR/ollama-archive"
-curl -fSL --progress-bar "$ASSET_URL" -o "$ARCHIVE_FILE"
+curl -fSL --retry 5 --retry-delay 10 --retry-all-errors \
+    --progress-bar "$ASSET_URL" -o "$ARCHIVE_FILE"
 
 echo "Extracting..."
 case "$ARCHIVE_TYPE" in
