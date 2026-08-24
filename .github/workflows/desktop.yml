@@ -98,6 +98,8 @@ jobs:
   build-and-release:
     needs: [validate, clean-release]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    outputs:
+      has_updater: ${{ steps.release-info.outputs.has_updater }}
 
     strategy:
       fail-fast: false
@@ -164,6 +166,8 @@ jobs:
 
       - name: Determine release info
         id: release-info
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         shell: bash
         run: |
           if [[ "${{ github.ref }}" == refs/tags/desktop-v* ]]; then
@@ -216,6 +220,20 @@ jobs:
           # PyPI keeps the PEP 440 form; only the Tauri bundle uses SemVer.
           TAURI_VERSION="${VERSION/.dev/-dev.}"
           echo "tauri_version=${TAURI_VERSION}" >> "$GITHUB_OUTPUT"
+          # Updater artifacts need the minisign private key. Without it, build
+          # plain installers and disable createUpdaterArtifacts via the
+          # TAURI_CONFIG override below — otherwise the bundler fails with
+          # "A public key has been found, but no private key".
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "has_updater=true" >> "$GITHUB_OUTPUT"
+            UPDATER_BUNDLE=true
+          else
+            echo "has_updater=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY not set — building WITHOUT updater artifacts; in-app auto-update stays dormant until a signing key is added as a repo secret"
+            UPDATER_BUNDLE=false
+          fi
+          printf 'tauri_config={"version":"%s","bundle":{"externalBin":["binaries/ollama"],"createUpdaterArtifacts":%s}}\n' \
+            "$TAURI_VERSION" "$UPDATER_BUNDLE" >> "$GITHUB_OUTPUT"
 
       - name: Configure Apple signing
         if: runner.os == 'macOS'
@@ -237,10 +255,7 @@ jobs:
             echo "APPLE_TEAM_ID=$A_TEAM" >> "$GITHUB_ENV"
             echo "Apple signing configured"
           else
-            if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-              echo "::error::Apple signing secrets are required for release builds"
-              exit 1
-            fi
+            echo "::warning::No Apple certificate configured — shipping an UNSIGNED macOS build. Users must bypass Gatekeeper on first launch (right-click > Open). Add APPLE_CERTIFICATE secrets for signed releases."
             echo "No Apple certificate configured, skipping code signing"
           fi
 
@@ -251,7 +266,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_CONFIG: '{"version":"${{ steps.release-info.outputs.tauri_version }}","bundle":{"externalBin":["binaries/ollama"]}}'
+          TAURI_CONFIG: ${{ steps.release-info.outputs.tauri_config }}
         with:
           projectPath: frontend
           tauriScript: npx tauri
@@ -260,7 +275,7 @@ jobs:
           releaseBody: 'Desktop application built from ${{ github.sha }}'
           releaseDraft: false
           prerelease: ${{ steps.release-info.outputs.prerelease }}
-          includeUpdaterJson: true
+          includeUpdaterJson: ${{ steps.release-info.outputs.has_updater == 'true' }}
           args: ${{ matrix.args }}
 
   # When a stable `desktop-v*` release is published, repoint the
@@ -270,7 +285,9 @@ jobs:
   # only ever offered vetted stable builds, never `desktop-edge` dev builds.
   refresh-stable-channel:
     needs: [build-and-release]
-    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    # Only meaningful when this build produced a signed latest.json; without
+    # the updater signing key there is no manifest to mirror.
+    if: startsWith(github.ref, 'refs/tags/desktop-v') && needs.build-and-release.outputs.has_updater == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Mirror stable latest.json into desktop-latest
