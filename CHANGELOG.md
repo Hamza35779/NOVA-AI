@@ -10,6 +10,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+**Query complexity routing (`model="auto"`).** Closes a *Ready* item from
+Workstream 3 of the roadmap. `MultiEngine` now accepts the alias
+`model="auto"`: the last user message is scored by the existing
+`score_complexity` analyzer, simple queries stay on the fastest local
+engine, and queries at or above the `auto_route_threshold` (default
+`0.55`) escalate to the first available cloud model from
+`cloud_model_preference` (claude → gpt → gemini → deepseek). When cloud
+is unreachable, complex queries still fall back to local instead of
+failing. The chosen route, complexity tier, score, and reason ride along
+in the result as `_routing` (and in trace metadata), so the dashboard can
+show *why* each query went where it did.
+
+**Redaction-before-cloud pipeline.** Closes a *Ready* Workstream 3 item.
+A shared `redact_messages()` helper scrubs secrets and PII from outbound
+message copies before any cloud transmission — wired directly inside
+`stream_cloud` (on by default via the new `security.redact_before_cloud`
+setting), so even engine-bypassing server routes cannot leak an API key
+or personal data to a provider. `nova serve` additionally wraps the cloud
+engine in a REDACT-mode `GuardrailsEngine`. Originals are never mutated;
+clean messages pass through untouched.
+
+**Per-query cost tracking in traces and telemetry.** Closes a *Ready*
+Workstream 3 item. Cloud inference now attaches a real USD figure to every
+result — OpenRouter's reported per-request cost when present, otherwise an
+estimate from the existing pricing table with provider prefixes stripped
+(`openrouter/anthropic/claude-sonnet-5` prices as `claude-sonnet-5`). The
+cost flows through `InstrumentedEngine` into telemetry records (which the
+aggregator already SUMs for dashboards), into each trace step, and into a
+new persisted `Trace.total_cost_usd`, so any conversation's total spend is
+queryable from the trace store. Local inference always costs 0.
+
+**Slack Block Kit support for structured responses.** Closes a *Ready*
+Workstream 2 item. Replies with structure — headers, lists, code fences,
+horizontal rules — now render as native Slack Block Kit layouts instead of
+a single mrkdwn blob: headers become header blocks, rules become
+dividers, fenced code stays verbatim in its own section, long prose is
+chunked to Slack's limits (3000-char sections, 50-block cap with a
+truncation notice). Short plain replies keep using plain mrkdwn. Deep
+Research daemon replies additionally carry Summarize / Go deeper /
+Sources buttons that re-run the agent in-thread via slack-bolt action
+handlers. The new `slack_blocks` module is pure dicts with no
+`slack_sdk` dependency; `text` always accompanies blocks as the
+notification fallback.
+
 **Operator hardening: capability enforcement, rate limiting, and health
 monitoring.** Closes three *Ready* items from Workstream 1 of the
 roadmap.

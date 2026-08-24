@@ -71,7 +71,7 @@ Personal AI must be accessible from the devices people actually carry. NOVA AI r
 |------|----------|---------|
 | WhatsApp via Meta Cloud API | **Design Needed** | Baileys protocol is blocked by WhatsApp (405 errors). Need to implement via the official Meta WhatsApp Business API. Requires Meta Business account registration. |
 | WhatsApp via Baileys (workaround) | **Blocked** | WhatsApp is actively blocking unofficial Baileys connections (405 Method Not Allowed). Monitor the [Baileys repo](https://github.com/WhiskeySockets/Baileys) for protocol updates. |
-| Slack rich messages (Block Kit) | **Ready** | Current Slack responses use mrkdwn formatting. Add Block Kit support for structured responses with buttons, sections, and attachments. **Good first issue.** |
+| Slack rich messages (Block Kit) | **Shipped** | Done — `slack_blocks.py` converts structured replies to header/section/divider/code layouts (chunked to Slack limits), and daemon research replies carry Summarize / Go deeper / Sources buttons handled in-thread. |
 | Unified notification system | **Design Needed** | Push notifications when operators complete tasks or need user attention. Requires per-channel notification adapters. |
 | Signal bidirectional | **Design Needed** | Currently send-only via signal-cli REST API. Add incoming message listener with background polling. |
 | Voice interface | **Research-Stage** | Speech-to-text (Whisper) → agent → text-to-speech loop over phone channels. Existing `speech/` module provides a foundation. |
@@ -92,9 +92,9 @@ Personal AI's core tension: local models preserve privacy but lack capability; c
 
 | Item | Maturity | Details |
 |------|----------|---------|
-| Query complexity analyzer | **Ready** | Classify incoming queries by difficulty to decide local vs. cloud routing. Extends the existing `MultiEngine` routing logic. |
-| Cost tracking per-query | **Ready** | `CloudEngine` already has pricing data. Surface per-query cost in traces and telemetry dashboards. **Good first issue.** |
-| Redaction-before-cloud pipeline | **Ready** | Wire the existing `GuardrailsEngine` in REDACT mode as a mandatory pre-step before any cloud transmission. |
+| Query complexity analyzer | **Shipped** | Done — `MultiEngine` resolves `model="auto"` through `score_complexity`: simple queries stay on the fastest local engine, queries at/above `auto_route_threshold` escalate to the preferred cloud model, with graceful local fallback when cloud is unavailable. |
+| Cost tracking per-query | **Shipped** | Done — CloudEngine results carry `cost_usd` (OpenRouter-reported or estimated); it flows through InstrumentedEngine into telemetry records, trace steps, and a new `Trace.total_cost_usd` persisted in the store, so dashboards SUM() it directly. |
+| Redaction-before-cloud pipeline | **Shipped** | Done — `redact_messages()` scrubs secrets/PII from outbound copies inside `stream_cloud` itself (on by default via `security.redact_before_cloud`), and `serve.py` additionally wraps the cloud engine in a REDACT-mode `GuardrailsEngine`. |
 | Minion protocol (sequential) | **Design Needed** | Local model extracts and summarizes long context → cloud model reasons over the compressed result. Native reimplementation of the core [Minions](https://github.com/HazyResearch/minions) idea. |
 | Minion protocol (parallel) | **Design Needed** | Local and cloud models work simultaneously on different aspects of a query; results are merged. Requires a new `HybridInferenceEngine` abstraction. |
 | TEE attestation verification | **Design Needed** | Verify that cloud inference ran inside a trusted execution environment via cryptographic attestation. |
