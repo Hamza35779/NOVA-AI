@@ -297,6 +297,21 @@ jobs:
           path: bundles-out/*
           if-no-files-found: error
 
+      # TEMPORARY diagnostic: action logs are unreadable without login, so on
+      # failure push the captured build log to a public branch where it can be
+      # fetched anonymously via raw.githubusercontent.com. Delete once the
+      # macOS/Windows lanes are green.
+      - name: Push build log to ci-debug-logs-desktop
+        if: failure()
+        shell: bash
+        run: |
+          cp /tmp/tauri-build.log "./tauri-build-${{ matrix.platform }}.log" 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f "tauri-build-${{ matrix.platform }}.log"
+          git commit -m "desktop build log (${{ matrix.platform }})"
+          git push origin "HEAD:refs/heads/ci-debug-logs-desktop-${{ matrix.platform }}" --force
+
   publish-desktop:
     needs: [build-and-release, release-info]
     runs-on: ubuntu-latest
