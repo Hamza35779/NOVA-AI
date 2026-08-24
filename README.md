@@ -1,5 +1,7 @@
 <div align="center">
-  <img alt="NOVA AI" src="<img width="1264" height="848" alt="NovaAI_Horizontal_Logo" src="https://github.com/user-attachments/assets/a532c23d-9e27-46b5-b561-8b110f3fe95c" />
+  <p> NOVA AI </p>
+<img width="1264" height="848" alt="NovaAI_Horizontal_Logo" src="https://github.com/user-attachments/assets/3cd5dc54-5e23-4ddc-a508-11b8a85b063f" />
+
 
 
   <p><i>Personal AI, On Personal Devices.</i></p>
