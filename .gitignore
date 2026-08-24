@@ -135,3 +135,6 @@ oj-debug.*.json
 # frontend/src-tauri/scripts/download-ollama.sh (also used by desktop.yml CI).
 # A committed copy would add ~75MB to every clone for zero benefit.
 desktop/src-tauri/binaries/
+
+# TypeScript incremental build cache
+frontend/tsconfig.tsbuildinfo
