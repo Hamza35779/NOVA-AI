@@ -32,6 +32,12 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    # The temporary log-push step needs write access to publish captured
+    # pytest output to ci-debug-logs-linux-test; the repo's default workflow
+    # token is read-only, which silently defeated the first capture attempt.
+    # Scoped to this job only.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
 
