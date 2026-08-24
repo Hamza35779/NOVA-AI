@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+import pytest
+
 from nova_ai.agents._stubs import AgentContext, AgentResult, BaseAgent
 from nova_ai.core.events import EventBus, EventType
 from nova_ai.core.types import StepType
@@ -415,4 +417,76 @@ class TestRichTraceCollector:
         assert trace is not None
         assert trace.query == "What is 2+2?"
         assert len(trace.messages) == 4
+        store.close()
+
+
+class _CostAgent(BaseAgent):
+    """Agent that simulates two cloud inference steps carrying USD cost."""
+
+    agent_id = "cost_agent"
+
+    def __init__(self, bus: EventBus) -> None:
+        self._bus = bus
+
+    def run(
+        self,
+        input: str,
+        context: Optional[AgentContext] = None,
+        **kwargs: Any,
+    ) -> AgentResult:
+        inf_start = {"model": "gpt-4o", "engine": "cloud"}
+        for cost, tokens in ((0.0025, 100), (0.0075, 200)):
+            self._bus.publish(EventType.INFERENCE_START, inf_start)
+            self._bus.publish(
+                EventType.INFERENCE_END,
+                {
+                    "model": "gpt-4o",
+                    "usage": {
+                        "prompt_tokens": tokens // 2,
+                        "completion_tokens": tokens - tokens // 2,
+                        "total_tokens": tokens,
+                    },
+                    "cost_usd": cost,
+                    "content": "...",
+                },
+            )
+        return AgentResult(content="done", turns=1)
+
+
+class TestCostTracking:
+    def test_cost_accumulates_on_trace(self, tmp_path: Path) -> None:
+        bus = EventBus()
+        store = TraceStore(tmp_path / "test.db")
+        collector = TraceCollector(_CostAgent(bus), store=store, bus=bus)
+
+        collector.run("expensive query")
+
+        trace = collector.last_trace
+        assert trace is not None
+        assert trace.total_cost_usd == pytest.approx(0.01)
+        gen_steps = [s for s in trace.steps if s.step_type == StepType.GENERATE]
+        assert [s.metadata["cost_usd"] for s in gen_steps] == [0.0025, 0.0075]
+        store.close()
+
+    def test_cost_survives_store_roundtrip(self, tmp_path: Path) -> None:
+        bus = EventBus()
+        store = TraceStore(tmp_path / "test.db")
+        collector = TraceCollector(_CostAgent(bus), store=store, bus=bus)
+
+        collector.run("expensive query")
+        loaded = store.list_traces()[0]
+
+        assert loaded.total_cost_usd == pytest.approx(0.01)
+        store.close()
+
+    def test_local_trace_keeps_zero_cost(self, tmp_path: Path) -> None:
+        bus = EventBus()
+        store = TraceStore(tmp_path / "test.db")
+        collector = TraceCollector(_FakeAgent(bus=bus), store=store, bus=bus)
+
+        collector.run("cheap query")
+
+        trace = collector.last_trace
+        assert trace is not None
+        assert trace.total_cost_usd == 0.0
         store.close()

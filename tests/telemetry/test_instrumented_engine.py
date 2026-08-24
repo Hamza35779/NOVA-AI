@@ -120,6 +120,52 @@ class TestInstrumentedEngine:
         assert ie.engine_id == "instrumented"
 
 
+class TestCostTracking:
+    """Cloud engines report per-query USD cost; it must reach telemetry."""
+
+    def _cloud_result(self):
+        return {
+            "content": "Hello!",
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            "cost_usd": 0.0025,
+        }
+
+    def test_cost_lands_on_telemetry_record(self, bus):
+        engine = MagicMock()
+        engine.engine_id = "cloud"
+        engine.generate.return_value = self._cloud_result()
+        ie = InstrumentedEngine(engine, bus)
+        messages = [Message(role=Role.USER, content="Hi")]
+        ie.generate(messages, model="gpt-4o")
+
+        tel_events = [
+            e for e in bus.history if e.event_type == EventType.TELEMETRY_RECORD
+        ]
+        record = tel_events[0].data["record"]
+        assert record.cost_usd == pytest.approx(0.0025)
+
+    def test_cost_lands_on_inference_end_event(self, bus):
+        engine = MagicMock()
+        engine.engine_id = "cloud"
+        engine.generate.return_value = self._cloud_result()
+        ie = InstrumentedEngine(engine, bus)
+        messages = [Message(role=Role.USER, content="Hi")]
+        ie.generate(messages, model="gpt-4o")
+
+        end_events = [e for e in bus.history if e.event_type == EventType.INFERENCE_END]
+        assert end_events[0].data["cost_usd"] == pytest.approx(0.0025)
+
+    def test_local_engine_defaults_to_zero_cost(self, mock_engine, bus):
+        ie = InstrumentedEngine(mock_engine, bus)
+        messages = [Message(role=Role.USER, content="Hi")]
+        ie.generate(messages, model="test")
+
+        tel_events = [
+            e for e in bus.history if e.event_type == EventType.TELEMETRY_RECORD
+        ]
+        assert tel_events[0].data["record"].cost_usd == 0.0
+
+
 class TestTokensPerJoule:
     def test_tokens_per_joule_zero_without_energy(self, mock_engine, bus):
         """tokens_per_joule is 0.0 when no energy monitor is available."""

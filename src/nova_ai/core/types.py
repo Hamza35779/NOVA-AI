@@ -257,6 +257,9 @@ class Trace:
     ended_at: float = 0.0
     total_tokens: int = 0
     total_latency_seconds: float = 0.0
+    # Cumulative USD cost across the trace's generate steps. Populated only
+    # when an inference reports cost (cloud engines); stays 0.0 for local.
+    total_cost_usd: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
     messages: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -265,6 +268,7 @@ class Trace:
         self.steps.append(step)
         self.total_latency_seconds += step.duration_seconds
         self.total_tokens += step.output.get("tokens", 0)
+        self.total_cost_usd += float(step.metadata.get("cost_usd", 0.0) or 0.0)
 
 
 @dataclass(slots=True)

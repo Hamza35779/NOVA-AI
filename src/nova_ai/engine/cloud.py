@@ -129,8 +129,39 @@ _CODEX_MODELS = [
 ]
 
 
+def _estimate_cost_with_prefixes(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """``estimate_cost`` that also resolves prefixed model IDs.
+
+    ``openrouter/openai/gpt-4o`` is priced like its underlying ``gpt-4o``
+    (OpenRouter routes to the real provider), so try the full name first,
+    then progressively strip routing segments until something matches.
+    Returns 0.0 when nothing in PRICING matches.
+    """
+    candidate = model
+    cost = estimate_cost(candidate, prompt_tokens, completion_tokens)
+    while cost == 0.0 and "/" in candidate:
+        candidate = candidate.split("/", 1)[1]
+        cost = estimate_cost(candidate, prompt_tokens, completion_tokens)
+    return cost
+
+
 def _is_minimax_model(model: str) -> bool:
     return model.lower().startswith("minimax")
+
+
+def _openrouter_cost(
+    model: str, usage: Any, prompt_tokens: int, completion_tokens: int
+) -> float:
+    """Best-effort USD cost for an OpenRouter completion.
+
+    OpenRouter returns an authoritative ``usage.cost`` when asked to include
+    usage; otherwise fall back to the local pricing table via the underlying
+    provider model name.
+    """
+    reported = getattr(usage, "cost", None)
+    if isinstance(reported, (int, float)):
+        return float(reported)
+    return _estimate_cost_with_prefixes(model, prompt_tokens, completion_tokens)
 
 
 def _is_deepseek_model(model: str) -> bool:
@@ -998,6 +1029,9 @@ class CloudEngine(InferenceEngine):
             },
             "model": resp.model,
             "finish_reason": choice.finish_reason or "stop",
+            # OpenRouter's usage object can carry a real cost; prefer it,
+            # fall back to the pricing table via the underlying model name.
+            "cost_usd": _openrouter_cost(model, usage, prompt_tokens, completion_tokens),
             "ttft": elapsed,
         }
         if getattr(choice.message, "tool_calls", None):

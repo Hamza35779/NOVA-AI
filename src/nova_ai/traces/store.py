@@ -26,7 +26,11 @@ CREATE TABLE IF NOT EXISTS traces (
     total_tokens         INTEGER NOT NULL DEFAULT 0,
     total_latency_seconds REAL   NOT NULL DEFAULT 0.0,
     metadata             TEXT    NOT NULL DEFAULT '{}',
-    messages             TEXT    NOT NULL DEFAULT '[]'
+    messages             TEXT    NOT NULL DEFAULT '[]',
+    -- Kept last so the ALTER TABLE migration below lands at the same
+    -- position for pre-existing databases as for fresh ones (SELECT *
+    -- reads rows positionally).
+    total_cost_usd       REAL    NOT NULL DEFAULT 0.0
 );
 """
 
@@ -65,8 +69,9 @@ _INSERT_TRACE = """\
 INSERT INTO traces (
     trace_id, query, agent, model, engine, result,
     outcome, feedback, started_at, ended_at,
-    total_tokens, total_latency_seconds, metadata, messages
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    total_tokens, total_latency_seconds, metadata, messages,
+    total_cost_usd
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _INSERT_STEP = """\
@@ -103,6 +108,13 @@ class TraceStore:
             )
         except sqlite3.OperationalError:
             pass  # Column already exists
+        # Migrate: per-query USD cost (added 2026-08; cloud-engine tracing)
+        try:
+            self._conn.execute(
+                "ALTER TABLE traces ADD COLUMN total_cost_usd REAL NOT NULL DEFAULT 0.0"
+            )
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         self._conn.commit()
 
     def save(self, trace: Trace) -> None:
@@ -132,6 +144,7 @@ class TraceStore:
                 trace.total_latency_seconds,
                 json.dumps(trace.metadata),
                 json.dumps(trace.messages),
+                trace.total_cost_usd,
             ),
         )
         for idx, step in enumerate(trace.steps):
@@ -286,8 +299,10 @@ class TraceStore:
             for sr in step_rows
         ]
         # messages column (index 14) was added after metadata; handle
-        # databases created before the column existed.
+        # databases created before the column existed. total_cost_usd
+        # (index 15) follows the same pattern.
         messages_raw = row[14] if len(row) > 14 else "[]"
+        cost_usd = row[15] if len(row) > 15 else 0.0
         return Trace(
             trace_id=trace_id,
             query=row[2],
@@ -303,6 +318,7 @@ class TraceStore:
             total_latency_seconds=row[12],
             metadata=json.loads(row[13]),
             messages=json.loads(messages_raw),
+            total_cost_usd=float(cost_usd or 0.0),
             steps=steps,
         )
 

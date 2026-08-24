@@ -133,6 +133,9 @@ class InstrumentedEngine(InferenceEngine):
         prompt_tokens_evaluated = usage.get("prompt_tokens_evaluated", 0)
         ttft = result.get("ttft", 0.0)
         throughput = completion_tokens / latency if latency > 0 else 0.0
+        # Cloud engines report per-query USD cost (see engine.cloud.PRICING);
+        # local engines leave it absent, which lands as 0.0.
+        cost_usd = float(result.get("cost_usd", 0.0) or 0.0)
 
         # Energy / GPU metrics from sample
         energy_joules = 0.0
@@ -213,6 +216,7 @@ class InstrumentedEngine(InferenceEngine):
             total_tokens=prompt_tok + completion_tokens,
             latency_seconds=latency,
             ttft=ttft,
+            cost_usd=cost_usd,
             throughput_tok_per_sec=throughput,
             energy_per_output_token_joules=energy_per_output_token,
             throughput_per_watt=throughput_per_watt,
@@ -245,6 +249,7 @@ class InstrumentedEngine(InferenceEngine):
             "latency": latency,
             "usage": usage,
             "ttft": ttft,
+            "cost_usd": cost_usd,
             "throughput_tok_per_sec": throughput,
             "energy_per_output_token_joules": energy_per_output_token,
             "throughput_per_watt": throughput_per_watt,

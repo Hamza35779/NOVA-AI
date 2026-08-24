@@ -12,6 +12,7 @@ from nova_ai.core.types import Message, Role
 from nova_ai.engine._base import EngineConnectionError
 from nova_ai.engine.cloud import (
     CloudEngine,
+    _estimate_cost_with_prefixes,
     _is_codex_model,
     _is_deepseek_model,
     _is_openai_model,
@@ -33,10 +34,26 @@ class TestEstimateCost:
         assert cost == pytest.approx(2.50)
 
 
+# Every env var CloudEngine._init_clients() treats as "provider configured".
+# Tests that need a keyless engine must clear them all — a developer machine
+# with, say, a real OPENROUTER_API_KEY exported would otherwise flip health().
+_PROVIDER_KEY_VARS = (
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "OPENROUTER_API_KEY",
+    "MINIMAX_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "XAI_API_KEY",
+    "OPENAI_CODEX_API_KEY",
+)
+
+
 class TestCloudEngineHealth:
     def test_health_no_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        for var in _PROVIDER_KEY_VARS:
+            monkeypatch.delenv(var, raising=False)
         EngineRegistry.register_value("cloud", CloudEngine)
         engine = CloudEngine()
         assert engine.health() is False
@@ -53,8 +70,8 @@ class TestCloudEngineHealth:
 
 class TestCloudEngineListModels:
     def test_list_models_no_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        for var in _PROVIDER_KEY_VARS:
+            monkeypatch.delenv(var, raising=False)
         EngineRegistry.register_value("cloud", CloudEngine)
         engine = CloudEngine()
         assert engine.list_models() == []
@@ -441,6 +458,67 @@ class TestOpenRouterToolForwarding:
         assert result["tool_calls"][0]["id"] == "call_1"
         assert result["tool_calls"][0]["function"]["name"] == "get_weather"
         assert result["tool_calls"][0]["function"]["arguments"] == '{"city": "NYC"}'
+
+
+class TestOpenRouterCost:
+    """Per-query cost must be present on OpenRouter results (roadmap WS3)."""
+
+    @staticmethod
+    def _engine_with_response(usage, model="openai/gpt-4o") -> CloudEngine:
+        fake_choice = SimpleNamespace(
+            message=SimpleNamespace(content="hi", tool_calls=None),
+            finish_reason="stop",
+        )
+        fake_resp = SimpleNamespace(
+            choices=[fake_choice], usage=usage, model=model
+        )
+        fake_client = mock.MagicMock()
+        fake_client.chat.completions.create.return_value = fake_resp
+        engine = CloudEngine()
+        engine._openrouter_client = fake_client
+        return engine
+
+    def test_estimate_cost_strips_routing_prefixes(self) -> None:
+        # openrouter/openai/gpt-4o is priced like its underlying gpt-4o.
+        cost = _estimate_cost_with_prefixes("openrouter/openai/gpt-4o", 1_000_000, 0)
+        assert cost == pytest.approx(2.50)
+
+    def test_generate_reports_estimated_cost(self) -> None:
+        usage = SimpleNamespace(
+            prompt_tokens=1_000_000, completion_tokens=0, total_tokens=1_000_000
+        )
+        engine = self._engine_with_response(usage)
+        result = engine.generate(
+            [Message(role=Role.USER, content="hi")],
+            model="openrouter/openai/gpt-4o",
+        )
+        assert result["cost_usd"] == pytest.approx(2.50)
+
+    def test_generate_prefers_reported_usage_cost(self) -> None:
+        # OpenRouter can return an authoritative cost; it wins over the table.
+        usage = SimpleNamespace(
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+            cost=0.000123,
+        )
+        engine = self._engine_with_response(usage)
+        result = engine.generate(
+            [Message(role=Role.USER, content="hi")],
+            model="openrouter/unknown-provider/unknown-model",
+        )
+        assert result["cost_usd"] == pytest.approx(0.000123)
+
+    def test_unknown_model_costs_zero(self) -> None:
+        usage = SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15)
+        engine = self._engine_with_response(
+            usage, model="unknown-provider/totally-unknown-model"
+        )
+        result = engine.generate(
+            [Message(role=Role.USER, content="hi")],
+            model="openrouter/unknown-provider/totally-unknown-model",
+        )
+        assert result["cost_usd"] == 0.0
 
 
 class TestCloudEngineCanServe:

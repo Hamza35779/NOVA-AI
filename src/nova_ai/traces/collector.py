@@ -96,6 +96,9 @@ class TraceCollector:
         for step in trace.steps:
             trace.total_latency_seconds += step.duration_seconds
             trace.total_tokens += step.output.get("tokens", 0)
+            trace.total_cost_usd += float(
+                step.metadata.get("cost_usd", 0.0) or 0.0
+            )
 
         self._last_trace = trace
 
@@ -166,6 +169,7 @@ class TraceCollector:
                 metadata={
                     "engine": self._current_engine,
                     "ttft": data.get("ttft", 0.0),
+                    "cost_usd": data.get("cost_usd", 0.0),
                     "energy_joules": data.get("energy_joules", 0.0),
                     "power_watts": data.get("power_watts", 0.0),
                     "gpu_utilization_pct": data.get(
@@ -235,6 +239,7 @@ def record_response_trace(
     agent: str = "server",
     started_at: float,
     ended_at: float,
+    cost_usd: float = 0.0,
 ) -> Optional[Trace]:
     """Persist a minimal single-step ``Trace`` for a non-agent response.
 
@@ -242,6 +247,10 @@ def record_response_trace(
     engine, bypassing the agent (and therefore ``TraceCollector``). They call
     this so those interactions still land in ``traces.db`` — otherwise streamed
     chats, which are the desktop GUI's main path, would never produce traces.
+
+    *cost_usd* carries any per-query cost the caller knows about; streaming
+    paths currently have no usage payload from providers, so it stays 0.0
+    there, but non-streaming server paths can pass the real value through.
 
     Best-effort: returns the saved ``Trace`` or ``None`` (when *store* is
     ``None`` or persistence raised), and never propagates an exception into the
@@ -259,6 +268,7 @@ def record_response_trace(
             result=result,
             started_at=started_at,
             ended_at=ended_at,
+            total_cost_usd=float(cost_usd or 0.0),
             steps=[
                 TraceStep(
                     step_type=StepType.RESPOND,
