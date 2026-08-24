@@ -99,8 +99,14 @@ class SlackChannel(BaseChannel):
         *,
         conversation_id: str = "",
         metadata: Dict[str, Any] | None = None,
+        blocks: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
-        """Send a message to a Slack channel via the Web API."""
+        """Send a message to a Slack channel via the Web API.
+
+        ``blocks`` accepts an optional Block Kit layout (see
+        :mod:`nova_ai.channels.slack_blocks`); the plain ``content`` text is
+        always sent too as the notification/fallback field.
+        """
         if not self._token:
             logger.warning("Cannot send: no Slack bot token")
             return False
@@ -117,6 +123,8 @@ class SlackChannel(BaseChannel):
                 "channel": channel,
                 "text": content,
             }
+            if blocks:
+                payload["blocks"] = blocks
             if conversation_id:
                 payload["thread_ts"] = conversation_id
 

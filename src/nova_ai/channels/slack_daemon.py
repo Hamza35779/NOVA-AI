@@ -14,6 +14,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from nova_ai.channels.slack_blocks import (
+    FOLLOWUP_ACTIONS,
+    FOLLOWUP_PROMPTS,
+    MAX_BLOCKS,
+    actions_block,
+    build_reply_blocks,
+    inline_mrkdwn,
+)
 from nova_ai.core.paths import get_config_dir
 
 logger = logging.getLogger(__name__)
@@ -22,21 +30,14 @@ _PID_FILE = str(get_config_dir() / "slack-daemon.pid")
 
 
 def _to_slack_fmt(text: str) -> str:
-    """Convert markdown to Slack mrkdwn format."""
-    # Headers → bold
+    """Convert markdown to Slack mrkdwn format.
+
+    Headers become bold lines; inline markup (bold, links, strikethrough,
+    LaTeX) is handled by the shared Block Kit module's converter so both
+    rendering paths stay consistent.
+    """
     text = re.sub(r"^#{1,6}\s+(.+)$", r"*\1*", text, flags=re.MULTILINE)
-    # Bold: **text** → *text*
-    text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
-    # Strikethrough: ~~text~~ → ~text~
-    text = re.sub(r"~~(.+?)~~", r"~\1~", text)
-    # Links: [text](url) → <url|text>
-    text = re.sub(r"\[(.+?)\]\((.+?)\)", r"<\2|\1>", text)
-    # Remove LaTeX
-    text = re.sub(r"\$\$.+?\$\$", "", text)
-    text = re.sub(r"\$(.+?)\$", r"\1", text)
-    # Clean whitespace
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    return inline_mrkdwn(text)
 
 
 def run_slack_daemon(
@@ -107,16 +108,78 @@ def run_slack_daemon(
 
         try:
             result = agent.run(text)
-            reply = _to_slack_fmt(result.content or "No results found.")
+            raw_content = result.content or ""
+            reply = _to_slack_fmt(raw_content or "No results found.")
         except Exception as exc:
+            raw_content = ""
             reply = f"Error: {exc}"
             logger.error("Slack daemon error: %s", exc)
         finally:
             processing.clear()
             stop.set()
 
-        say(text=reply, thread_ts=ts)
+        _post_reply(say, ts, reply, raw_content, with_buttons=True)
         logger.info("Slack DM reply sent (%d chars)", len(reply))
+
+    def _post_reply(
+        post: Any,
+        thread_ts: str,
+        reply: str,
+        raw_content: str,
+        *,
+        with_buttons: bool = False,
+    ) -> None:
+        """Post *reply* to a thread as Block Kit when it has structure.
+
+        The plain-mrkdwn text always rides along as the fallback field.
+        Research replies additionally get follow-up action buttons (roadmap
+        WS2) — handled by the ``app.action`` registrations below.
+        """
+        kwargs: dict = {"thread_ts": thread_ts}
+        blocks = build_reply_blocks(raw_content)
+        if blocks is not None:
+            if with_buttons and len(blocks) < MAX_BLOCKS:
+                buttons = actions_block(list(FOLLOWUP_ACTIONS))
+                if buttons is not None:
+                    blocks.append(buttons)
+            kwargs["blocks"] = blocks
+        post(text=reply, **kwargs)
+
+    def _make_followup_handler(prompt: str) -> Any:
+        def handle_followup(ack: Any, body: dict, client: Any) -> None:
+            ack()
+            message = body.get("message", {})
+            channel_id = body.get("channel", {}).get("id", "")
+            thread_ts = message.get("thread_ts") or message.get("ts", "")
+            logger.info(
+                "Slack follow-up button clicked (prompt: %.40s)", prompt
+            )
+            try:
+                result = agent.run(prompt)
+                raw_content = result.content or ""
+                reply = _to_slack_fmt(raw_content or "No results found.")
+                _post_reply(
+                    lambda text, **kw: client.chat_postMessage(
+                        channel=channel_id, text=text, **kw
+                    ),
+                    thread_ts,
+                    reply,
+                    raw_content,
+                )
+            except Exception as exc:
+                logger.error("Slack follow-up error: %s", exc)
+                client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text=f"Error: {exc}",
+                )
+
+        return handle_followup
+
+    for _action_id, _label in FOLLOWUP_ACTIONS:
+        app.action(_action_id)(
+            _make_followup_handler(FOLLOWUP_PROMPTS[_action_id])
+        )
 
     handler = SocketModeHandler(app, app_token)
 
