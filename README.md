@@ -1,7 +1,4 @@
 <div align="center">
- <p>
-  # NOVA AI
- </p>
 <img width="400" height="200" alt="NovaAI_Horizontal_Logo" src="https://github.com/user-attachments/assets/3cd5dc54-5e23-4ddc-a508-11b8a85b063f" />
 
 
