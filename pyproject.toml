@@ -3,10 +3,11 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-# Distribution name on PyPI — "nova-ai" is owned by a third party, so the
-# package publishes as "novaai". The import package stays src/nova_ai and
-# the CLI stays `nova`; only pip/uv see this name.
-name = "novaai"
+# Distribution name on PyPI — "nova-ai" is owned by a third party and
+# PyPI's similarity rule also blocks separator variants like "novaai", so
+# the package publishes as "nova-ai-pro". The import package stays
+# src/nova_ai and the CLI stays `nova`; only pip/uv see this name.
+name = "nova-ai-pro"
 dynamic = ["version"]
 description = "NOVA AI — modular AI assistant backend with composable intelligence primitives"
 readme = "README.md"
