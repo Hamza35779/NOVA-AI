@@ -38,11 +38,11 @@ _DEFAULT_DIR_NAME = ".nova_ai"
 _XDG_SUBDIR_NAME = "nova_ai"
 
 # Matches the ``[project] name`` line of this project's pyproject.toml in
-# either spelling (``"nova-ai"`` as published / ``"nova_ai"`` as imported).
-# Anchored to a whole TOML key-value line so a stray mention elsewhere in
-# the file can never false-positive.
+# any spelling (``"novaai"`` as published / ``"nova-ai"`` historically /
+# ``"nova_ai"`` as imported). Anchored to a whole TOML key-value line so a
+# stray mention elsewhere in the file can never false-positive.
 _PROJECT_NAME_LINE = re.compile(
-    r"^name\s*=\s*[\"']nova[-_]ai[\"']\s*$", re.MULTILINE | re.IGNORECASE
+    r"^name\s*=\s*[\"']nova[-_]?ai[\"']\s*$", re.MULTILINE | re.IGNORECASE
 )
 
 
