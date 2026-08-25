@@ -130,12 +130,24 @@ jobs:
             echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             echo "name=Desktop ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # Plain stable vX.Y.Z tag (a cut release) — publish installers
+            # under the SAME release as the CLI/PyPI package so every
+            # surface ships from one tag. Before 1.1.0 this branch sent
+            # every v* tag to desktop-edge, which silently dropped Windows
+            # installers from stable releases.
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "name=Desktop ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            # Auto-tagged rolling build from autotag.yml — use the same
-            # version as the CLI/PyPI release so all surfaces stay in sync.
-            # Rolling/dev builds go to the `desktop-edge` channel, NOT the
-            # `desktop-latest` channel the installed app polls — so users on
-            # stable are never auto-updated onto an unvetted dev build.
+            # Auto-tagged rolling build from autotag.yml (vX.Y.Z.devN) — use
+            # the same version as the CLI/PyPI release so all surfaces stay
+            # in sync. Rolling/dev builds go to the `desktop-edge` channel,
+            # NOT the `desktop-latest` channel the installed app polls — so
+            # users on stable are never auto-updated onto an unvetted dev
+            # build.
             VERSION="${{ github.ref_name }}"
             VERSION="${VERSION#v}"
             echo "tag=desktop-edge" >> "$GITHUB_OUTPUT"
