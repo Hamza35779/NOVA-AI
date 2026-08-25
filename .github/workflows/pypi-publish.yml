@@ -26,6 +26,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     environment: pypi
+    # Job-level so the step `if:`s can branch on whether the token secret
+    # exists (secrets themselves are not readable in `if:`).
+    env:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
     steps:
       - name: Resolve target ref
         id: ref
@@ -107,6 +111,16 @@ jobs:
           fi
           uv publish --publish-url https://test.pypi.org/legacy/
 
-      - name: Publish to PyPI
-        if: ${{ !inputs.dry_run }}
+      # Two mutually exclusive publish paths: an API-token secret takes
+      # precedence; otherwise fall back to OIDC trusted publishing, which
+      # requires a pending publisher registered on pypi.org (owner Hamza35779,
+      # repo NOVA-AI, workflow pypi-publish.yml, environment pypi).
+      - name: Publish to PyPI (API token)
+        if: ${{ !inputs.dry_run && env.PYPI_API_TOKEN != '' }}
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: uv publish
+
+      - name: Publish to PyPI (trusted publishing)
+        if: ${{ !inputs.dry_run && env.PYPI_API_TOKEN == '' }}
         run: uv publish
