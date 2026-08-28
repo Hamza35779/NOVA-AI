@@ -42,7 +42,8 @@ class OllamaEngine(InferenceEngine):
 
     engine_id = "ollama"
 
-    _DEFAULT_HOST = "http://localhost:11434"
+    _DEFAULT_HOST = "http://127.0.0.1:11434"
+    _FALLBACK_HOST = "http://localhost:11434"
 
     def __init__(
         self,
@@ -50,11 +51,11 @@ class OllamaEngine(InferenceEngine):
         *,
         timeout: float = 1800.0,
     ) -> None:
-        # Priority: explicit host (from config.toml) > OLLAMA_HOST env var > default
         if host is None:
             env_host = os.environ.get("OLLAMA_HOST")
             host = env_host or self._DEFAULT_HOST
         self._host = host.rstrip("/")
+        self._timeout = timeout
         self._client = httpx.Client(base_url=self._host, timeout=timeout)
         # Last stream usage — captured from Ollama's final chunk
         self._last_stream_usage: Dict[str, int] = {}
@@ -388,31 +389,41 @@ class OllamaEngine(InferenceEngine):
                 f"Ollama not reachable at {self._host}"
             ) from exc
 
-    def list_models(self) -> List[str]:
+    def _probe_url(self, path: str, timeout: float = 2.0) -> httpx.Response | None:
         try:
-            resp = self._client.get("/api/tags")
-            resp.raise_for_status()
-        except (
-            httpx.ConnectError,
-            httpx.TimeoutException,
-            httpx.HTTPStatusError,
-        ) as exc:
-            logger.warning(
-                "Failed to list models from Ollama at %s: %s",
-                self._host,
-                exc,
-            )
+            resp = self._client.get(path, timeout=timeout)
+            if resp.status_code == 200:
+                return resp
+        except Exception:
+            pass
+
+        # Try fallback host if default host failed
+        alt_host = self._FALLBACK_HOST if "127.0.0.1" in self._host else self._DEFAULT_HOST
+        try:
+            with httpx.Client(base_url=alt_host, timeout=timeout) as client:
+                resp = client.get(path)
+                if resp.status_code == 200:
+                    self._host = alt_host
+                    self._client = httpx.Client(base_url=self._host, timeout=self._timeout)
+                    return resp
+        except Exception:
+            pass
+        return None
+
+    def list_models(self) -> List[str]:
+        resp = self._probe_url("/api/tags", timeout=3.0)
+        if resp is None:
             return []
-        data = resp.json()
-        return [m["name"] for m in data.get("models", [])]
+        try:
+            data = resp.json()
+            return [m["name"] for m in data.get("models", [])]
+        except Exception as exc:
+            logger.debug("Failed to parse Ollama models at %s: %s", self._host, exc)
+            return []
 
     def health(self) -> bool:
-        try:
-            resp = self._client.get("/api/tags", timeout=2.0)
-            return resp.status_code == 200
-        except Exception as exc:
-            logger.debug("Ollama health check failed at %s: %s", self._host, exc)
-            return False
+        resp = self._probe_url("/api/tags", timeout=2.0)
+        return resp is not None and resp.status_code == 200
 
     def close(self) -> None:
         self._client.close()

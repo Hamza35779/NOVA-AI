@@ -1760,6 +1760,8 @@ class CloudEngine(InferenceEngine):
             return self._minimax_client
         if _is_deepseek_model(model):
             return self._deepseek_client
+        if _is_xai_model(model):
+            return getattr(self, "_xai_client", None)
         if _is_anthropic_model(model):
             return self._anthropic_client
         if _is_google_model(model):
@@ -1790,6 +1792,7 @@ class CloudEngine(InferenceEngine):
             or self._minimax_client is not None
             or self._deepseek_client is not None
             or self._codex_client is not None
+            or getattr(self, "_xai_client", None) is not None
         )
 
     def close(self) -> None:
@@ -1811,6 +1814,10 @@ class CloudEngine(InferenceEngine):
             if hasattr(self._minimax_client, "close"):
                 self._minimax_client.close()
             self._minimax_client = None
+        if getattr(self, "_xai_client", None) is not None:
+            if hasattr(self._xai_client, "close"):
+                self._xai_client.close()
+            self._xai_client = None
         if self._codex_client is not None:
             self._codex_client = None
 

@@ -74,7 +74,16 @@ def chat(
 
     resolved = get_engine(config, engine_key)
     if resolved is None:
-        console.print("[red]No inference engine available.[/red]")
+        console.print(
+            "\n[bold red]❌ No AI engine available.[/bold red]\n\n"
+            "[bold cyan]Quick Fix Options:[/bold cyan]\n"
+            "  1. [bold green]Local (Free/Offline):[/bold green] Start Ollama ([cyan]ollama serve[/cyan]) and pull a model ([cyan]ollama pull llama3[/cyan]).\n"
+            "  2. [bold green]Cloud API:[/bold green] Set an API key in your environment:\n"
+            "     - OpenAI:     [cyan]$env:OPENAI_API_KEY=\"sk-...\"[/cyan]\n"
+            "     - Anthropic:  [cyan]$env:ANTHROPIC_API_KEY=\"sk-ant-...\"[/cyan]\n"
+            "     - Google:     [cyan]$env:GEMINI_API_KEY=\"AIza...\"[/cyan]\n"
+            "     - xAI:        [cyan]$env:XAI_API_KEY=\"xai-...\"[/cyan]\n"
+        )
         sys.exit(1)
 
     engine_name, engine = resolved
@@ -88,8 +97,15 @@ def chat(
         if engine_models:
             model = engine_models[0]
         else:
-            console.print("[red]No model available.[/red]")
-            sys.exit(1)
+            # Check if engine is cloud
+            if getattr(engine, "is_cloud", False):
+                model = "gpt-4o-mini"
+            else:
+                console.print(
+                    f"\n[bold yellow]⚠️ Connected to {engine_name}, but no models are installed yet.[/bold yellow]\n"
+                    f"Run [cyan]ollama pull llama3[/cyan] or specify [cyan]--model <name>[/cyan].\n"
+                )
+                sys.exit(1)
 
     # Resolve agent (optional)
     agent = None

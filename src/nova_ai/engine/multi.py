@@ -71,13 +71,19 @@ class MultiEngine(InferenceEngine):
 
     _CLOUD_PREFIXES = (
         "gpt-",
-        "o1-",
-        "o3-",
-        "o4-",
+        "chatgpt-",
+        "o1",
+        "o3",
+        "o4",
         "claude-",
+        "claude",
         "gemini-",
+        "gemini",
         "grok-",
+        "grok",
         "deepseek-",
+        "MiniMax-",
+        "minimax",
         "openrouter/",
         "codex/",
     )

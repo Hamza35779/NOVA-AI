@@ -108,10 +108,30 @@ class SmartRouter(InferenceEngine):
         return self.config.default_tier
 
     def _resolve_model(self, tier: str) -> str:
-        """Resolve model name for a tier with graceful fallback to default."""
-        return self.config.tiers.get(
+        """Resolve model name for a tier with dynamic engine discovery fallback."""
+        configured = self.config.tiers.get(
             tier, self.config.tiers.get(self.config.default_tier, "qwen2.5:7b")
         )
+        # Verify if engine can serve the configured model
+        if hasattr(self.engine, "can_serve") and self.engine.can_serve(configured):
+            return configured
+
+        # If model is directly listed in engine's models, use it
+        try:
+            available = self.engine.list_models()
+            if configured in available:
+                return configured
+            if available:
+                # Pick best available based on tier
+                if tier == "small":
+                    return available[0]
+                elif tier == "large":
+                    return available[-1]
+                return available[len(available) // 2]
+        except Exception:
+            pass
+
+        return configured
 
     def generate(self, messages: Sequence[Message], **kwargs: Any) -> Dict[str, Any]:
         start_time = time.perf_counter()

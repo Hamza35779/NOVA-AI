@@ -7,17 +7,17 @@ from __future__ import annotations
 # Rich's [tag] markup or Python raw-string escaping — colour is applied at
 # print time via a style argument. The "standard" font renders a clearly
 # readable capital J (the bottom-left \___/ hook), unlike the cramped prior
-# art where the J read as an I.
+# "NOVA AI" rendered in bold stylized ASCII typography
 _WORDMARK = (
-    "  ___                       _                  _     ",
-    " / _ \\ _ __   ___ _ __     | | __ _ _ ____   _(_)___ ",
-    "| | | | '_ \\ / _ \\ '_ \\ _  | |/ _` | '__\\ \\ / / / __|",
-    "| |_| | |_) |  __/ | | | |_| | (_| | |   \\ V /| \\__ \\",
-    " \\___/| .__/ \\___|_| |_|\\___/ \\__,_|_|    \\_/ |_|___/",
-    "      |_|                                            ",
+    r" _   _  _____     ___       _     ___ ",
+    r"| \ | |/ _ \ \   / / \     / \   |_ _|",
+    r"|  \| | | | \ \ / / _ \   / _ \   | | ",
+    r"| |\  | |_| |\ V / ___ \ / ___ \  | | ",
+    r"|_| \_|\___/  \_/_/   \_/_/   \_\___|",
 )
 
-_TAGLINE = "Personal AI, On Personal Devices"
+_TAGLINE = "Autonomous Multi-Modal Agent Platform"
+
 
 
 def print_banner(quiet: bool = False) -> None:
