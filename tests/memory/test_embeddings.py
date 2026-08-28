@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 st = pytest.importorskip("sentence_transformers")
+pytestmark = pytest.mark.slow
 
 from nova_ai.tools.storage.embeddings import (  # noqa: E402
     Embedder,
