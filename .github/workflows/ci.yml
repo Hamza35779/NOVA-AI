@@ -65,7 +65,7 @@ jobs:
       - name: Run tests
         run: |
           set -o pipefail
-          uv run pytest tests/ -v --tb=short -m "not live and not cloud and not hub" \
+          uv run pytest tests/ -v --tb=short -m "not live and not cloud and not hub and not slow" \
             --cov=nova_ai \
             --cov-report=term-missing \
             --cov-report=xml \

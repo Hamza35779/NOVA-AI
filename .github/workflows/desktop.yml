@@ -3,7 +3,6 @@ name: Desktop Build & Release
 on:
   push:
     tags:
-      - 'v*'
       - 'desktop-v*'
   pull_request:
     branches: [main]
