@@ -123,6 +123,70 @@ NOVA AI ships with eight built-in agents across three execution modes (on-demand
 | `native_openhands` | On-demand | CodeAct — generates and executes Python code |
 | `simple` | On-demand | Single-turn chat, no tools |
 
+---
+
+## Complete CLI Commands Reference
+
+NOVA AI features a comprehensive CLI suite (`nova` or `python -m nova_ai.cli` or standalone `nova-ai.exe`):
+
+### 1. 💬 Chat, Voice & Perception
+| Command | Description | Example |
+|---|---|---|
+| `nova chat` | Launch an interactive multi-turn REPL chat session | `nova chat --model llama3` |
+| `nova ask "<query>"` | Send a single query directly to the model/agent | `nova ask "Summarize this repo"` |
+| `nova voice` | Real-time hands-free voice conversation mode | `nova voice --push-to-talk` |
+| `nova screen capture` | Capture active window/screen and run OCR text extraction | `nova screen capture --output screen.png` |
+| `nova screen ask "<query>"` | Ask questions about what's currently on your screen | `nova screen ask "Explain this error"` |
+
+### 2. 🚀 Server & Background Daemons
+| Command | Description | Example |
+|---|---|---|
+| `nova serve` | Start the local OpenAI-compatible REST & WebSocket API server | `nova serve --port 8000` |
+| `nova start` | Start the NOVA AI server as a background daemon process | `nova start` |
+| `nova status` | Check status of the running background daemon | `nova status` |
+| `nova restart` | Restart the running server daemon | `nova restart` |
+| `nova stop` | Terminate the server background daemon | `nova stop` |
+| `nova tunnel` | Expose local API securely to the internet via Cloudflare Tunnel | `nova tunnel start` |
+
+### 3. 🧠 Models & Smart Routing
+| Command | Description | Example |
+|---|---|---|
+| `nova model list` | List all discovered local and cloud AI models | `nova model list` |
+| `nova model pull <name>` | Download a local GGUF/Ollama model directly | `nova model pull llama3` |
+| `nova host <model>` | Serve and host a local model with hardware acceleration | `nova host qwen2.5:7b` |
+| `nova router status` | View the Smart Router complexity tiers & statistics | `nova router status` |
+| `nova router test "<query>"` | Test dynamic query complexity classification | `nova router test "Design a microservice"` |
+
+### 4. 🛠️ Autonomous Tools & Integrations
+| Command | Description | Example |
+|---|---|---|
+| `nova tool list` | List all registered built-in and dynamic tools | `nova tool list` |
+| `nova integrations list` | View software connectors (Packet Tracer, Office, Canvas, Git) | `nova integrations list` |
+| `nova integrations enable <id>`| Enable a specific software bridge | `nova integrations enable cisco_packet_tracer` |
+| `nova canvas list` | List interactive Canvas charts, HTML, and SVG artifacts | `nova canvas list` |
+| `nova scheduler list` | View and manage scheduled tasks and cron jobs | `nova scheduler list` |
+| `nova add <mcp-server>` | Connect external Model Context Protocol (MCP) servers | `nova add filesystem` |
+
+### 5. 📚 Long-Term Memory & Deep Research
+| Command | Description | Example |
+|---|---|---|
+| `nova memory status` | Inspect SQLite vector store and indexed chunk counts | `nova memory status` |
+| `nova memory search "<q>"` | Semantic search over indexed personal knowledge base | `nova memory search "project plan"` |
+| `nova memory-wiki show <topic>`| Display structured markdown knowledge-base articles | `nova memory-wiki show profile` |
+| `nova research "<topic>"` | Multi-hop autonomous deep research with cited sources | `nova research "Latest advancements in LLM reasoning"` |
+
+### 6. ⚙️ Diagnostics, Config & Benchmarking
+| Command | Description | Example |
+|---|---|---|
+| `nova doctor` | Run full hardware, GPU, and engine health diagnostics | `nova doctor` |
+| `nova init` | Auto-detect GPU hardware and create `~/.nova_ai/config.toml` | `nova init --preset deep-research` |
+| `nova config show` | Print loaded configuration hierarchy and settings | `nova config show` |
+| `nova config set <k> <v>` | Modify a configuration property in TOML | `nova config set engine.default ollama` |
+| `nova bench` | Measure inference latency, tokens/sec, and energy consumption | `nova bench --models llama3` |
+| `nova self-update` | Upgrade NOVA AI to the latest release | `nova self-update` |
+
+---
+
 See the [User Guide](https://hamza35779.github.io/NOVA-AI/user-guide/morning-digest/) and [Tutorials](https://hamza35779.github.io/NOVA-AI/tutorials/) for detailed setup instructions.
 
 Full documentation — including Docker deployment, cloud engines, development setup, and tutorials — at **[hamza35779.github.io/NOVA-AI](https://hamza35779.github.io/NOVA-AI/)**.
