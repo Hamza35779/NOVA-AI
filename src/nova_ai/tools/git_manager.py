@@ -123,7 +123,7 @@ class GitManagerTool(BaseTool):
         args: str = "",
         **kwargs: Any,
     ) -> ToolResult:
-        repo = Path(repo_path)
+        repo = Path(repo_path).resolve()
         if not repo.is_dir():
             return ToolResult(
                 tool_name="git_manager",
