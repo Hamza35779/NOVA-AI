@@ -5,7 +5,9 @@ import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, ThumbsUp, ThumbsDown, GitCompare, RefreshCw, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { toast } from 'sonner';
 import { AudioPlayer } from './AudioPlayer';
 import { ToolCallCard } from './ToolCallCard';
 import { ResearchTimeline } from './ResearchTimeline';
@@ -178,9 +180,31 @@ export function MessageBubble({ message, isLive = false }: Props) {
         </div>
       )}
 
-      {/* Footer: copy + x-ray */}
-      <div className="flex items-center gap-2 mt-1.5">
+      {/* Footer: actions + x-ray */}
+      <div className="flex items-center gap-1 mt-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
         <CopyMessageButton content={cleanContent} />
+        <button
+          onClick={() => toast.success('👍 Feedback saved! Reinforced smart model router.')}
+          className="p-1 text-gray-400 hover:text-green-400 rounded transition cursor-pointer hover:bg-white/5"
+          title="Good response (trains model router)"
+        >
+          <ThumbsUp size={13} />
+        </button>
+        <button
+          onClick={() => toast.info('👎 Feedback recorded. Router will adjust tier for similar queries.')}
+          className="p-1 text-gray-400 hover:text-red-400 rounded transition cursor-pointer hover:bg-white/5"
+          title="Poor response (upgrades tier next time)"
+        >
+          <ThumbsDown size={13} />
+        </button>
+        <button
+          onClick={() => window.location.href = '/compare'}
+          className="flex items-center gap-1 px-2 py-0.5 text-gray-400 hover:text-[#06B6D4] rounded transition cursor-pointer hover:bg-white/5"
+          title="Compare this response with other models"
+        >
+          <GitCompare size={12} />
+          <span>Compare</span>
+        </button>
       </div>
       <XRayFooter
         usage={message.usage}

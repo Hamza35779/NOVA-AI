@@ -4,8 +4,13 @@ import { MessageBubble } from './MessageBubble';
 import { InputArea } from './InputArea';
 import { StreamingDots } from './StreamingDots';
 import { useAppStore } from '../../lib/store';
-import { Sparkles, PanelRightOpen, PanelRightClose, Database, MessageSquare, X } from 'lucide-react';
+import { 
+  Sparkles, PanelRightOpen, PanelRightClose, Database, MessageSquare, X,
+  FileText, Mail, Calendar, GitCompare, Code2, Globe, UserCheck, ArrowRight
+} from 'lucide-react';
 import { listConnectors } from '../../lib/connectors-api';
+import { listPersonas, setActivePersonaAPI } from '../../lib/api';
+import { toast } from 'sonner';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -26,12 +31,30 @@ export function ChatArea() {
   // Check if any data sources are connected
   const [hasConnectedSources, setHasConnectedSources] = useState<boolean | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [personas, setPersonas] = useState<any[]>([]);
+  const [activePersonaId, setActivePersonaId] = useState<string>('preset_default');
 
   useEffect(() => {
     listConnectors()
       .then((list) => setHasConnectedSources(list.some((c) => c.connected)))
       .catch(() => setHasConnectedSources(null));
+
+    listPersonas()
+      .then((res) => {
+        setPersonas(res.personas || []);
+        setActivePersonaId(res.active_id || 'preset_default');
+      })
+      .catch(() => {});
   }, []);
+
+  const handleSelectPersona = async (id: string) => {
+    setActivePersonaId(id);
+    try {
+      await setActivePersonaAPI(id);
+      const chosen = personas.find(p => p.id === id);
+      toast.success(`Active Persona: ${chosen?.name || id}`);
+    } catch {}
+  };
 
   useEffect(() => {
     if (shouldAutoScroll.current && listRef.current) {
@@ -46,17 +69,102 @@ export function ChatArea() {
   };
 
   const isEmpty = messages.length === 0 && !streamState.isStreaming;
-
   const PanelIcon = systemPanelOpen ? PanelRightClose : PanelRightOpen;
+
+  const quickTasks = [
+    {
+      title: 'Document Analysis',
+      desc: 'Chat with PDFs, DOCX, and CSV spreadsheets',
+      icon: FileText,
+      color: '#06B6D4',
+      bg: 'rgba(6, 182, 212, 0.1)',
+      action: () => navigate('/docs'),
+    },
+    {
+      title: 'Live Web Search',
+      desc: 'Real-time grounded research with sources',
+      icon: Globe,
+      color: '#3B82F6',
+      bg: 'rgba(59, 130, 246, 0.1)',
+      action: () => {
+        const el = document.querySelector('textarea');
+        if (el) {
+          el.focus();
+          el.placeholder = 'Ask with live Web Search...';
+        }
+        toast.info('Web Search mode ready! Type your question below.');
+      },
+    },
+    {
+      title: 'Code Architect',
+      desc: 'Scaffold Rust, Go, Python, and TypeScript apps',
+      icon: Code2,
+      color: '#10B981',
+      bg: 'rgba(16, 185, 129, 0.1)',
+      action: () => {
+        const el = document.querySelector('textarea');
+        if (el) {
+          el.value = 'Create a new project scaffold for ';
+          el.focus();
+        }
+      },
+    },
+    {
+      title: 'Email Assistant',
+      desc: 'Triage inbox, summarize threads & draft replies',
+      icon: Mail,
+      color: '#EC4899',
+      bg: 'rgba(236, 72, 153, 0.1)',
+      action: () => navigate('/email'),
+    },
+    {
+      title: 'Daily Briefing & Prep',
+      desc: 'Morning schedule briefing & meeting notes',
+      icon: Calendar,
+      color: '#F59E0B',
+      bg: 'rgba(245, 158, 11, 0.1)',
+      action: () => navigate('/calendar'),
+    },
+    {
+      title: 'Compare Models',
+      desc: 'A/B benchmark 2-4 models side-by-side',
+      icon: GitCompare,
+      color: '#8B5CF6',
+      bg: 'rgba(139, 92, 246, 0.1)',
+      action: () => navigate('/compare'),
+    },
+  ];
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toggle bar */}
-      <div className="flex items-center justify-end px-3 py-1.5 shrink-0">
+      {/* Top action bar: Persona Selector & System Panel Toggle */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 shrink-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-[80%]">
+          <span className="text-xs text-gray-400 font-medium mr-1 flex items-center gap-1">
+            <UserCheck size={13} /> Persona:
+          </span>
+          {personas.slice(0, 5).map((p) => {
+            const isActive = p.id === activePersonaId;
+            return (
+              <button
+                key={p.id}
+                onClick={() => handleSelectPersona(p.id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition cursor-pointer flex items-center gap-1 shrink-0 ${
+                  isActive
+                    ? 'bg-[#7C3AED] text-white shadow-sm'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200'
+                }`}
+                title={p.description}
+              >
+                <span>{p.avatar || '🤖'}</span>
+                <span>{p.name.split(' ')[0]}</span>
+              </button>
+            );
+          })}
+        </div>
         <button
           onClick={toggleSystemPanel}
-          className="p-1.5 rounded-md transition-colors cursor-pointer"
-          style={{ color: 'var(--color-text-tertiary)' }}
+          className="p-1.5 rounded-md transition-colors cursor-pointer text-gray-400 hover:text-white"
           title={`${systemPanelOpen ? 'Hide' : 'Show'} system panel (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+I)`}
         >
           <PanelIcon size={16} />
@@ -66,7 +174,7 @@ export function ChatArea() {
       {/* Data sources banner */}
       {hasConnectedSources === false && !bannerDismissed && (
         <div
-          className="mx-4 mb-2 flex items-center gap-3 px-4 py-3 rounded-lg text-sm shrink-0"
+          className="mx-4 mt-2 flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm shrink-0"
           style={{
             background: 'var(--color-accent-subtle)',
             border: '1px solid var(--color-border)',
@@ -92,56 +200,63 @@ export function ChatArea() {
           </button>
         </div>
       )}
+
       <div
         ref={listRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto"
       >
         {isEmpty ? (
-          <div className="flex flex-col items-center justify-center h-full px-4">
+          <div className="flex flex-col items-center justify-center min-h-[80%] max-w-4xl mx-auto px-4 py-8">
             <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
-              style={{ background: 'var(--color-accent-subtle)', color: 'var(--color-accent)' }}
+              className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 shadow-lg"
+              style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.2), rgba(6,182,212,0.2))', border: '1px solid rgba(124,58,237,0.4)', color: 'var(--color-accent)' }}
             >
-              <Sparkles size={24} />
+              <Sparkles size={28} className="text-[#06B6D4]" />
             </div>
-            <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
+            <h2 className="text-2xl font-bold mb-2 tracking-tight text-white">
               {getGreeting()}
             </h2>
-            <p className="text-sm text-center max-w-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
-              Ask anything. Your AI runs locally — private, fast, and always available.
+            <p className="text-sm text-center max-w-md mb-8 text-gray-400">
+              Private, local AI workstation. What would you like to accomplish?
             </p>
 
-            {/* Quick action hints */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => navigate('/data-sources')}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs cursor-pointer transition-colors"
-                style={{
-                  background: 'var(--color-bg-secondary)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-secondary)',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--color-border)')}
-              >
-                <Database size={14} style={{ color: 'var(--color-accent)' }} />
-                Connect Data Sources
-              </button>
-              <button
-                onClick={() => { navigate('/data-sources'); setTimeout(() => window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'messaging' })), 100); }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs cursor-pointer transition-colors"
-                style={{
-                  background: 'var(--color-bg-secondary)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-secondary)',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--color-border)')}
-              >
-                <MessageSquare size={14} style={{ color: 'var(--color-accent)' }} />
-                Set Up Messaging Channels
-              </button>
+            {/* 6 Interactive Task Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 w-full">
+              {quickTasks.map((t, idx) => {
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={idx}
+                    onClick={t.action}
+                    className="flex flex-col items-start p-4 rounded-xl text-left transition-all duration-200 cursor-pointer group hover:-translate-y-0.5 border"
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      borderColor: 'rgba(255, 255, 255, 0.08)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = t.color;
+                      e.currentTarget.style.background = t.bg;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                    }}
+                  >
+                    <div className="flex items-center justify-between w-full mb-2.5">
+                      <div
+                        className="p-2 rounded-lg"
+                        style={{ background: t.bg, color: t.color }}
+                      >
+                        <Icon size={18} />
+                      </div>
+                      <ArrowRight size={14} className="text-gray-500 group-hover:translate-x-1 group-hover:text-white transition-all" />
+                    </div>
+                    <h3 className="text-sm font-semibold text-white mb-1">{t.title}</h3>
+                    <p className="text-xs text-gray-400 leading-relaxed">{t.desc}</p>
+                  </button>
+                );
+              })}
             </div>
           </div>
         ) : (
