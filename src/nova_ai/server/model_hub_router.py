@@ -184,11 +184,10 @@ async def install_model(body: InstallModelRequest):
             _download_progress[task_id]["done"] = True
             _download_progress[task_id]["percent"] = 100
             _download_progress[task_id]["status"] = "success"
-        except Exception:
-            # Fallback mock completion for tests / offline
+        except Exception as exc:
             _download_progress[task_id]["done"] = True
-            _download_progress[task_id]["percent"] = 100
-            _download_progress[task_id]["status"] = "installed (mock/offline)"
+            _download_progress[task_id]["error"] = f"Failed to connect to Ollama (http://localhost:11434). Ensure Ollama is running: {exc}"
+            _download_progress[task_id]["status"] = "failed"
 
     asyncio.create_task(_download_worker())
 
