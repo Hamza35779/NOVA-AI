@@ -1,9 +1,11 @@
 import pytest
-from httpx import AsyncClient, ASGITransport
-from nova_ai.server.model_hub_router import router, _download_progress
 
 # Create a minimal test app
 from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from nova_ai.server.model_hub_router import router
+
 app = FastAPI()
 app.include_router(router)
 
@@ -35,7 +37,7 @@ async def test_install_model():
         # Stream the SSE events
         async with client.stream("GET", f"/api/models/hub/install/{task_id}/stream") as stream_response:
             assert stream_response.status_code == 200
-            
+
             found_done = False
             async for line in stream_response.aiter_lines():
                 if not line.strip():
@@ -47,5 +49,5 @@ async def test_install_model():
                 if info.get("done"):
                     found_done = True
                     break
-            
+
             assert found_done

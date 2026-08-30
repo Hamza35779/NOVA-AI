@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
-import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
+from typing import Any, Dict, List
 
 import httpx
 

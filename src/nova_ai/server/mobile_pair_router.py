@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import logging
 import socket
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from fastapi import APIRouter
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/mobile", tags=["mobile"])
@@ -30,9 +29,10 @@ def _generate_qr_svg(data: str) -> str:
     """Generate a clean SVG QR code data URI or SVG markup."""
     # Try using qrcode library if present, or generate a clean SVG representation
     try:
+        import io
+
         import qrcode
         import qrcode.image.svg
-        import io
         factory = qrcode.image.svg.SvgPathImage
         img = qrcode.make(data, image_factory=factory)
         stream = io.BytesIO()

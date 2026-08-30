@@ -5,7 +5,6 @@ import asyncio
 import json
 import logging
 import sqlite3
-import threading
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -72,7 +71,7 @@ async def compare_models(body: CompareRequest) -> Dict[str, Any]:
             prompt_text = body.prompt
             if body.system_prompt:
                 prompt_text = f"{body.system_prompt}\n\nUser: {body.prompt}"
-            
+
             response = await asyncio.to_thread(nova.ask, prompt_text, model=model_name)
             latency_ms = (time.perf_counter() - start) * 1000
             token_count = len(response.split())

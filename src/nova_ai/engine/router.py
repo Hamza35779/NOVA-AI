@@ -8,12 +8,11 @@ import threading
 import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Sequence
 
-from nova_ai.engine.router_learning import get_feedback_store
-
 from nova_ai.core.types import Message
 from nova_ai.engine._stubs import InferenceEngine, StreamChunk
 from nova_ai.engine.multi import MultiEngine
 from nova_ai.engine.router_config import RouterConfig
+from nova_ai.engine.router_learning import get_feedback_store
 from nova_ai.engine.self_optimizer import get_optimizer
 
 logger = logging.getLogger(__name__)

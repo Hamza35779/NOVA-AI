@@ -160,8 +160,8 @@ def listen_for_wake_word(
     if not check_audio_deps():
         return False
 
-    import sounddevice as sd  # type: ignore
     import numpy as np  # type: ignore
+    import sounddevice as sd  # type: ignore
 
     keyword_lower = keyword.lower().strip()
     chunk_samples = int(sample_rate * chunk_duration)

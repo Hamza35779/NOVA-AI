@@ -139,7 +139,7 @@ class WebSearchTool(BaseTool):
         api_key = os.environ.get("BRAVE_API_KEY")
         if not api_key:
             raise ValueError("BRAVE_API_KEY environment variable not set")
-        
+
         headers = {
             "Accept": "application/json",
             "X-Subscription-Token": api_key,
@@ -223,7 +223,7 @@ class WebSearchTool(BaseTool):
 
         max_results = params.get("max_results", self._max_results)
         provider = params.get("provider", "auto")
-        
+
         providers = []
         if provider == "auto":
             if os.environ.get("SEARXNG_URL"):
@@ -235,11 +235,11 @@ class WebSearchTool(BaseTool):
             providers.append("duckduckgo")
         else:
             providers = [provider]
-            
+
         results = []
         provider_used = None
         error_msgs = []
-        
+
         for p in providers:
             try:
                 if p == "searxng":
@@ -252,13 +252,13 @@ class WebSearchTool(BaseTool):
                     results = self._duckduckgo_search(query, max_results)
                 else:
                     continue
-                    
+
                 provider_used = p
                 break
             except Exception as exc:
                 logger.debug(f"{p} search error: {exc}")
                 error_msgs.append(f"{p}: {exc}")
-                
+
         if not provider_used:
             return ToolResult(
                 tool_name="web_search",

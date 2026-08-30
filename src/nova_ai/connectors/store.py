@@ -501,7 +501,7 @@ class KnowledgeStore(MemoryBackend):
         Returns list of {content, title, doc_id, chunk_index, score}."""
         if not doc_ids:
             return []
-        
+
         placeholders = ",".join("?" for _ in doc_ids)
         sql = f"""
             SELECT
@@ -522,7 +522,7 @@ class KnowledgeStore(MemoryBackend):
             rows = self._conn.execute(sql, [query] + doc_ids + [top_k]).fetchall()
         except sqlite3.OperationalError:
             return []
-            
+
         return [
             {
                 "content": row["content"],

@@ -1,13 +1,11 @@
 """Persona & System Prompt REST API with preset management."""
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
-import threading
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel

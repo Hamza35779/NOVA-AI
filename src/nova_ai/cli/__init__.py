@@ -14,6 +14,7 @@ from nova_ai.cli.canvas_cmd import canvas_group
 from nova_ai.cli.channel_cmd import channel
 from nova_ai.cli.channels_cmd import channels
 from nova_ai.cli.chat_cmd import chat
+from nova_ai.cli.clip_cmd import clip
 from nova_ai.cli.compose_cmd import compose
 from nova_ai.cli.config_cmd import config
 from nova_ai.cli.connect_cmd import connect
@@ -47,7 +48,6 @@ from nova_ai.cli.tool_cmd import tool
 from nova_ai.cli.vault_cmd import vault
 from nova_ai.cli.voice_cmd import voice
 from nova_ai.cli.workflow_cmd import workflow
-from nova_ai.cli.clip_cmd import clip
 
 
 @click.group(

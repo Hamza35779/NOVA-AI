@@ -12,22 +12,23 @@ from fastapi.staticfiles import StaticFiles
 
 from nova_ai.server.analytics_routes import router as analytics_router
 from nova_ai.server.api_routes import include_all_routes
-from nova_ai.server.model_compare_router import router as compare_router
+from nova_ai.server.clipboard_router import router as clipboard_router
 from nova_ai.server.connectors_router import create_connectors_router
 from nova_ai.server.dashboard import dashboard_router
 from nova_ai.server.digest_routes import create_digest_router
+from nova_ai.server.history_router import router as history_router
 from nova_ai.server.integrations_router import router as integrations_router
+from nova_ai.server.mobile_pair_router import router as mobile_pair_router
+from nova_ai.server.model_compare_router import router as compare_router
+from nova_ai.server.model_hub_router import router as model_hub_router
+from nova_ai.server.notification_router import router as notification_router
+from nova_ai.server.persona_router import router as persona_router
 from nova_ai.server.research_router import router as research_router
 from nova_ai.server.routes import router
+from nova_ai.server.search_router import router as search_router
 from nova_ai.server.tasks_api import router as tasks_router
 from nova_ai.server.upload_router import router as upload_router
-from nova_ai.server.history_router import router as history_router
-from nova_ai.server.notification_router import router as notification_router
-from nova_ai.server.search_router import router as search_router
-from nova_ai.server.clipboard_router import router as clipboard_router
-from nova_ai.server.model_hub_router import router as model_hub_router
-from nova_ai.server.mobile_pair_router import router as mobile_pair_router
-from nova_ai.server.persona_router import router as persona_router
+
 logger = logging.getLogger(__name__)
 
 
@@ -190,6 +191,7 @@ def create_app(
     )
 
     from fastapi.middleware.cors import CORSMiddleware
+
     from nova_ai.server.email_router import router as email_router
     from nova_ai.server.extension_router import router as extension_router
 

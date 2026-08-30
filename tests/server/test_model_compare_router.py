@@ -1,10 +1,10 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
+
 from nova_ai.server.app import create_app
-import uuid
-import time
-import json
+
 
 @pytest.fixture
 def test_client():
@@ -14,7 +14,7 @@ def test_client():
 @patch("nova_ai.server.model_compare_router.asyncio.to_thread")
 def test_compare_models(mock_to_thread, test_client):
     mock_to_thread.side_effect = ["Mock response 1", "Mock response 2"]
-    
+
     response = test_client.post(
         "/api/compare",
         json={
@@ -22,7 +22,7 @@ def test_compare_models(mock_to_thread, test_client):
             "prompt": "Test prompt"
         }
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert "comparison_id" in data
@@ -56,7 +56,7 @@ def test_compare_models_empty_prompt(test_client):
 def test_vote_winner(mock_get_db, test_client):
     mock_conn = MagicMock()
     mock_get_db.return_value = mock_conn
-    
+
     response = test_client.post(
         "/api/compare/vote",
         json={
@@ -66,7 +66,7 @@ def test_vote_winner(mock_get_db, test_client):
             "models_compared": ["model1", "model2"]
         }
     )
-    
+
     assert response.status_code == 200
     assert response.json()["winner"] == "model1"
     mock_conn.execute.assert_called_once()
@@ -82,9 +82,9 @@ def test_list_votes(mock_get_db, test_client):
         {"id": "2", "comparison_id": "c2", "winner_model": "model1", "prompt": "p2", "models_compared": "[\"model1\", \"model2\"]", "timestamp": 123.5}
     ]
     mock_get_db.return_value = mock_conn
-    
+
     response = test_client.get("/api/compare/votes")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 2

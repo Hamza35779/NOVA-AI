@@ -4,14 +4,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
+import httpx
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import httpx
-
-from nova_ai.intelligence.model_catalog import BUILTIN_MODELS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/models/hub", tags=["model_hub"])
@@ -186,7 +184,7 @@ async def install_model(body: InstallModelRequest):
             _download_progress[task_id]["done"] = True
             _download_progress[task_id]["percent"] = 100
             _download_progress[task_id]["status"] = "success"
-        except Exception as exc:
+        except Exception:
             # Fallback mock completion for tests / offline
             _download_progress[task_id]["done"] = True
             _download_progress[task_id]["percent"] = 100

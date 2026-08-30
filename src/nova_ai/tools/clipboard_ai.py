@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from nova_ai.core.registry import ToolRegistry
 from nova_ai.core.types import ToolResult

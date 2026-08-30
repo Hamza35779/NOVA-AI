@@ -1,6 +1,8 @@
 """Tests for the RAG document upload and chat API."""
 from __future__ import annotations
+
 import io
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -11,7 +13,7 @@ class TestDocAPI:
         from unittest.mock import MagicMock
         engine = MagicMock()
         engine.engine_id = "mock"
-        
+
         try:
             from nova_ai.server.app import create_app
             app = create_app(engine=engine, model="test")

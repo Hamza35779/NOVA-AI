@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import re
-import threading
-import time
 from typing import Any, List, Optional, Tuple
 
 from rich.console import Console
@@ -15,7 +13,12 @@ from nova_ai.sdk import Nova
 from nova_ai.speech._discovery import get_speech_backend
 from nova_ai.speech._stubs import SpeechBackend, TranscriptionResult
 from nova_ai.speech.tts import TTSBackend, TTSResult
-from nova_ai.voice.audio_io import check_audio_deps, play_audio, record_until_silence, listen_for_wake_word
+from nova_ai.voice.audio_io import (
+    check_audio_deps,
+    listen_for_wake_word,
+    play_audio,
+    record_until_silence,
+)
 
 console = Console()
 
@@ -175,7 +178,7 @@ class VoiceSession:
                     )
                     if not detected:
                         continue
-                    console.print(f"[bold green]Wake-word detected! Listening...[/bold green]")
+                    console.print("[bold green]Wake-word detected! Listening...[/bold green]")
                 elif self.push_to_talk:
                     console.print("[dim]Press [bold]Enter[/bold] to speak (Ctrl+C to exit)...[/dim]")
                     try:

@@ -6,7 +6,6 @@ executes them in optimal order, and tracks progress with retry logic.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import threading

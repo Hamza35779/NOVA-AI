@@ -1,8 +1,10 @@
-import pytest
-from fastapi.testclient import TestClient
-from nova_ai.server.calendar_router import router
-from fastapi import FastAPI
 from unittest.mock import patch
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from nova_ai.server.calendar_router import router
 
 app = FastAPI()
 app.include_router(router)

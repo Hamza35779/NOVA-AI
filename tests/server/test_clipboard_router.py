@@ -1,7 +1,8 @@
-import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import patch
+
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 from nova_ai.server.clipboard_router import router
 
 app = FastAPI()
@@ -20,15 +21,15 @@ def test_process_clipboard(mock_execute):
         success = True
         content = "Translated text"
         metadata = {"action": "translate"}
-    
+
     mock_execute.return_value = MockResult()
-    
+
     response = client.post("/api/clipboard/process", json={
         "action": "translate",
         "text": "Hello",
         "language": "French"
     })
-    
+
     assert response.status_code == 200
     assert response.json()["success"] is True
     assert response.json()["result"] == "Translated text"

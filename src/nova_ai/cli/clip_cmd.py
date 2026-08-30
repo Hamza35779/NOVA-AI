@@ -5,7 +5,9 @@ import click
 from rich.console import Console
 from rich.panel import Panel
 
-from nova_ai.tools.clipboard_ai import ClipboardAITool, _get_clipboard_text, _set_clipboard_text
+from nova_ai.tools.clipboard_ai import (
+    ClipboardAITool,
+)
 
 console = Console()
 

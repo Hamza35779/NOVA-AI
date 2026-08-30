@@ -1,8 +1,7 @@
-import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from nova_ai.server.mobile_pair_router import router, _get_local_ip, _generate_qr_svg
-from fastapi import FastAPI
+from nova_ai.server.mobile_pair_router import _generate_qr_svg, _get_local_ip, router
 
 app = FastAPI()
 app.include_router(router)

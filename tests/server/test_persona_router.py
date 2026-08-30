@@ -2,7 +2,9 @@
 
 import pytest
 from fastapi.testclient import TestClient
+
 from nova_ai.server.app import create_app
+
 
 @pytest.fixture
 def test_app():

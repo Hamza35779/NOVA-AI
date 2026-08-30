@@ -1,12 +1,12 @@
-import pytest
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from nova_ai.tools.web_search import WebSearchTool
-from nova_ai.server.search_router import router
-
-from fastapi.testclient import TestClient
+import pytest
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from nova_ai.server.search_router import router
+from nova_ai.tools.web_search import WebSearchTool
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def test_client():
 
 def test_searxng_parsing():
     tool = WebSearchTool()
-    
+
     with patch("httpx.get") as mock_get:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -28,9 +28,9 @@ def test_searxng_parsing():
         }
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
-        
+
         results = tool._searxng_search("test query", 1)
-        
+
         assert len(results) == 1
         assert results[0]["title"] == "Test Title"
         assert results[0]["url"] == "https://test.com"
@@ -39,7 +39,7 @@ def test_searxng_parsing():
 
 def test_brave_parsing():
     tool = WebSearchTool()
-    
+
     with patch("httpx.get") as mock_get, patch.dict(os.environ, {"BRAVE_API_KEY": "fake_key"}):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -51,9 +51,9 @@ def test_brave_parsing():
         }
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
-        
+
         results = tool._brave_search("test query", 1)
-        
+
         assert len(results) == 1
         assert results[0]["title"] == "Brave Title"
         assert results[0]["url"] == "https://brave.com"
@@ -70,9 +70,9 @@ def test_search_router(test_client):
             "results": [{"title": "t", "url": "u", "snippet": "s"}]
         }
         mock_execute.return_value = mock_res
-        
+
         response = test_client.post("/api/search", json={"query": "test query", "synthesize": False})
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["provider"] == "duckduckgo"

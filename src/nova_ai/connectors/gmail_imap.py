@@ -242,7 +242,7 @@ class GmailIMAPConnector(BaseConnector):
             _, data = imap.search(None, "ALL")
             msg_ids = data[0].split()
             ordered = list(reversed(msg_ids))[:n]
-            
+
             emails = []
             for mid in ordered:
                 try:
@@ -251,13 +251,13 @@ class GmailIMAPConnector(BaseConnector):
                     msg = email_lib.message_from_bytes(raw)
                 except Exception:
                     continue
-                
+
                 subject = _decode_subject(msg.get("Subject", ""))
                 sender = msg.get("From", "")
                 body = _extract_text_body(msg)
                 date = _parse_date(msg).isoformat()
                 uid = mid.decode()
-                
+
                 emails.append({
                     "uid": uid,
                     "subject": subject,
@@ -270,7 +270,7 @@ class GmailIMAPConnector(BaseConnector):
         finally:
             try:
                 imap.logout()
-            except:
+            except Exception:
                 pass
 
     def mcp_tools(self) -> List[ToolSpec]:

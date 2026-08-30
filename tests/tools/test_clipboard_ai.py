@@ -1,6 +1,7 @@
-import pytest
-from unittest.mock import patch, MagicMock
-from nova_ai.tools.clipboard_ai import ClipboardAITool, _get_clipboard_text, _set_clipboard_text
+from unittest.mock import patch
+
+from nova_ai.tools.clipboard_ai import ClipboardAITool
+
 
 def test_clipboard_ai_empty():
     with patch("nova_ai.tools.clipboard_ai._get_clipboard_text", return_value=""):

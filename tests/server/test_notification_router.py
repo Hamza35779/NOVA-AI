@@ -1,18 +1,18 @@
 import asyncio
-import json
+import os
+import tempfile
+
+import httpx
 import pytest
-from httpx import AsyncClient
 from fastapi import FastAPI
-from nova_ai.server.notification_router import router
+from httpx import AsyncClient
+
 from nova_ai.notifications.notifier import get_notifier
+from nova_ai.server.notification_router import router
 
 app = FastAPI()
 app.include_router(router)
 
-
-import httpx
-import tempfile
-import os
 
 @pytest.fixture(autouse=True)
 def clear_db():
@@ -69,14 +69,14 @@ async def test_clear_notifications():
             "/api/notifications",
             json={"title": "Test Title", "message": "Test Message"}
         )
-        
+
         response = await ac.get("/api/notifications")
         assert len(response.json()["notifications"]) == 1
-        
+
         clear_response = await ac.post("/api/notifications/clear")
         assert clear_response.status_code == 200
         assert clear_response.json()["status"] == "cleared"
-        
+
         response2 = await ac.get("/api/notifications")
         assert len(response2.json()["notifications"]) == 0
 
@@ -85,20 +85,20 @@ async def test_clear_notifications():
 async def test_sse_stream():
     from nova_ai.notifications.notifier import _sse_queues
     from nova_ai.server.notification_router import notification_stream
-    
+
     response = await notification_stream()
     gen = response.body_iterator
-    
+
     # Wait a tiny bit to ensure it registered
     await asyncio.sleep(0.01)
-    
+
     assert len(_sse_queues) == 1
-    
+
     # Trigger an event directly
     get_notifier().send(title="Stream Event", message="Hello SSE")
-    
+
     # Get the first event from generator
     event_str = await gen.__anext__()
-    
+
     assert "Stream Event" in event_str
     assert "Hello SSE" in event_str

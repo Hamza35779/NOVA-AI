@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -47,7 +47,7 @@ async def search_web(body: SearchRequest) -> Dict[str, Any]:
         try:
             from nova_ai.sdk import Nova
             synthesis = Nova().ask(prompt)
-        except Exception as exc:
+        except Exception:
             synthesis = raw_content
 
     return {
