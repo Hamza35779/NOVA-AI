@@ -15,7 +15,7 @@ from nova_ai.engine._base import (
 from nova_ai.engine._discovery import discover_engines, discover_models, get_engine
 
 # Optional engines — only register if their SDK deps are present
-for _optional in ("cloud", "litellm", "gemma_cpp"):
+for _optional in ("cloud", "litellm", "gemma_cpp", "gguf"):
     try:
         importlib.import_module(f".{_optional}", __name__)
     except ImportError:

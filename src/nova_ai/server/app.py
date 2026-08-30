@@ -16,6 +16,7 @@ from nova_ai.server.clipboard_router import router as clipboard_router
 from nova_ai.server.connectors_router import create_connectors_router
 from nova_ai.server.dashboard import dashboard_router
 from nova_ai.server.digest_routes import create_digest_router
+from nova_ai.server.gguf_hub_router import router as gguf_hub_router
 from nova_ai.server.history_router import router as history_router
 from nova_ai.server.integrations_router import router as integrations_router
 from nova_ai.server.mobile_pair_router import router as mobile_pair_router
@@ -327,6 +328,7 @@ def create_app(
     app.include_router(mobile_pair_router)
     app.include_router(persona_router)
     app.include_router(model_hub_router)
+    app.include_router(gguf_hub_router)
     include_all_routes(app)
 
     # Restore SendBlue channel bindings from database on startup

@@ -16,6 +16,7 @@ import { ModelComparePage } from './pages/ModelComparePage';
 import { ModelHubPage } from './pages/ModelHubPage';
 import { PersonasPage } from './pages/PersonasPage';
 import { MobilePairPage } from './pages/MobilePairPage';
+import GGUFHubPage from './pages/GGUFHubPage';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
@@ -208,6 +209,7 @@ export default function App() {
           <Route path="model-hub" element={<ModelHubPage />} />
           <Route path="personas" element={<PersonasPage />} />
           <Route path="mobile" element={<MobilePairPage />} />
+          <Route path="gguf-hub" element={<GGUFHubPage />} />
         </Route>
       </Routes>
       <Toaster position="bottom-right" />
