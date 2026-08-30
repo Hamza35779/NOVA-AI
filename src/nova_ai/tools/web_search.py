@@ -1,10 +1,10 @@
-"""Web search tool — Tavily API with DuckDuckGo fallback."""
+"""Web search tool — SearXNG, Brave, Tavily API with DuckDuckGo fallback."""
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+from typing import Any, Dict, List
 
 from nova_ai.core.registry import ToolRegistry
 from nova_ai.core.types import ToolResult
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @ToolRegistry.register("web_search")
 class WebSearchTool(BaseTool):
-    """Search the web via Tavily API."""
+    """Search the web using various providers."""
 
     tool_id = "web_search"
     is_local = False
@@ -41,6 +41,10 @@ class WebSearchTool(BaseTool):
                         "type": "integer",
                         "description": "Maximum results to return.",
                     },
+                    "provider": {
+                        "type": "string",
+                        "description": "Provider to use (auto, searxng, brave, tavily, duckduckgo)."
+                    }
                 },
                 "required": ["query"],
             },
@@ -115,7 +119,67 @@ class WebSearchTool(BaseTool):
             text = text[:max_chars] + "\n\n[Content truncated]"
         return text
 
-    def _duckduckgo_search(self, query: str, max_results: int) -> str:
+    def _searxng_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
+        import httpx
+        url = os.environ.get("SEARXNG_URL", "http://localhost:8080")
+        resp = httpx.get(f"{url}/search", params={"q": query, "format": "json"}, timeout=10.0)
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for r in data.get("results", [])[:max_results]:
+            results.append({
+                "title": r.get("title", "Untitled"),
+                "url": r.get("url", ""),
+                "snippet": r.get("content", ""),
+            })
+        return results
+
+    def _brave_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
+        import httpx
+        api_key = os.environ.get("BRAVE_API_KEY")
+        if not api_key:
+            raise ValueError("BRAVE_API_KEY environment variable not set")
+        
+        headers = {
+            "Accept": "application/json",
+            "X-Subscription-Token": api_key,
+        }
+        resp = httpx.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            params={"q": query, "count": max_results},
+            headers=headers,
+            timeout=10.0
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for r in data.get("web", {}).get("results", [])[:max_results]:
+            results.append({
+                "title": r.get("title", "Untitled"),
+                "url": r.get("url", ""),
+                "snippet": r.get("description", ""),
+            })
+        return results
+
+    def _tavily_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
+        from tavily import TavilyClient
+        client = TavilyClient(api_key=self._api_key)
+        response = client.search(
+            query,
+            max_results=max_results,
+            search_depth="advanced",
+            include_usage=True,
+        )
+        results = []
+        for r in response.get("results", []):
+            results.append({
+                "title": r.get("title", "Untitled"),
+                "url": r.get("url", ""),
+                "snippet": r.get("content", "") or r.get("snippet", ""),
+            })
+        return results
+
+    def _duckduckgo_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
         """Search using DuckDuckGo as fallback."""
         from ddgs import DDGS
 
@@ -123,13 +187,12 @@ class WebSearchTool(BaseTool):
         raw_results = list(ddgs.text(query, max_results=max_results))
         results = []
         for r in raw_results:
-            title = r.get("title", "Untitled")
-            url = r.get("href", "")
-            snippet = r.get("body", "")
-            results.append(f"### {title}\nSource: {url}\nSummary: {snippet}")
-
-        formatted = "\n\n---\n\n".join(results)
-        return formatted
+            results.append({
+                "title": r.get("title", "Untitled"),
+                "url": r.get("href", ""),
+                "snippet": r.get("body", ""),
+            })
+        return results
 
     def execute(self, **params: Any) -> ToolResult:
         query = params.get("query", "")
@@ -159,66 +222,65 @@ class WebSearchTool(BaseTool):
                 )
 
         max_results = params.get("max_results", self._max_results)
-
-        try:
-            from tavily import TavilyClient
-
-            client = TavilyClient(api_key=self._api_key)
-            response = client.search(
-                query,
-                max_results=max_results,
-                search_depth="advanced",
-                include_usage=True,
-            )
-            results = response.get("results", [])
-            formatted_parts = []
-            for r in results:
-                title = r.get("title", "Untitled")
-                url = r.get("url", "")
-                content = r.get("content", "") or r.get("snippet", "")
-                formatted_parts.append(
-                    f"### {title}\nSource: {url}\nSummary: {content}"
-                )
-
-            formatted = "\n\n---\n\n".join(formatted_parts)
+        provider = params.get("provider", "auto")
+        
+        providers = []
+        if provider == "auto":
+            if os.environ.get("SEARXNG_URL"):
+                providers.append("searxng")
+            if os.environ.get("BRAVE_API_KEY"):
+                providers.append("brave")
+            if self._api_key:
+                providers.append("tavily")
+            providers.append("duckduckgo")
+        else:
+            providers = [provider]
+            
+        results = []
+        provider_used = None
+        error_msgs = []
+        
+        for p in providers:
+            try:
+                if p == "searxng":
+                    results = self._searxng_search(query, max_results)
+                elif p == "brave":
+                    results = self._brave_search(query, max_results)
+                elif p == "tavily":
+                    results = self._tavily_search(query, max_results)
+                elif p == "duckduckgo":
+                    results = self._duckduckgo_search(query, max_results)
+                else:
+                    continue
+                    
+                provider_used = p
+                break
+            except Exception as exc:
+                logger.debug(f"{p} search error: {exc}")
+                error_msgs.append(f"{p}: {exc}")
+                
+        if not provider_used:
             return ToolResult(
                 tool_name="web_search",
-                content=formatted or "No results found.",
-                success=True,
-                metadata={
-                    "num_results": len(results),
-                    "engine": "tavily",
-                    "credits": (response.get("usage") or {}).get("credits"),
-                },
-            )
-        except Exception as exc:
-            logger.debug(
-                "Tavily error (%s), falling back to DuckDuckGo", type(exc).__name__
-            )
-
-        try:
-            formatted = self._duckduckgo_search(query, max_results)
-            return ToolResult(
-                tool_name="web_search",
-                content=formatted or "No results found.",
-                success=True,
-                metadata={"engine": "duckduckgo"},
-            )
-        except ImportError:
-            return ToolResult(
-                tool_name="web_search",
-                content=(
-                    "tavily-python not installed and ddgs not available."
-                    " Install with: pip install tavily-python ddgs"
-                ),
-                success=False,
-            )
-        except Exception as exc:
-            return ToolResult(
-                tool_name="web_search",
-                content=f"Search error: {exc}",
+                content=f"All search providers failed: {'; '.join(error_msgs)}",
                 success=False,
             )
 
+        formatted_parts = []
+        for r in results:
+            formatted_parts.append(f"### {r['title']}\nSource: {r['url']}\nSummary: {r['snippet']}")
+
+        formatted = "\n\n---\n\n".join(formatted_parts)
+        return ToolResult(
+            tool_name="web_search",
+            content=formatted or "No results found.",
+            success=True,
+            metadata={
+                "num_results": len(results),
+                "engine": provider_used,
+                "provider": provider_used,
+                "results": results,
+            },
+        )
 
 __all__ = ["WebSearchTool"]

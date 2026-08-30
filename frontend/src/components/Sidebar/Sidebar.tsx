@@ -20,6 +20,7 @@ import {
   Layers,
   FileText,
   Mail,
+  Calendar,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
@@ -63,6 +64,7 @@ export function Sidebar() {
     { path: '/agents', icon: Bot, label: 'Agents' },
     { path: '/docs', icon: FileText, label: 'Docs' },
     { path: '/email', icon: Mail, label: 'Email' },
+    { path: '/calendar', icon: Calendar, label: 'Calendar' },
     { path: '/logs', icon: ScrollText, label: 'Logs' },
     { path: '/settings', icon: Settings, label: 'Settings' },
     { path: '/get-started', icon: Rocket, label: 'Get Started' },

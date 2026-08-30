@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router';
 import { ApprovalBell } from './ApprovalBell';
+import NotificationBell from './NotificationBell';
 import { Sidebar } from './Sidebar/Sidebar';
 import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
@@ -28,6 +29,9 @@ export function Layout() {
     <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
       <div className="hud-backdrop" aria-hidden="true" />
       <SystemPulse apiReachable={apiReachable} />
+      <div className="absolute top-3 right-16 z-50 flex items-center gap-2">
+        <NotificationBell />
+      </div>
       <ApprovalBell />
 
       {/* Health check banner */}

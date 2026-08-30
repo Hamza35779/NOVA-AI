@@ -1,4 +1,4 @@
-﻿import type { ModelInfo, SavingsData, ServerInfo } from '../types';
+import type { ModelInfo, SavingsData, ServerInfo } from '../types';
 
 // ---------------------------------------------------------------------------
 // Supabase config â€” safe to embed (RLS protects writes)
@@ -1128,3 +1128,33 @@ export const getEmailSummary = (uid: string) => fetch(`${getBase()}/api/email/in
 export const draftReply = (subject: string, body: string) => fetch(`${getBase()}/api/email/draft`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ original_subject: subject, original_body: body }) }).then(r => r.json());
 export const sendReply = (to: string, subject: string, body: string, replyToId?: string) => fetch(`${getBase()}/api/email/reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, subject, body, reply_to_message_id: replyToId }) }).then(r => r.json());
 
+// Calendar API
+export const getCalendarStatus = () =>
+  fetch(`${getBase()}/api/calendar/status`).then(r => r.json());
+
+export const getCalendarEvents = (days = 7) =>
+  fetch(`${getBase()}/api/calendar/events?days=${days}`).then(r => r.json());
+
+export const getAgendaBriefing = () =>
+  fetch(`${getBase()}/api/calendar/agenda`).then(r => r.json());
+
+export const prepMeetingAPI = (summary: string, description: string, attendees: string[] = []) =>
+  fetch(`${getBase()}/api/calendar/meeting-prep`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ summary, description, attendees }),
+  }).then(r => r.json());
+
+export const createCalendarEvent = (event: { summary: string; start: string; end: string; description?: string; location?: string }) =>
+  fetch(`${getBase()}/api/calendar/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(event),
+  }).then(r => r.json());
+
+// Notifications API
+export const listNotifications = () =>
+  fetch(`${getBase()}/api/notifications`).then(r => r.json());
+
+export const clearNotifications = () =>
+  fetch(`${getBase()}/api/notifications/clear`, { method: 'POST' }).then(r => r.json());

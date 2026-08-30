@@ -47,6 +47,7 @@ from nova_ai.cli.tool_cmd import tool
 from nova_ai.cli.vault_cmd import vault
 from nova_ai.cli.voice_cmd import voice
 from nova_ai.cli.workflow_cmd import workflow
+from nova_ai.cli.clip_cmd import clip
 
 
 @click.group(
@@ -136,6 +137,7 @@ cli.add_command(connect, "connect")
 cli.add_command(digest, "digest")
 cli.add_command(router_cmd, "router")
 cli.add_command(voice, "voice")
+cli.add_command(clip, "clip")
 cli.add_command(screen_group, "screen")
 cli.add_command(canvas_group, "canvas")
 cli.add_command(memory_wiki_group, "memory-wiki")

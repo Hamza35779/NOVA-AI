@@ -22,6 +22,9 @@ from nova_ai.server.routes import router
 from nova_ai.server.tasks_api import router as tasks_router
 from nova_ai.server.upload_router import router as upload_router
 from nova_ai.server.history_router import router as history_router
+from nova_ai.server.notification_router import router as notification_router
+from nova_ai.server.search_router import router as search_router
+from nova_ai.server.clipboard_router import router as clipboard_router
 
 logger = logging.getLogger(__name__)
 
@@ -298,7 +301,10 @@ def create_app(
     except Exception as _exc:
         logger.debug("Analytics init skipped: %s", _exc)
 
+    from nova_ai.server.calendar_router import router as calendar_router
+
     app.include_router(router)
+    app.include_router(calendar_router)
     app.include_router(dashboard_router)
     app.include_router(comparison_router)
     app.include_router(create_connectors_router())
@@ -311,6 +317,9 @@ def create_app(
     app.include_router(email_router)
     app.include_router(extension_router)
     app.include_router(history_router)
+    app.include_router(notification_router)
+    app.include_router(search_router)
+    app.include_router(clipboard_router)
     include_all_routes(app)
 
     # Restore SendBlue channel bindings from database on startup
