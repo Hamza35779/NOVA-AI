@@ -266,20 +266,34 @@ class WebSearchTool(BaseTool):
                 success=False,
             )
 
-        formatted_parts = []
-        for r in results:
-            formatted_parts.append(f"### {r['title']}\nSource: {r['url']}\nSummary: {r['snippet']}")
+        if isinstance(results, str):
+            formatted = results
+            num_res = 1 if results else 0
+        elif isinstance(results, list):
+            formatted_parts = []
+            for r in results:
+                if isinstance(r, dict):
+                    title = r.get("title", "Untitled")
+                    url = r.get("url", "")
+                    snippet = r.get("snippet", "")
+                    formatted_parts.append(f"### {title}\nSource: {url}\nSummary: {snippet}")
+                else:
+                    formatted_parts.append(str(r))
+            formatted = "\n\n---\n\n".join(formatted_parts)
+            num_res = len(results)
+        else:
+            formatted = str(results)
+            num_res = 1
 
-        formatted = "\n\n---\n\n".join(formatted_parts)
         return ToolResult(
             tool_name="web_search",
             content=formatted or "No results found.",
             success=True,
             metadata={
-                "num_results": len(results),
+                "num_results": num_res,
                 "engine": provider_used,
                 "provider": provider_used,
-                "results": results,
+                "results": results if isinstance(results, list) else [{"title": "Result", "url": "", "snippet": str(results)}],
             },
         )
 
