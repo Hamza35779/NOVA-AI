@@ -161,6 +161,7 @@ export interface ModelInfo {
   object: string;
   created: number;
   owned_by: string;
+  name?: string;
 }
 
 export interface ProviderSavings {

@@ -21,6 +21,10 @@ import {
   FileText,
   Mail,
   Calendar,
+  GitCompare,
+  Store,
+  UserCheck,
+  Smartphone,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
@@ -65,6 +69,10 @@ export function Sidebar() {
     { path: '/docs', icon: FileText, label: 'Docs' },
     { path: '/email', icon: Mail, label: 'Email' },
     { path: '/calendar', icon: Calendar, label: 'Calendar' },
+    { path: '/compare', icon: GitCompare, label: 'Compare Models' },
+    { path: '/model-hub', icon: Store, label: 'Model Hub' },
+    { path: '/personas', icon: UserCheck, label: 'Personas' },
+    { path: '/mobile', icon: Smartphone, label: 'Mobile Pair' },
     { path: '/logs', icon: ScrollText, label: 'Logs' },
     { path: '/settings', icon: Settings, label: 'Settings' },
     { path: '/get-started', icon: Rocket, label: 'Get Started' },

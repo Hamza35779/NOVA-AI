@@ -1158,3 +1158,50 @@ export const listNotifications = () =>
 
 export const clearNotifications = () =>
   fetch(`${getBase()}/api/notifications/clear`, { method: 'POST' }).then(r => r.json());
+
+// Model Comparison API
+export const compareModelsAPI = (models: string[], prompt: string, systemPrompt?: string) =>
+  fetch(`${getBase()}/api/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ models, prompt, system_prompt: systemPrompt }),
+  }).then(r => r.json());
+
+export const voteModelAPI = (comparisonId: string, winnerModel: string, prompt: string, modelsCompared: string[]) =>
+  fetch(`${getBase()}/api/compare/vote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comparison_id: comparisonId, winner_model: winnerModel, prompt, models_compared: modelsCompared }),
+  }).then(r => r.json());
+
+// Model Hub API
+export const getModelCatalog = () =>
+  fetch(`${getBase()}/api/models/hub/catalog`).then(r => r.json());
+
+export const installModelAPI = (modelId: string) =>
+  fetch(`${getBase()}/api/models/hub/install`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model_id: modelId }),
+  }).then(r => r.json());
+
+// Personas API
+export const listPersonas = () =>
+  fetch(`${getBase()}/api/personas`).then(r => r.json());
+
+export const createPersona = (data: { name: string; avatar: string; description: string; system_prompt: string; temperature: number }) =>
+  fetch(`${getBase()}/api/personas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(r => r.json());
+
+export const deletePersonaAPI = (id: string) =>
+  fetch(`${getBase()}/api/personas/${id}`, { method: 'DELETE' }).then(r => r.json());
+
+export const setActivePersonaAPI = (id: string) =>
+  fetch(`${getBase()}/api/personas/active/${id}`, { method: 'POST' }).then(r => r.json());
+
+// Mobile Pairing API
+export const getMobilePairingInfo = () =>
+  fetch(`${getBase()}/api/mobile/pairing-info`).then(r => r.json());

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from nova_ai.server.analytics_routes import router as analytics_router
 from nova_ai.server.api_routes import include_all_routes
-from nova_ai.server.comparison import comparison_router
+from nova_ai.server.model_compare_router import router as compare_router
 from nova_ai.server.connectors_router import create_connectors_router
 from nova_ai.server.dashboard import dashboard_router
 from nova_ai.server.digest_routes import create_digest_router
@@ -25,7 +25,9 @@ from nova_ai.server.history_router import router as history_router
 from nova_ai.server.notification_router import router as notification_router
 from nova_ai.server.search_router import router as search_router
 from nova_ai.server.clipboard_router import router as clipboard_router
-
+from nova_ai.server.model_hub_router import router as model_hub_router
+from nova_ai.server.mobile_pair_router import router as mobile_pair_router
+from nova_ai.server.persona_router import router as persona_router
 logger = logging.getLogger(__name__)
 
 
@@ -306,7 +308,7 @@ def create_app(
     app.include_router(router)
     app.include_router(calendar_router)
     app.include_router(dashboard_router)
-    app.include_router(comparison_router)
+    app.include_router(compare_router)
     app.include_router(create_connectors_router())
     app.include_router(create_digest_router())
     app.include_router(upload_router)
@@ -320,6 +322,9 @@ def create_app(
     app.include_router(notification_router)
     app.include_router(search_router)
     app.include_router(clipboard_router)
+    app.include_router(mobile_pair_router)
+    app.include_router(persona_router)
+    app.include_router(model_hub_router)
     include_all_routes(app)
 
     # Restore SendBlue channel bindings from database on startup

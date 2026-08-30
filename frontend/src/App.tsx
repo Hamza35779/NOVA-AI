@@ -12,6 +12,10 @@ import { LogsPage } from './pages/LogsPage';
 import { DocsPage } from './pages/DocsPage';
 import { EmailPage } from './pages/EmailPage';
 import CalendarPage from './pages/CalendarPage';
+import { ModelComparePage } from './pages/ModelComparePage';
+import { ModelHubPage } from './pages/ModelHubPage';
+import { PersonasPage } from './pages/PersonasPage';
+import { MobilePairPage } from './pages/MobilePairPage';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
@@ -200,6 +204,10 @@ export default function App() {
           <Route path="docs" element={<DocsPage />} />
           <Route path="email" element={<EmailPage />} />
           <Route path="calendar" element={<CalendarPage />} />
+          <Route path="compare" element={<ModelComparePage />} />
+          <Route path="model-hub" element={<ModelHubPage />} />
+          <Route path="personas" element={<PersonasPage />} />
+          <Route path="mobile" element={<MobilePairPage />} />
         </Route>
       </Routes>
       <Toaster position="bottom-right" />
