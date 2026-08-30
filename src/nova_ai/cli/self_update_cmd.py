@@ -2,8 +2,8 @@
 
 Runs the right upgrade command for how the user installed NOVA AI:
 
-- PyPI installs get ``pip install --upgrade nova_ai``.
-- uv-tool installs get ``uv tool upgrade nova_ai``.
+- PyPI installs get ``pip install --upgrade nova-ai-pro``.
+- uv-tool installs get ``uv tool upgrade nova-ai-pro``.
 - Editable git checkouts get ``git pull && uv sync`` in the checkout.
 
 The detection logic is shared with the post-command "new version

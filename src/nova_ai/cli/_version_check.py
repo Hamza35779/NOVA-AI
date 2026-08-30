@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 
 _CACHE_PATH = get_config_dir() / "version-check.json"
 _CACHE_TTL = 86400  # 24 hours
-_PYPI_API = "https://pypi.org/pypi/nova_ai/json"
+# The distribution on PyPI is "nova-ai-pro" (see pyproject.toml — "nova-ai"
+# and variants are squatted/blocked). Polling a foreign project's feed makes
+# every source install show a bogus "new version available (0.0.0 → 0.1)".
+_PYPI_API = "https://pypi.org/pypi/nova-ai-pro/json"
 
 
 def _config_path() -> Path:

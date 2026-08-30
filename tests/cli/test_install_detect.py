@@ -46,7 +46,7 @@ def test_uv_tool_install_detected(tmp_path, monkeypatch):
 
     info = detect_install()
     assert info.kind == "uv-tool"
-    assert info.upgrade_command == "uv tool upgrade nova_ai"
+    assert info.upgrade_command == "uv tool upgrade nova-ai-pro"
 
 
 def test_pypi_install_detected(tmp_path, monkeypatch):
@@ -56,7 +56,7 @@ def test_pypi_install_detected(tmp_path, monkeypatch):
 
     info = detect_install()
     assert info.kind == "pypi"
-    assert info.upgrade_command == "pip install --upgrade nova_ai"
+    assert info.upgrade_command == "pip install --upgrade nova-ai-pro"
 
 
 def test_unknown_install_falls_back_to_pypi(tmp_path, monkeypatch):
@@ -66,7 +66,7 @@ def test_unknown_install_falls_back_to_pypi(tmp_path, monkeypatch):
 
     info = detect_install()
     assert info.kind == "unknown"
-    assert info.upgrade_command == "pip install --upgrade nova_ai"
+    assert info.upgrade_command == "pip install --upgrade nova-ai-pro"
 
 
 def test_missing_nova_ai_file_falls_back_to_pypi(monkeypatch):
@@ -75,7 +75,7 @@ def test_missing_nova_ai_file_falls_back_to_pypi(monkeypatch):
         mock_path.side_effect = Exception("boom")
         info = detect_install()
     assert info.kind == "unknown"
-    assert info.upgrade_command == "pip install --upgrade nova_ai"
+    assert info.upgrade_command == "pip install --upgrade nova-ai-pro"
 
 
 def test_returns_install_info_dataclass():

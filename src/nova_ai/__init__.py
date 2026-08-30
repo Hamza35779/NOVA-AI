@@ -8,7 +8,10 @@ from importlib.metadata import version as _pkg_version
 from nova_ai.sdk import MemoryHandle, Nova, NovaSystem, SystemBuilder
 
 try:
-    __version__ = _pkg_version("nova_ai")
+    # PyPI distribution name is "nova-ai-pro" (see pyproject.toml) — the
+    # import package "nova_ai" is not a valid distribution name, so the
+    # lookup must target the distribution, not the import package.
+    __version__ = _pkg_version("nova-ai-pro")
 except PackageNotFoundError:  # pragma: no cover — uninstalled source tree
     __version__ = "0.0.0+unknown"
 
