@@ -1,7 +1,7 @@
-import type { ModelInfo, SavingsData, ServerInfo } from '../types';
+﻿import type { ModelInfo, SavingsData, ServerInfo } from '../types';
 
 // ---------------------------------------------------------------------------
-// Supabase config — safe to embed (RLS protects writes)
+// Supabase config â€” safe to embed (RLS protects writes)
 // ---------------------------------------------------------------------------
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://mtbtgpwzrbostweaanpr.supabase.co';
@@ -16,7 +16,7 @@ declare global {
 export const isTauri = () => typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
 
 // Cached API base URL fetched from the Tauri backend at startup.
-// This avoids hardcoding the port — the Rust backend is the single
+// This avoids hardcoding the port â€” the Rust backend is the single
 // source of truth for NOVA_PORT.
 let _tauriApiBase: string | null = null;
 
@@ -54,7 +54,7 @@ export const getBase = (): string => {
 
 // Resolve the local server API key (NOVA_AI_API_KEY). When `nova serve`
 // is started with a key, AuthMiddleware 401s every /v1 and /api request that
-// lacks a Bearer token — so the frontend must send it (#266). Sourced from the
+// lacks a Bearer token â€” so the frontend must send it (#266). Sourced from the
 // same settings blob as the API URL, with an optional build-time env override.
 // Returns '' when unset, so a keyless local server keeps working unchanged.
 export const getApiKey = (): string => {
@@ -83,7 +83,7 @@ export const authHeaders = (
 
 // Centralized fetch for the local server: prepends getBase() and injects the
 // Bearer auth header (when a key is set) on every call. Using this everywhere
-// guarantees no /v1 or /api request is sent without auth — the bug in #266 was
+// guarantees no /v1 or /api request is sent without auth â€” the bug in #266 was
 // that direct fetch() calls omitted the header and 401'd. `path` is the
 // server-relative path (e.g. "/v1/savings").
 export const apiFetch = (
@@ -238,7 +238,7 @@ export async function checkHealth(): Promise<boolean> {
     }
   }
   // In the browser, hit /health relative to the page origin so the request
-  // flows through whatever path is already serving the SPA — the Vite
+  // flows through whatever path is already serving the SPA â€” the Vite
   // proxy in dev, FastAPI's static mount in prod. This avoids the
   // false-negative "Cannot reach backend" banner when getBase() points at
   // an absolute URL the browser can't reach directly.
@@ -780,7 +780,7 @@ export async function sendAgentMessage(
 /**
  * Ask the agent a question by triggering an ad-hoc run.
  *
- * Posts the question as an `immediate`, non-streamed message — the backend
+ * Posts the question as an `immediate`, non-streamed message â€” the backend
  * stores it and spawns a real agent tick (`execute_tick`) that consumes it as
  * the run's input (tools, trace, and all), rather than a raw one-shot chat.
  * Returns immediately with the stored user message; progress is observed via
@@ -978,7 +978,7 @@ async function memoryErrorDetail(res: Response, fallback: string): Promise<strin
     const data = await res.json();
     if (data && typeof data.detail === 'string' && data.detail) return data.detail;
   } catch {
-    // Non-JSON body — fall through to the generic message below.
+    // Non-JSON body â€” fall through to the generic message below.
   }
   return fallback;
 }
@@ -1096,7 +1096,35 @@ export async function setInferenceSource(
     });
   } catch (e: any) {
     // Surface the backend's actionable error strings (e.g. "A server URL is
-    // required…", "Could not store the API key…") as proper Error instances.
+    // requiredâ€¦", "Could not store the API keyâ€¦") as proper Error instances.
     throw new Error(e?.message ?? e ?? 'Failed to save inference source');
   }
 }
+
+
+// RAG Document API
+export const listDocs = () => fetch(`${getBase()}/v1/connectors/upload/docs`).then(r => r.json());
+export const deleteDoc = (docId: string) => fetch(`${getBase()}/v1/connectors/upload/docs/${docId}`, { method: 'DELETE' }).then(r => r.json());
+export const chatWithDocs = (query: string, docIds: string[] = [], topK: number = 5) => fetch(`${getBase()}/v1/connectors/upload/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query, doc_ids: docIds, top_k: topK }) }).then(r => r.json());
+export const uploadFiles = async (files: File[]): Promise<{ chunks_added: number }> => {
+  const form = new FormData();
+  files.forEach(f => form.append('files', f));
+  const res = await fetch(`${getBase()}/v1/connectors/upload/ingest/files`, { method: 'POST', body: form });
+  return res.json();
+};
+
+export const listHistory = (limit = 50) => fetch(`${getBase()}/api/history?limit=${limit}`).then(r => r.json());
+export const createConversation = (title = 'New conversation') => fetch(`${getBase()}/api/history`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) }).then(r => r.json());
+export const getConversation = (id: string) => fetch(`${getBase()}/api/history/${id}`).then(r => r.json());
+export const updateConversation = (id: string, data: { title?: string; pinned?: boolean }) => fetch(`${getBase()}/api/history/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => r.json());
+export const deleteConversationAPI = (id: string) => fetch(`${getBase()}/api/history/${id}`, { method: 'DELETE' }).then(r => r.json());
+export const addMessage = (convId: string, role: string, content: string) => fetch(`${getBase()}/api/history/${convId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role, content }) }).then(r => r.json());
+export const searchHistory = (q: string) => fetch(`${getBase()}/api/history/search?q=${encodeURIComponent(q)}`).then(r => r.json());
+
+export const getEmailStatus = () => fetch(`${getBase()}/api/email/status`).then(r => r.json());
+export const connectEmail = (creds: object) => fetch(`${getBase()}/api/email/connect`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(creds) }).then(r => r.json());
+export const getInbox = (n = 20) => fetch(`${getBase()}/api/email/inbox?n=${n}`).then(r => r.json());
+export const getEmailSummary = (uid: string) => fetch(`${getBase()}/api/email/inbox/${uid}/summary`).then(r => r.json());
+export const draftReply = (subject: string, body: string) => fetch(`${getBase()}/api/email/draft`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ original_subject: subject, original_body: body }) }).then(r => r.json());
+export const sendReply = (to: string, subject: string, body: string, replyToId?: string) => fetch(`${getBase()}/api/email/reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, subject, body, reply_to_message_id: replyToId }) }).then(r => r.json());
+

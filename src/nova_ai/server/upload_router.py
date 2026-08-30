@@ -216,3 +216,88 @@ async def ingest_files(
         )
 
     return IngestResponse(chunks_added=total_chunks)
+
+
+@router.get("/docs")
+async def list_docs() -> dict:
+    """List all ingested documents."""
+    store = _get_store()
+    docs = store.list_documents()
+    return {"documents": docs, "total": len(docs)}
+
+
+@router.delete("/docs/{doc_id}")
+async def delete_doc(doc_id: str) -> dict:
+    """Remove a document and all its chunks from the knowledge store."""
+    store = _get_store()
+    deleted = store.delete_document(doc_id)
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found")
+    return {"doc_id": doc_id, "chunks_deleted": deleted}
+
+
+class DocChatRequest(BaseModel):
+    query: str
+    doc_ids: list[str] = []   # empty = search all docs
+    top_k: int = 5
+
+
+@router.post("/chat")
+async def doc_chat(body: DocChatRequest) -> dict:
+    """RAG chat: retrieve relevant chunks then generate a grounded answer."""
+    if not body.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    store = _get_store()
+
+    # Retrieve relevant chunks
+    if body.doc_ids:
+        chunks = store.search_by_doc_ids(body.query, body.doc_ids, body.top_k)
+    else:
+        # Fallback: use existing store retrieve for all docs
+        raw = store.retrieve(body.query, top_k=body.top_k)
+        chunks = [
+            {
+                "content": r.content,
+                "title": r.metadata.get("title", "Unknown"),
+                "doc_id": r.metadata.get("doc_id", ""),
+                "chunk_index": r.metadata.get("chunk_index", 0),
+                "score": r.score,
+            }
+            for r in raw
+        ]
+
+    if not chunks:
+        return {
+            "answer": "I couldn't find relevant content in the uploaded documents for that question.",
+            "sources": [],
+        }
+
+    # Build context block for LLM
+    context_parts = []
+    for i, chunk in enumerate(chunks):
+        context_parts.append(f"[Source {i+1}: {chunk['title']}]\n{chunk['content']}")
+    context = "\n\n---\n\n".join(context_parts)
+
+    prompt = (
+        f"Answer the following question using ONLY the provided document excerpts. "
+        f"At the end, cite the sources you used as [Source N].\n\n"
+        f"Question: {body.query}\n\n"
+        f"Document excerpts:\n{context}\n\n"
+        f"Answer:"
+    )
+
+    # Use NOVA SDK to generate answer
+    try:
+        from nova_ai.sdk import Nova
+        nova = Nova()
+        answer = nova.ask(prompt)
+    except Exception as exc:
+        logger.error("RAG LLM call failed: %s", exc)
+        answer = f"Context retrieved but LLM unavailable: {exc}"
+
+    return {
+        "answer": answer,
+        "sources": chunks,
+        "query": body.query,
+    }

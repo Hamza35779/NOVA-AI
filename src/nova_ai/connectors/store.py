@@ -454,6 +454,86 @@ class KnowledgeStore(MemoryBackend):
         self._conn.commit()
         return cur.rowcount > 0
 
+    def delete_document(self, doc_id: str) -> int:
+        """Delete all chunks for a doc_id. Returns number of chunks deleted."""
+        cur = self._conn.execute(
+            "DELETE FROM knowledge_chunks WHERE doc_id = ?", (doc_id,)
+        )
+        self._conn.commit()
+        return cur.rowcount
+
+    def list_documents(self) -> list[dict]:
+        """Return all distinct ingested documents with metadata."""
+        rows = self._conn.execute(
+            """
+            SELECT
+                doc_id,
+                MAX(title) as title,
+                MAX(source) as source,
+                MAX(doc_type) as doc_type,
+                COUNT(*) as chunk_count,
+                MIN(created_at) as created_at
+            FROM knowledge_chunks
+            WHERE deleted_at IS NULL
+            GROUP BY doc_id
+            """
+        ).fetchall()
+        return [
+            {
+                "doc_id": row["doc_id"],
+                "title": row["title"],
+                "source": row["source"],
+                "doc_type": row["doc_type"],
+                "chunk_count": row["chunk_count"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def search_by_doc_ids(
+        self,
+        query: str,
+        doc_ids: list[str],
+        top_k: int = 5,
+    ) -> list[dict]:
+        """Retrieve top_k chunks from the given doc_ids matching the query.
+        Use the existing search/retrieval mechanism but scoped to doc_ids.
+        Returns list of {content, title, doc_id, chunk_index, score}."""
+        if not doc_ids:
+            return []
+        
+        placeholders = ",".join("?" for _ in doc_ids)
+        sql = f"""
+            SELECT
+                kc.content,
+                kc.title,
+                kc.doc_id,
+                kc.chunk_index,
+                abs(bm25(knowledge_fts)) AS score
+            FROM knowledge_fts
+            JOIN knowledge_chunks kc ON knowledge_fts.rowid = kc.rowid
+            WHERE knowledge_fts MATCH ?
+            AND kc.deleted_at IS NULL
+            AND kc.doc_id IN ({placeholders})
+            ORDER BY score DESC
+            LIMIT ?
+        """
+        try:
+            rows = self._conn.execute(sql, [query] + doc_ids + [top_k]).fetchall()
+        except sqlite3.OperationalError:
+            return []
+            
+        return [
+            {
+                "content": row["content"],
+                "title": row["title"],
+                "doc_id": row["doc_id"],
+                "chunk_index": row["chunk_index"],
+                "score": float(row["score"]),
+            }
+            for row in rows
+        ]
+
     def clear(self) -> None:
         """Remove all stored chunks."""
         self._conn.executescript(

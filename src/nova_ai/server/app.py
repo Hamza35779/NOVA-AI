@@ -21,6 +21,7 @@ from nova_ai.server.research_router import router as research_router
 from nova_ai.server.routes import router
 from nova_ai.server.tasks_api import router as tasks_router
 from nova_ai.server.upload_router import router as upload_router
+from nova_ai.server.history_router import router as history_router
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,8 @@ def create_app(
     )
 
     from fastapi.middleware.cors import CORSMiddleware
+    from nova_ai.server.email_router import router as email_router
+    from nova_ai.server.extension_router import router as extension_router
 
     _origins = (
         cors_origins
@@ -201,6 +204,7 @@ def create_app(
             "tauri://localhost",
             "http://tauri.localhost",
             "https://tauri.localhost",
+            "chrome-extension://*",
         ]
     )
     app.add_middleware(
@@ -304,6 +308,9 @@ def create_app(
     app.include_router(analytics_router)
     app.include_router(integrations_router)
     app.include_router(tasks_router)
+    app.include_router(email_router)
+    app.include_router(extension_router)
+    app.include_router(history_router)
     include_all_routes(app)
 
     # Restore SendBlue channel bindings from database on startup

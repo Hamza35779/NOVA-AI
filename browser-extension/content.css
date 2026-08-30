@@ -1,0 +1,136 @@
+#nova-ai-sidebar {
+  position: fixed;
+  top: 0;
+  right: -380px;
+  width: 360px;
+  height: 100vh;
+  background: #0F0B1E;
+  border-left: 1px solid rgba(124, 58, 237, 0.4);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.6);
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  color: #F1F5F9;
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#nova-ai-sidebar.nova-visible { right: 0; }
+
+.nova-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.25);
+  background: #1E1533;
+}
+
+.nova-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 15px;
+  background: linear-gradient(135deg, #7C3AED, #06B6D4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+#nova-close {
+  background: none;
+  border: none;
+  color: #94A3B8;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+#nova-close:hover { background: rgba(255,255,255,0.1); color: #F1F5F9; }
+
+.nova-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nova-msg {
+  padding: 10px 12px;
+  border-radius: 10px;
+  line-height: 1.5;
+  max-width: 95%;
+  word-wrap: break-word;
+}
+
+.nova-msg-user {
+  background: rgba(124, 58, 237, 0.2);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  align-self: flex-end;
+}
+
+.nova-msg-nova {
+  background: #1E1533;
+  border: 1px solid rgba(255,255,255,0.08);
+  align-self: flex-start;
+  color: #CBD5E1;
+}
+
+.nova-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.nova-action-btn {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  background: rgba(124, 58, 237, 0.1);
+  color: #A78BFA;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nova-action-btn:hover { background: rgba(124, 58, 237, 0.25); color: #F1F5F9; }
+
+.nova-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(124, 58, 237, 0.2);
+  background: #1E1533;
+}
+
+#nova-input {
+  flex: 1;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #F1F5F9;
+  font-size: 13px;
+  resize: none;
+  font-family: inherit;
+  outline: none;
+}
+#nova-input:focus { border-color: #7C3AED; }
+
+#nova-send {
+  background: linear-gradient(135deg, #7C3AED, #06B6D4);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  width: 36px;
+  cursor: pointer;
+  font-size: 16px;
+  align-self: flex-end;
+  height: 36px;
+  transition: opacity 0.15s;
+}
+#nova-send:hover { opacity: 0.85; }

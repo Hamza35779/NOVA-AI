@@ -220,6 +220,59 @@ class GmailIMAPConnector(BaseConnector):
             items_total=self._items_total,
         )
 
+    def _score_urgency(self, subject: str, body: str) -> str:
+        """Score email urgency as 'urgent', 'normal', or 'low'."""
+        text = f"{subject} {body}".lower()
+        if any(w in text for w in ("urgent", "asap", "action required", "deadline", "invoice", "critical", "payment", "immediately")):
+            return "urgent"
+        if any(w in text for w in ("newsletter", "no-reply", "unsubscribe")):
+            return "low"
+        return "normal"
+
+    def fetch_n(self, n: int = 20) -> list[dict]:
+        """Fetch the N most recent emails from INBOX."""
+        em, pw = self._resolve_credentials()
+        if not em or not pw:
+            return []
+
+        imap = imaplib.IMAP4_SSL(self._imap_host)
+        try:
+            imap.login(em, pw)
+            imap.select("INBOX", readonly=True)
+            _, data = imap.search(None, "ALL")
+            msg_ids = data[0].split()
+            ordered = list(reversed(msg_ids))[:n]
+            
+            emails = []
+            for mid in ordered:
+                try:
+                    _, msg_data = imap.fetch(mid, "(RFC822)")
+                    raw = msg_data[0][1]
+                    msg = email_lib.message_from_bytes(raw)
+                except Exception:
+                    continue
+                
+                subject = _decode_subject(msg.get("Subject", ""))
+                sender = msg.get("From", "")
+                body = _extract_text_body(msg)
+                date = _parse_date(msg).isoformat()
+                uid = mid.decode()
+                
+                emails.append({
+                    "uid": uid,
+                    "subject": subject,
+                    "sender": sender,
+                    "date": date,
+                    "body_preview": body[:500] if body else "",
+                    "urgency": self._score_urgency(subject, body),
+                })
+            return emails
+        finally:
+            try:
+                imap.logout()
+            except:
+                pass
+
     def mcp_tools(self) -> List[ToolSpec]:
         return [
             ToolSpec(

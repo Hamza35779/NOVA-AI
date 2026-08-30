@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOVA AI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 320px;
+      min-height: 200px;
+      background: #0F0B1E;
+      color: #F1F5F9;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+    }
+    .header {
+      padding: 16px;
+      background: #1E1533;
+      border-bottom: 1px solid rgba(124, 58, 237, 0.25);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo {
+      font-size: 16px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #7C3AED, #06B6D4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #6B7280;
+      margin-left: auto;
+    }
+    .status-dot.online { background: #10B981; }
+    .status-text { font-size: 11px; color: #94A3B8; }
+    .body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    textarea {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(124, 58, 237, 0.3);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: #F1F5F9;
+      font-size: 13px;
+      font-family: inherit;
+      resize: none;
+      outline: none;
+    }
+    textarea:focus { border-color: #7C3AED; }
+    button {
+      width: 100%;
+      padding: 9px;
+      background: linear-gradient(135deg, #7C3AED, #06B6D4);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .answer {
+      background: #1E1533;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 13px;
+      color: #CBD5E1;
+      line-height: 1.5;
+      max-height: 180px;
+      overflow-y: auto;
+      display: none;
+    }
+    .shortcut {
+      font-size: 11px;
+      color: #475569;
+      text-align: center;
+    }
+    .open-app {
+      background: rgba(124, 58, 237, 0.15);
+      border: 1px solid rgba(124, 58, 237, 0.3);
+      color: #A78BFA;
+      font-size: 12px;
+      padding: 7px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">NOVA AI</div>
+    <div>
+      <div class="status-text" id="status-text">Checking...</div>
+    </div>
+    <div class="status-dot" id="status-dot"></div>
+  </div>
+  <div class="body">
+    <textarea id="question" rows="3" placeholder="Ask NOVA AI anything..."></textarea>
+    <button id="ask-btn">Ask NOVA AI</button>
+    <div class="answer" id="answer"></div>
+    <button class="open-app" id="open-app">Open NOVA AI App &rarr;</button>
+    <div class="shortcut">Sidebar shortcut: Alt+N</div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

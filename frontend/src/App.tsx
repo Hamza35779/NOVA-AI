@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+﻿import { useEffect, useState, useCallback, useRef } from 'react';
 import { Routes, Route } from 'react-router';
 import { Layout } from './components/Layout';
 import { ChatPage } from './pages/ChatPage';
@@ -9,6 +9,8 @@ import { AgentsPage } from './pages/AgentsPage';
 import { DataSourcesPage } from './pages/DataSourcesPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { LogsPage } from './pages/LogsPage';
+import { DocsPage } from './pages/DocsPage';
+import { EmailPage } from './pages/EmailPage';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
@@ -194,6 +196,8 @@ export default function App() {
           <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="logs" element={<LogsPage />} />
+          <Route path="docs" element={<DocsPage />} />
+          <Route path="email" element={<EmailPage />} />
         </Route>
       </Routes>
       <Toaster position="bottom-right" />

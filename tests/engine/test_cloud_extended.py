@@ -28,6 +28,11 @@ def _make_cloud_engine(monkeypatch: pytest.MonkeyPatch) -> CloudEngine:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("GROK_API_KEY", raising=False)
     if not EngineRegistry.contains("cloud"):
         EngineRegistry.register_value("cloud", CloudEngine)
     return CloudEngine()
