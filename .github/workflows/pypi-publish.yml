@@ -123,4 +123,13 @@ jobs:
 
       - name: Publish to PyPI (trusted publishing)
         if: ${{ !inputs.dry_run && env.PYPI_API_TOKEN == '' }}
-        run: uv publish
+        run: |
+          set -euo pipefail
+          echo "No PYPI_API_TOKEN secret found; attempting OIDC Trusted Publishing..."
+          if ! uv publish; then
+            echo "::error::PyPI authentication failed. To publish 'nova-ai-pro' to PyPI:"
+            echo "1. Create an API token at https://pypi.org/manage/account/token/"
+            echo "2. Add secret PYPI_API_TOKEN in GitHub repository Settings -> Secrets and variables -> Actions"
+            echo "3. Or configure a PyPI Trusted Publisher for repository Hamza35779/NOVA-AI"
+            exit 1
+          fi
