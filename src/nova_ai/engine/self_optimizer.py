@@ -246,10 +246,92 @@ class SelfOptimizer:
                         self._tuning[retry_key] = new_retries
                         changes[retry_key] = {"old": current, "new": new_retries}
 
+                # Auto-recommend a lighter model tier when inference is too slow
+                # We encode this as router.<tier>.preferred_model tuning hints.
+                # This fires when the model avg latency exceeds 30 seconds,
+                # suggesting the configured model is too heavy for the hardware.
+                if name.startswith("router_tier:"):
+                    tier = name.split(":", 1)[1]
+                    if profile.avg_duration_ms > 30_000 and profile.total_calls >= 5:
+                        # Map tier to the next-lighter tier model key
+                        lighter = {"large": "medium", "medium": "small"}.get(tier)
+                        if lighter:
+                            hint_key = f"router.{tier}.preferred_model"
+                            hint_val = f"<downgrade-to-{lighter}>"
+                            if self._tuning.get(hint_key) != hint_val:
+                                self._tuning[hint_key] = hint_val
+                                changes[hint_key] = {"old": "default", "new": hint_val}
+
             if changes:
                 self._persist_tuning()
 
         return changes
+
+    def start_background_tuning(self, interval_seconds: float = 300.0) -> None:
+        """Start a recurring background timer that calls auto_tune() every interval.
+
+        Safe to call multiple times — subsequent calls are no-ops if already running.
+        """
+        with self._lock:
+            if getattr(self, "_tuning_timer_active", False):
+                return
+            self._tuning_timer_active = True
+
+        def _run() -> None:
+            try:
+                changes = self.auto_tune()
+                if changes:
+                    logger.info("SelfOptimizer auto-tune applied %d changes: %s", len(changes), changes)
+            except Exception as exc:
+                logger.warning("SelfOptimizer auto-tune error: %s", exc)
+            finally:
+                # Reschedule as long as the flag is set
+                if getattr(self, "_tuning_timer_active", False):
+                    t = threading.Timer(interval_seconds, _run)
+                    t.daemon = True
+                    t.start()
+                    with self._lock:
+                        self._active_timer = t
+
+        t = threading.Timer(interval_seconds, _run)
+        t.daemon = True
+        t.start()
+        with self._lock:
+            self._active_timer = t
+        logger.info("SelfOptimizer background tuning started (interval=%.0fs)", interval_seconds)
+
+    def stop_background_tuning(self) -> None:
+        """Stop the background auto-tuning timer."""
+        with self._lock:
+            self._tuning_timer_active = False
+            timer = getattr(self, "_active_timer", None)
+        if timer is not None:
+            timer.cancel()
+
+    def get_recommended_model_for_tier(self, tier: str) -> Optional[str]:
+        """Return optimizer-recommended model for a routing tier, or None.
+
+        The recommendation is written by auto_tune() when a configured model
+        is found to be consistently too slow or unreliable for its tier.
+        """
+        return self._tuning.get(f"router.{tier}.preferred_model")
+
+    def apply_router_correction(self, config: Any) -> None:
+        """Mutate a RouterConfig's tiers dict based on accumulated tuning data.
+
+        Called once when the router initialises to apply any persisted corrections.
+        """
+        with self._lock:
+            for tier in ("small", "medium", "large"):
+                recommended = self._tuning.get(f"router.{tier}.preferred_model")
+                if recommended and hasattr(config, "tiers") and isinstance(config.tiers, dict):
+                    current = config.tiers.get(tier)
+                    if current != recommended:
+                        config.tiers[tier] = recommended
+                        logger.info(
+                            "SelfOptimizer corrected router tier '%s': %s -> %s",
+                            tier, current, recommended,
+                        )
 
     # ── Feedback Loop ──────────────────────────────────────────
 

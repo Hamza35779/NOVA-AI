@@ -19,6 +19,7 @@ from nova_ai.server.digest_routes import create_digest_router
 from nova_ai.server.integrations_router import router as integrations_router
 from nova_ai.server.research_router import router as research_router
 from nova_ai.server.routes import router
+from nova_ai.server.tasks_api import router as tasks_router
 from nova_ai.server.upload_router import router as upload_router
 
 logger = logging.getLogger(__name__)
@@ -302,6 +303,7 @@ def create_app(
     app.include_router(research_router)
     app.include_router(analytics_router)
     app.include_router(integrations_router)
+    app.include_router(tasks_router)
     include_all_routes(app)
 
     # Restore SendBlue channel bindings from database on startup

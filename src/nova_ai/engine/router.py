@@ -8,10 +8,13 @@ import threading
 import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Sequence
 
+from nova_ai.engine.router_learning import get_feedback_store
+
 from nova_ai.core.types import Message
 from nova_ai.engine._stubs import InferenceEngine, StreamChunk
 from nova_ai.engine.multi import MultiEngine
 from nova_ai.engine.router_config import RouterConfig
+from nova_ai.engine.self_optimizer import get_optimizer
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +52,35 @@ class SmartRouter(InferenceEngine):
             "total_requests": 0,
             "total_latency_seconds": 0.0,
         }
+        # Apply any persisted optimizer corrections to tier config
+        optimizer = get_optimizer()
+        optimizer.apply_router_correction(self.config)
+        # Start background auto-tuning (no-op if already running)
+        optimizer.start_background_tuning(interval_seconds=300)
 
     def classify_complexity(self, messages: Sequence[Message], **kwargs: Any) -> str:
         """Classify message history into 'small', 'medium', or 'large' tier."""
+        # Get heuristic tier first
+        heuristic_tier = self._classify_heuristic(messages, **kwargs)
+
+        # Apply learned correction if enabled
+        if self.config.learning_enabled:
+            try:
+                last_content = messages[-1].content or "" if messages else ""
+                store = get_feedback_store()
+                corrected = store.get_correction(last_content, heuristic_tier)
+                if corrected:
+                    logger.debug(
+                        "Router learning: overriding '%s' -> '%s' based on feedback",
+                        heuristic_tier, corrected,
+                    )
+                    return corrected
+            except Exception:
+                pass  # Never let learning break routing
+
+        return heuristic_tier
+
+    def _classify_heuristic(self, messages: Sequence[Message], **kwargs: Any) -> str:
         if not messages:
             return self.config.default_tier
 
@@ -107,8 +136,30 @@ class SmartRouter(InferenceEngine):
 
         return self.config.default_tier
 
+    def record_feedback(
+        self,
+        message_id: str,
+        query_content: str,
+        tier_chosen: str,
+        thumbs_up: bool,
+    ) -> None:
+        """Record user feedback on a routing decision to improve future routing."""
+        if not self.config.learning_enabled:
+            return
+        try:
+            store = get_feedback_store()
+            store.record_implicit_feedback(message_id, query_content, tier_chosen, thumbs_up)
+        except Exception as exc:
+            logger.debug("Router feedback store error: %s", exc)
+
     def _resolve_model(self, tier: str) -> str:
         """Resolve model name for a tier with dynamic engine discovery fallback."""
+        # Check if the self-optimizer has a recommendation for this tier
+        optimizer = get_optimizer()
+        optimizer_rec = optimizer.get_recommended_model_for_tier(tier)
+        if optimizer_rec and not optimizer_rec.startswith("<"):
+            return optimizer_rec
+
         configured = self.config.tiers.get(
             tier, self.config.tiers.get(self.config.default_tier, "qwen2.5:7b")
         )
@@ -151,11 +202,31 @@ class SmartRouter(InferenceEngine):
             "SmartRouter routed query to '%s' tier (model=%s)", tier, routed_model
         )
 
+        # Record the routing decision with timing so the optimizer can learn
+        _route_start = time.perf_counter()
+
         result = self.engine.generate(messages, model=routed_model, **kwargs)
+
+        get_optimizer().record(
+            component=f"router_tier:{tier}",
+            action="generate",
+            duration_ms=(time.perf_counter() - _route_start) * 1000,
+            success=True,
+        )
+
         with self._lock:
             self._stats["total_requests"] += 1
             self._stats[tier] = self._stats.get(tier, 0) + 1
             self._stats["total_latency_seconds"] += time.perf_counter() - start_time
+
+        # Record the routing decision so feedback can be correlated later
+        if self.config.learning_enabled:
+            try:
+                last_content = messages[-1].content or "" if messages else ""
+                msg_id = kwargs.get("message_id", f"msg_{int(time.time() * 1000)}")
+                get_feedback_store().record_decision(msg_id, last_content, tier)
+            except Exception:
+                pass
         return result
 
     async def stream(

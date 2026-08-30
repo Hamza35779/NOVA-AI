@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { transcribeAudio, fetchSpeechHealth } from '../lib/api';
 
-export type SpeechState = 'idle' | 'recording' | 'transcribing';
+export type SpeechState = 'idle' | 'recording' | 'transcribing' | 'wake-listening';
 
 export function useSpeech() {
   const [state, setState] = useState<SpeechState>('idle');

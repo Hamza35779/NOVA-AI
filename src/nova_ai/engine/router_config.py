@@ -7,6 +7,8 @@ from typing import Dict
 @dataclass(slots=True)
 class RouterConfig:
     enabled: bool = False
+    learning_enabled: bool = True
+    feedback_window: int = 500  # max feedback records to consider
     tiers: Dict[str, str] = field(
         default_factory=lambda: {
             "small": "qwen2.5:0.5b",

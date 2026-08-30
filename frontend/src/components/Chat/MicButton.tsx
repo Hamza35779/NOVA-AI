@@ -18,11 +18,13 @@ export function MicButton({ state, onClick, disabled, reason }: MicButtonProps) 
         ? 'Speech backend not configured'
         : reason === 'streaming'
           ? 'Wait for response'
-          : state === 'recording'
-            ? 'Stop recording'
-            : state === 'transcribing'
-              ? 'Transcribing...'
-              : 'Voice input';
+          : state === 'wake-listening'
+            ? 'Listening for "Hey Nova"...'
+            : state === 'recording'
+              ? 'Stop recording'
+              : state === 'transcribing'
+                ? 'Transcribing...'
+                : 'Voice input';
 
   const isInactive = disabled || state === 'transcribing';
 
@@ -39,7 +41,9 @@ export function MicButton({ state, onClick, disabled, reason }: MicButtonProps) 
         style={{
           background: state === 'recording'
             ? 'var(--color-error)'
-            : 'transparent',
+            : state === 'wake-listening'
+              ? 'rgba(124, 58, 237, 0.25)'
+              : 'transparent',
           color: state === 'recording'
             ? 'white'
             : isInactive
@@ -47,7 +51,7 @@ export function MicButton({ state, onClick, disabled, reason }: MicButtonProps) 
               : 'var(--color-text-secondary)',
           cursor: isInactive ? 'default' : 'pointer',
           opacity: isInactive ? 0.35 : 1,
-          animation: state === 'recording' ? 'pulse 1.5s ease-in-out infinite' : 'none',
+          animation: (state === 'recording' || state === 'wake-listening') ? 'pulse 1.5s ease-in-out infinite' : 'none',
         }}
       >
         {state === 'transcribing' ? (

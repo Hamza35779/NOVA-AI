@@ -210,5 +210,7 @@ class CanvasTool(BaseTool):
                 "file_path": str(file_path),
                 "file_uri": file_uri,
                 "created_at": timestamp,
+                "render": "canvas_panel",
+                "html": full_html,
             },
         )

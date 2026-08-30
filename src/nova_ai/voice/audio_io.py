@@ -137,3 +137,76 @@ def play_audio(audio_bytes: bytes, sample_rate: int = 24000) -> None:
     audio_array = _np.frombuffer(audio_bytes, dtype=_np.int16)
     _sd.play(audio_array, samplerate=sample_rate)
     _sd.wait()
+
+
+def listen_for_wake_word(
+    keyword: str = "hey nova",
+    timeout_seconds: float = 0.0,
+    sample_rate: int = 16000,
+    chunk_duration: float = 0.5,
+    energy_threshold: int = 300,
+) -> bool:
+    """Listen continuously for a wake-word using Whisper STT on short audio chunks.
+
+    Returns True when the keyword is detected, False on timeout (if set) or error.
+    Uses energy-gating so Whisper is only called when sound is present.
+
+    Args:
+        keyword: Word/phrase to detect (case-insensitive).
+        timeout_seconds: Max seconds to listen (0 = forever).
+        chunk_duration: Duration of each audio chunk to transcribe.
+        energy_threshold: RMS energy floor — chunks below this are skipped.
+    """
+    if not check_audio_deps():
+        return False
+
+    import sounddevice as sd  # type: ignore
+    import numpy as np  # type: ignore
+
+    keyword_lower = keyword.lower().strip()
+    chunk_samples = int(sample_rate * chunk_duration)
+    deadline = time.monotonic() + timeout_seconds if timeout_seconds > 0 else None
+
+    # Try to import a lightweight STT backend for wake detection.
+    # We prefer a local Whisper implementation; fall back to energy-only.
+    stt_fn = None
+    try:
+        import whisper  # type: ignore
+
+        _model = whisper.load_model("tiny", device="cpu")
+
+        def _whisper_transcribe(audio_np: np.ndarray) -> str:
+            result = _model.transcribe(audio_np.astype(np.float32), fp16=False, language="en")
+            return (result.get("text") or "").lower().strip()
+
+        stt_fn = _whisper_transcribe
+    except (ImportError, Exception):
+        pass
+
+    with sd.InputStream(samplerate=sample_rate, channels=1, dtype="int16") as stream:
+        while True:
+            if deadline and time.monotonic() > deadline:
+                return False
+
+            raw, _ = stream.read(chunk_samples)
+            chunk = np.frombuffer(raw, dtype=np.int16) if not isinstance(raw, np.ndarray) else raw.flatten()
+
+            rms = int(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
+            if rms < energy_threshold:
+                continue
+
+            if stt_fn is not None:
+                try:
+                    # Normalize to float32 [-1, 1] for Whisper
+                    text = stt_fn(chunk.astype(np.float32) / 32768.0)
+                    if keyword_lower in text:
+                        return True
+                except Exception:
+                    pass
+            else:
+                # Fallback: treat sustained energy above 2× threshold as activation
+                if rms > energy_threshold * 2:
+                    return True
+
+
+__all__ = ["check_audio_deps", "record_until_silence", "play_audio", "listen_for_wake_word"]

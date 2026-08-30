@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import threading
+import time
 from typing import Any, List, Optional, Tuple
 
 from rich.console import Console
@@ -13,7 +15,7 @@ from nova_ai.sdk import Nova
 from nova_ai.speech._discovery import get_speech_backend
 from nova_ai.speech._stubs import SpeechBackend, TranscriptionResult
 from nova_ai.speech.tts import TTSBackend, TTSResult
-from nova_ai.voice.audio_io import check_audio_deps, play_audio, record_until_silence
+from nova_ai.voice.audio_io import check_audio_deps, play_audio, record_until_silence, listen_for_wake_word
 
 console = Console()
 
@@ -77,6 +79,8 @@ class VoiceSession:
         max_turns: int = 0,
         silence_threshold: int = 500,
         history_turns: int = 5,
+        wake_word: Optional[str] = None,
+        wake_word_timeout: float = 30.0,
     ) -> None:
         """
         Args:
@@ -93,6 +97,8 @@ class VoiceSession:
         self.silence_threshold = silence_threshold
         self.history_turns = max(0, int(history_turns))
         self.history: List[Tuple[str, str]] = []
+        self.wake_word = wake_word
+        self.wake_word_timeout = wake_word_timeout
 
         self.nova = Nova(config=self.config, engine_key=self.engine_key)
         self.stt_backend = self._get_stt_backend()
@@ -161,8 +167,21 @@ class VoiceSession:
                 )
                 break
             try:
-                if self.push_to_talk:
-                    input("Press Enter to speak...")
+                if self.wake_word:
+                    console.print(f"[dim]Listening for wake-word: [bold]{self.wake_word}[/bold]...[/dim]")
+                    detected = listen_for_wake_word(
+                        keyword=self.wake_word,
+                        timeout_seconds=self.wake_word_timeout,
+                    )
+                    if not detected:
+                        continue
+                    console.print(f"[bold green]Wake-word detected! Listening...[/bold green]")
+                elif self.push_to_talk:
+                    console.print("[dim]Press [bold]Enter[/bold] to speak (Ctrl+C to exit)...[/dim]")
+                    try:
+                        input()
+                    except EOFError:
+                        break
 
                 audio_data = record_until_silence(
                     silence_threshold=self.silence_threshold

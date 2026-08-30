@@ -6,9 +6,13 @@ executes them in optimal order, and tracks progress with retry logic.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import threading
 import time
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
@@ -16,6 +20,40 @@ from typing import Any, Callable, Dict, List, Optional, Set
 from nova_ai.engine.self_optimizer import get_optimizer
 
 logger = logging.getLogger(__name__)
+
+# Per-plan asyncio event queues for SSE streaming.
+# Key: plan_id, Value: list of asyncio.Queue instances (one per SSE subscriber).
+_plan_queues: dict[str, list] = defaultdict(list)
+_queues_lock = threading.Lock()
+
+
+def _emit_task_event(plan_id: str, event: dict) -> None:
+    """Push a task status event to all SSE subscribers for a plan."""
+    payload = json.dumps(event)
+    with _queues_lock:
+        queues = _plan_queues.get(plan_id, [])
+    for q in queues:
+        try:
+            q.put_nowait(payload)
+        except Exception:
+            pass
+
+
+def subscribe_to_plan(plan_id: str, queue) -> None:
+    """Register an asyncio.Queue to receive events for a plan."""
+    with _queues_lock:
+        _plan_queues[plan_id].append(queue)
+
+
+def unsubscribe_from_plan(plan_id: str, queue) -> None:
+    """Remove a subscriber queue for a plan."""
+    with _queues_lock:
+        if plan_id in _plan_queues:
+            try:
+                _plan_queues[plan_id].remove(queue)
+            except ValueError:
+                pass
+
 
 
 class TaskStatus(str, Enum):
@@ -172,6 +210,13 @@ class TaskPlanner:
             plan.status = TaskStatus.FAILED
         plan.completed_at = time.time()
 
+        _emit_task_event(plan.id, {
+            "type": "plan_complete",
+            "plan_id": plan.id,
+            "status": plan.status.value,
+            "progress": plan.progress,
+        })
+
         optimizer.record(
             component="task_planner",
             action="execute_plan",
@@ -185,6 +230,16 @@ class TaskPlanner:
     def _execute_task(self, task: SubTask, plan: TaskPlan, optimizer: Any) -> None:
         """Execute a single subtask with retry logic."""
         task.status = TaskStatus.RUNNING
+        _emit_task_event(plan.id, {
+            "type": "task_update",
+            "plan_id": plan.id,
+            "task_id": task.id,
+            "title": task.title,
+            "status": task.status.value,
+            "tool_name": task.tool_name,
+            "retries": task.retries,
+            "duration_ms": task.duration_ms,
+        })
         logger.info("Executing task [%s]: %s", task.id, task.title)
 
         for attempt in range(task.max_retries + 1):
@@ -208,6 +263,16 @@ class TaskPlanner:
                 task.status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
 
                 if success:
+                    _emit_task_event(plan.id, {
+                        "type": "task_update",
+                        "plan_id": plan.id,
+                        "task_id": task.id,
+                        "title": task.title,
+                        "status": task.status.value,
+                        "tool_name": task.tool_name,
+                        "retries": task.retries,
+                        "duration_ms": task.duration_ms,
+                    })
                     optimizer.record(
                         component=f"task:{task.tool_name or 'manual'}",
                         action=task.title,
@@ -234,6 +299,16 @@ class TaskPlanner:
                     continue
 
                 task.status = TaskStatus.FAILED
+                _emit_task_event(plan.id, {
+                    "type": "task_update",
+                    "plan_id": plan.id,
+                    "task_id": task.id,
+                    "title": task.title,
+                    "status": task.status.value,
+                    "tool_name": task.tool_name,
+                    "retries": task.retries,
+                    "duration_ms": task.duration_ms,
+                })
                 optimizer.record(
                     component=f"task:{task.tool_name or 'manual'}",
                     action=task.title,
@@ -244,6 +319,16 @@ class TaskPlanner:
                 return
 
         task.status = TaskStatus.FAILED
+        _emit_task_event(plan.id, {
+            "type": "task_update",
+            "plan_id": plan.id,
+            "task_id": task.id,
+            "title": task.title,
+            "status": task.status.value,
+            "tool_name": task.tool_name,
+            "retries": task.retries,
+            "duration_ms": task.duration_ms,
+        })
 
     def get_plan(self, plan_id: str) -> Optional[TaskPlan]:
         return self._plans.get(plan_id)
@@ -251,5 +336,56 @@ class TaskPlanner:
     def list_plans(self) -> List[Dict[str, Any]]:
         return [plan.summary for plan in self._plans.values()]
 
+    def get_all_plans(self) -> list:
+        """Return all plans with their current status summaries."""
+        return [plan.summary for plan in self._plans.values()]
 
-__all__ = ["TaskPlanner", "TaskPlan", "SubTask", "TaskStatus"]
+    def get_plan_detail(self, plan_id: str) -> Optional[dict]:
+        """Return full plan detail including all subtask statuses."""
+        plan = self._plans.get(plan_id)
+        if not plan:
+            return None
+        return {
+            "plan_id": plan.id,
+            "goal": plan.goal,
+            "status": plan.status.value,
+            "progress": plan.progress,
+            "created_at": plan.created_at,
+            "completed_at": plan.completed_at,
+            "tasks": [
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "description": t.description,
+                    "tool_name": t.tool_name,
+                    "status": t.status.value,
+                    "depends_on": t.depends_on,
+                    "duration_ms": t.duration_ms,
+                    "retries": t.retries,
+                    "error": t.error,
+                }
+                for t in plan.tasks
+            ],
+        }
+
+    def cancel_plan(self, plan_id: str) -> bool:
+        """Mark all pending/running tasks as skipped and fail the plan."""
+        plan = self._plans.get(plan_id)
+        if not plan:
+            return False
+        for task in plan.tasks:
+            if task.status in (TaskStatus.PENDING, TaskStatus.RUNNING):
+                task.status = TaskStatus.SKIPPED
+                task.error = "Cancelled by user"
+        plan.status = TaskStatus.FAILED
+        plan.completed_at = time.time()
+        _emit_task_event(plan_id, {
+            "type": "plan_complete",
+            "plan_id": plan_id,
+            "status": "cancelled",
+            "progress": plan.progress,
+        })
+        return True
+
+
+__all__ = ["TaskPlanner", "TaskPlan", "SubTask", "TaskStatus", "subscribe_to_plan", "unsubscribe_from_plan", "_emit_task_event"]
