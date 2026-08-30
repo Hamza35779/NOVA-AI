@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Square, Paperclip, Search } from 'lucide-react';
+import { Send, Square, Paperclip, Search, Globe, UserCheck, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore, generateId } from '../../lib/store';
 import { streamChat, streamResearch } from '../../lib/sse';
-import { fetchSavings, getBase } from '../../lib/api';
+import { fetchSavings, getBase, uploadFiles, listPersonas } from '../../lib/api';
 import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
 import { MicButton } from './MicButton';
 import { useSpeech } from '../../hooks/useSpeech';
@@ -96,6 +96,26 @@ export function InputArea() {
   const deepResearch = useAppStore((s) => s.deepResearch);
   const setDeepResearch = useAppStore((s) => s.setDeepResearch);
   const corpusSync = useResearchCorpusSync(deepResearch);
+
+  const [webSearch, setWebSearch] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      const res = await uploadFiles(files);
+      toast.success(`Ingested ${files.length} document(s) (${res.chunks_added} chunks) into RAG context`);
+      setInput((prev) => (prev ? `${prev}\n[Referenced file: ${files.map(f => f.name).join(', ')}]` : `[Referenced file: ${files.map(f => f.name).join(', ')}] `));
+    } catch (err: any) {
+      toast.error(`Upload failed: ${err.message}`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const {
     state: speechState,
@@ -562,6 +582,22 @@ export function InputArea() {
             <Search size={12} />
             Deep Research
           </button>
+          <button
+            type="button"
+            onClick={() => setWebSearch(!webSearch)}
+            disabled={streamState.isStreaming}
+            aria-pressed={webSearch}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
+            style={{
+              background: webSearch ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
+              border: `1px solid ${webSearch ? '#06B6D4' : 'var(--color-border)'}`,
+              color: webSearch ? '#06B6D4' : 'var(--color-text-tertiary)',
+            }}
+            title={webSearch ? 'Web Search Grounding: on' : 'Web Search Grounding: off'}
+          >
+            <Globe size={12} />
+            Web Search
+          </button>
         </div>
         {deepResearch && corpusSync.syncing && corpusSync.itemsSynced > 0 && (
           <div
@@ -584,12 +620,29 @@ export function InputArea() {
           boxShadow: 'var(--shadow-sm)',
         }}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          accept=".pdf,.docx,.txt,.md,.csv"
+          onChange={handleFileUpload}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading || streamState.isStreaming}
+          className="p-1.5 text-gray-400 hover:text-white rounded-lg transition hover:bg-white/5 cursor-pointer disabled:opacity-50"
+          title="Attach files (PDF, DOCX, TXT, MD, CSV) for RAG context"
+        >
+          <Paperclip size={16} className={uploading ? 'animate-pulse text-[#7C3AED]' : ''} />
+        </button>
         <textarea
           ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={selectedModel ? 'Message NOVA AI...' : 'Pick a model first (⌘K)...'}
+          placeholder={selectedModel ? (webSearch ? 'Ask with live Web Search...' : 'Message NOVA AI...') : 'Pick a model first (⌘K)...'}
           rows={1}
           className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
           style={{ color: 'var(--color-text)', maxHeight: '200px' }}

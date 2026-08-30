@@ -61,7 +61,7 @@ def test_brave_parsing():
 
 
 def test_search_router(test_client):
-    with patch("nova_ai.tools.web_search.WebSearchTool.execute") as mock_execute:
+    with patch("nova_ai.server.search_router.WebSearchTool.execute") as mock_execute:
         mock_res = MagicMock()
         mock_res.success = True
         mock_res.content = "raw content"

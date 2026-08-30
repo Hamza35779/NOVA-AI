@@ -14,7 +14,7 @@ def test_read_clipboard(mock_get):
     assert response.status_code == 200
     assert response.json() == {"text": "Test clipboard", "length": 14}
 
-@patch("nova_ai.tools.clipboard_ai.ClipboardAITool.execute")
+@patch("nova_ai.server.clipboard_router.ClipboardAITool.execute")
 def test_process_clipboard(mock_execute):
     class MockResult:
         success = True

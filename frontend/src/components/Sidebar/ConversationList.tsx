@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Trash2, Pin } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAppStore } from '../../lib/store';
@@ -37,7 +37,7 @@ export function ConversationList({ searchQuery }: Props) {
   const fetchApiHistory = async () => {
     try {
       const res = await listHistory(50);
-      setApiConversations(res.history || []);
+      setApiConversations(res.conversations || res.history || []);
       setUsingApi(true);
     } catch (e) {
       setUsingApi(false);
