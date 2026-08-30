@@ -15,6 +15,7 @@ def _get_local_ip() -> str:
     """Discover the local LAN IP address."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
+        s.settimeout(0.5)
         # Doesn't need to be reachable, just opens a socket to route
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
