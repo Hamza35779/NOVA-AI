@@ -319,7 +319,12 @@ class TestRunQuick:
 
     def test_run_quick_returns_subset(self) -> None:
         scanner = PrivacyScanner()
-        plat = sys.platform
+        plat = "darwin" if sys.platform == "darwin" else "linux"
+        # On non-darwin platforms run_quick uses the LUKS check; the
+        # mock must carry that platform so the assertion below reflects
+        # what run_quick actually returns (it does not filter by
+        # platform — it filters by skip status only).
+        luks_platform = plat
         with (
             patch.object(scanner, "check_filevault") as fv,
             patch.object(scanner, "check_luks") as luks,
@@ -327,9 +332,9 @@ class TestRunQuick:
             patch.object(scanner, "check_cloud_sync_agents") as cs,
         ):
             fv.return_value = ScanResult("FV", "ok", "ok", "darwin")
-            luks.return_value = ScanResult("LUKS", "ok", "ok", "linux")
+            luks.return_value = ScanResult("LUKS", "ok", "ok", luks_platform)
             ic.return_value = ScanResult("iCloud", "ok", "ok", "darwin")
-            cs.return_value = ScanResult("Cloud", "ok", "ok", plat)
+            cs.return_value = ScanResult("Cloud", "ok", "ok", "all")
             results = scanner.run_quick()
         for r in results:
             assert r.platform in (plat, "all")

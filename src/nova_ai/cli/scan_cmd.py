@@ -404,9 +404,23 @@ class PrivacyScanner:
             self.check_dns,
         ]
 
+    def _current_platform(self) -> str:
+        """Map sys.platform to the scanner's platform vocabulary.
+
+        The scanner knows "darwin", "linux", and "all". Windows has no
+        dedicated checks yet, but must not be misclassified as "linux" —
+        that leaked LUKS results (platform="linux") into Windows output
+        and blocked every platform-filtered path from running there.
+        """
+        if sys.platform == "darwin":
+            return "darwin"
+        if sys.platform == "win32":
+            return "win32"
+        return "linux"
+
     def run_all(self) -> list[ScanResult]:
         """Run all checks, filter to the current platform, hide 'skip' results."""
-        current_plat = "darwin" if sys.platform == "darwin" else "linux"
+        current_plat = self._current_platform()
         results: list[ScanResult] = []
         for check_fn in self._get_all_checks():
             result = check_fn()
@@ -419,7 +433,7 @@ class PrivacyScanner:
 
     def run_quick(self) -> list[ScanResult]:
         """Run only critical checks: disk encryption + cloud sync agents."""
-        current_plat = "darwin" if sys.platform == "darwin" else "linux"
+        current_plat = self._current_platform()
         quick_checks: list[Callable[[], ScanResult]]
         if current_plat == "darwin":
             quick_checks = [self.check_filevault, self.check_cloud_sync_agents]

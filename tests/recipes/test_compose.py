@@ -172,13 +172,17 @@ class TestLoadOperatorRecipe:
         prompt_file = tmp_path / "prompt.md"
         prompt_file.write_text("External prompt content.")
 
+        # as_posix(): TOML basic strings treat backslashes as escapes,
+        # so a raw Windows temp path (C:\Users\...) fails to parse
+        # ("\U" starts a unicode escape). Forward slashes are valid
+        # Windows paths for Path().
         toml = textwrap.dedent(f"""\
             [recipe]
             name = "ext-prompt"
 
             [agent]
             type = "simple"
-            system_prompt_path = "{prompt_file}"
+            system_prompt_path = "{prompt_file.as_posix()}"
         """)
         p = tmp_path / "ext.toml"
         p.write_text(toml)
