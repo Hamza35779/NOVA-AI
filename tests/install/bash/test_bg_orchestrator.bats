@@ -46,8 +46,8 @@ teardown() {
 @test "invokes pull-model.sh for each model arg" {
     run bash "$SCRIPT" qwen3.5:9b qwen3.5:27b
     [ "$status" -eq 0 ]
-    [ -f "$NOVA_AI_HOME/.state/models/qwen3.5:9b.ready" ]
-    [ -f "$NOVA_AI_HOME/.state/models/qwen3.5:27b.ready" ]
+    [ -f "$NOVA_AI_HOME/.state/models/qwen3.5_9b.ready" ]
+    [ -f "$NOVA_AI_HOME/.state/models/qwen3.5_27b.ready" ]
 }
 
 @test "removes pid file when done (via trap)" {
