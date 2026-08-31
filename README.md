@@ -19,6 +19,8 @@
 
 ---
 
+> **[Complete Setup & User Guide](SETUP_AND_USAGE_GUIDE.md)**
+>
 > **[Documentation](https://hamza35779.github.io/NOVA-AI/)**
 >
 > **[Roadmap](https://hamza35779.github.io/NOVA-AI/development/roadmap/)**
