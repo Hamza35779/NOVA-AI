@@ -21,10 +21,12 @@ def test_none_persona_disables_all_files():
 
 def test_named_persona_resolves_to_personas_dir():
     out = SystemPromptBuilder._resolve_persona(MemoryFilesConfig(persona_name="coder"))
-    base = str(Path.home() / ".nova_ai" / "personas" / "coder")
-    assert out.soul_path == f"{base}/SOUL.md"
-    assert out.memory_path == f"{base}/MEMORY.md"
-    assert out.user_path == f"{base}/USER.md"
+    # Build expected paths with pathlib so the test is
+    # platform-correct (backslashes on Windows, forward slashes elsewhere).
+    base = Path.home() / ".nova_ai" / "personas" / "coder"
+    assert Path(out.soul_path) == base / "SOUL.md"
+    assert Path(out.memory_path) == base / "MEMORY.md"
+    assert Path(out.user_path) == base / "USER.md"
 
 
 @pytest.mark.parametrize("bad", ["../etc", "a/b", "..\\win", "/abs", "x/../y"])

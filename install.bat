@@ -28,4 +28,8 @@ echo.
 echo [3/3] Done! You can now start NOVA AI by double-clicking 'start.bat'
 echo or running 'python -m nova_ai.cli chat' in this directory.
 echo.
+echo NOTE: Screen OCR (the 'screen' tool) needs the Tesseract engine.
+echo Install it from https://github.com/UB-Mannheim/tesseract/wiki and add
+echo it to PATH if you plan to use screen capture / OCR features.
+echo.
 pause
