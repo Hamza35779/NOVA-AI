@@ -121,12 +121,16 @@ class WhatsAppBaileysChannel(BaseChannel):
                 shutil.rmtree(dist_dst)
             shutil.copytree(dist_src, dist_dst)
 
-        # Run npm install if node_modules is missing.
+        # Run npm install if node_modules is missing. On Windows npm is
+        # npm.CMD — Popen can't execute it directly without a shell or
+        # the resolved full path, raising "[WinError 2]". Resolve via
+        # shutil.which (checked up front, so it's non-None here).
         node_modules = runtime / "node_modules"
         if not node_modules.exists():
             logger.info("Running npm install in %s", runtime)
+            npm_cmd = shutil.which("npm")
             subprocess.run(
-                ["npm", "install", "--production"],
+                [npm_cmd or "npm", "install", "--production"],
                 cwd=str(runtime),
                 check=True,
                 capture_output=True,

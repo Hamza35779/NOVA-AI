@@ -17,14 +17,21 @@ if [[ -z "$MODEL" ]]; then
     exit 2
 fi
 
+# Sanitize the model id for use as a filename. On Windows/NTFS a ':' is
+# the alternate-data-stream separator — writing "qwen3.5:9b.downloading"
+# would silently create "qwen3.5" plus an ADS, breaking banner/doctor
+# state reporting. Ollama ids are "<name>:<tag>" with no underscore, so
+# ':' → '_' is unambiguous (restored on read by _bg_state.py).
+MODEL_TAG="${MODEL//:/_}"
+
 NOVA_AI_HOME="${NOVA_AI_HOME:-$HOME/.nova_ai}"
 STATE_DIR="$NOVA_AI_HOME/.state/models"
 mkdir -p "$STATE_DIR"
 
-DOWNLOADING="$STATE_DIR/${MODEL}.downloading"
-READY="$STATE_DIR/${MODEL}.ready"
-FAILED="$STATE_DIR/${MODEL}.failed"
-LOG="$STATE_DIR/${MODEL}.log"
+DOWNLOADING="$STATE_DIR/${MODEL_TAG}.downloading"
+READY="$STATE_DIR/${MODEL_TAG}.ready"
+FAILED="$STATE_DIR/${MODEL_TAG}.failed"
+LOG="$STATE_DIR/${MODEL_TAG}.log"
 
 # Cleanup any prior state for this model.
 rm -f "$READY" "$FAILED"

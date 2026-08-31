@@ -11,7 +11,8 @@ from nova_ai.cli.doctor_cmd import doctor
 
 def test_doctor_shows_bg_section_when_state_present(tmp_nova_ai_home: Path) -> None:
     (tmp_nova_ai_home / ".state" / "extension-built").write_text("")
-    (tmp_nova_ai_home / ".state" / "models" / "qwen3.5:9b.ready").write_text("")
+    # Sanitized filename (':' → '_'); get_status restores the colon.
+    (tmp_nova_ai_home / ".state" / "models" / "qwen3.5_9b.ready").write_text("")
     runner = CliRunner()
     result = runner.invoke(doctor, [], catch_exceptions=False)
     assert "Background tasks" in result.output

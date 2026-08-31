@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -35,7 +36,10 @@ def test_openclaw_runner_parses_real_agent_json_shape(tmp_path: Path) -> None:
         / "src/nova_ai/evals/backends/external/_runners/openclaw_runner.mjs"
     )
     out_json = tmp_path / "out.json"
+    # Derive from os.environ: node's os.tmpdir() throws ENOENT on Windows
+    # when TEMP/TMP are missing from the environment.
     env = {
+        **os.environ,
         "OPENCLAW_PATH": str(tmp_path),
         "HOME": str(tmp_path / "home"),
     }

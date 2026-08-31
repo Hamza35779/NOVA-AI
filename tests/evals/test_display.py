@@ -201,7 +201,10 @@ class TestPrintCompletion:
             traces_dir=Path("results/traces/supergpqa_qwen3-8b"),
         )
         output = buf.getvalue()
-        assert "results/test.jsonl" in output
+        # Panel renders str(Path(...)), which is native-separated
+        # (backslashes on Windows) — normalize before matching.
+        output_normalized = output.replace("\\", "/")
+        assert "results/test.jsonl" in output_normalized
         assert "traces" in output
         assert "complete" in output.lower()
 

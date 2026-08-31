@@ -40,6 +40,31 @@ def _safe_read(path: Path) -> Optional[str]:
         return None
 
 
+_MODEL_STATE_SUFFIXES = (".downloading", ".ready", ".failed")
+
+
+def _parse_model_state_file(filename: str) -> Optional[tuple[str, str]]:
+    """Parse ``<model-id><state>.downloading|.ready|.failed``.
+
+    Returns ``(model_id, state)`` or None when the name doesn't match.
+    Model ids contain dots, so the state suffix is matched at the end of
+    the name rather than via ``Path.suffix``. On Windows the install
+    scripts sanitize ``:`` to ``_`` in state filenames (NTFS treats a
+    colon as an ADS separator); reading restores the single colon.
+    """
+    for suffix in _MODEL_STATE_SUFFIXES:
+        if not filename.endswith(suffix):
+            continue
+        stem = filename[: -len(suffix)]
+        if not stem:
+            return None
+        if "_" in stem and ":" not in stem:
+            # Sanitized Windows filename: restore "<name>:<tag>".
+            stem = stem.replace("_", ":", 1)
+        return stem, suffix.lstrip(".")
+    return None
+
+
 def get_status(home: Optional[Path] = None) -> BgStatus:
     """Snapshot the background-work state from the state directory."""
     home = home or config.DEFAULT_CONFIG_DIR
@@ -58,14 +83,24 @@ def get_status(home: Optional[Path] = None) -> BgStatus:
             status.rust_error = contents
 
     # Models: parse files in models_dir; .ready supersedes .downloading and .failed.
+    #
+    # Two filename pitfalls, both handled by _parse_model_state_file:
+    #   1. Model ids contain dots ("qwen3.5:9b"), so pathlib's f.suffix
+    #      is wrong — match the full state suffix at the end of the name.
+    #   2. On Windows, ':' is the NTFS alternate-data-stream separator:
+    #      writing "qwen3.5:9b.downloading" silently creates "qwen3.5"
+    #      plus an ADS. The install scripts therefore sanitize ':' to '_'
+    #      on write (see pull-model.sh), and we restore it on read —
+    #      Ollama ids are "<name>:<tag>" with exactly one colon and never
+    #      contain '_'.
     if models_dir.is_dir():
         # First pass: capture every model id we see.
         seen: Dict[str, str] = {}
         for f in models_dir.iterdir():
-            if f.suffix not in (".downloading", ".ready", ".failed"):
+            parsed = _parse_model_state_file(f.name)
+            if parsed is None:
                 continue
-            model_id = f.name[: -len(f.suffix)]
-            new_state = f.suffix.lstrip(".")
+            model_id, new_state = parsed
             current = seen.get(model_id, "")
             # Precedence: ready > failed > downloading
             if current == "ready":
