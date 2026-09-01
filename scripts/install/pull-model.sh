@@ -45,7 +45,7 @@ while [[ $attempt -lt $MAX_RETRIES ]]; do
     attempt=$((attempt + 1))
     if ollama pull "$MODEL" >>"$LOG" 2>&1; then
         # Atomic rename: write to .tmp then mv.
-        tmp="$STATE_DIR/${MODEL}.ready.tmp"
+        tmp="$STATE_DIR/${MODEL_TAG}.ready.tmp"
         date -u +"%Y-%m-%dT%H:%M:%SZ" > "$tmp"
         mv "$tmp" "$READY"
         rm -f "$DOWNLOADING"

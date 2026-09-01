@@ -198,4 +198,4 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 ## Questions?
 
 - Open a [Discussion](https://github.com/Hamza35779/NOVA-AI/discussions) for questions and help
-- Check the [documentation](https://hamza35779.github.io/NOVA-AI/) for guides and API reference
+- Check the [documentation](https://Hamza35779.github.io/NOVA-AI/) for guides and API reference
