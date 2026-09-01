@@ -7,7 +7,9 @@ class registered as ``"learned"`` in ``RouterPolicyRegistry``.
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from nova_ai.core.registry import RouterPolicyRegistry
@@ -33,6 +35,7 @@ class LearnedRouterPolicy(RouterPolicy):
         available_models: Optional[List[str]] = None,
         default_model: str = "",
         fallback_model: str = "",
+        policy_path: Optional[Any] = None,
     ) -> None:
         self._analyzer = analyzer
         self._available = available_models or []
@@ -41,6 +44,54 @@ class LearnedRouterPolicy(RouterPolicy):
         self._policy_map: Dict[str, str] = {}
         self._confidence: Dict[str, int] = {}
         self.min_samples: int = 5
+        # Optional persistence: when set, the policy map is loaded at init
+        # (confidence pre-satisfied so learned entries actually apply) and
+        # can be written back with save().
+        self.policy_path = Path(policy_path) if policy_path else None
+        if self.policy_path is not None:
+            self.load()
+
+    def save(self) -> Optional[Path]:
+        """Persist the policy map as ``{qclass: {"model": ..., "confidence": ...}}``.
+
+        Returns the written path, or ``None`` when no ``policy_path`` is set.
+        """
+        if self.policy_path is None:
+            return None
+        payload = {
+            qclass: {"model": model, "confidence": self._confidence.get(qclass, 0)}
+            for qclass, model in self._policy_map.items()
+        }
+        self.policy_path.parent.mkdir(parents=True, exist_ok=True)
+        self.policy_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return self.policy_path
+
+    def load(self) -> bool:
+        """Load a previously saved policy map. True when anything loaded."""
+        if self.policy_path is None or not self.policy_path.exists():
+            return False
+        try:
+            payload = json.loads(self.policy_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not read learned policy at %s: %s",
+                           self.policy_path, exc)
+            return False
+        if not isinstance(payload, dict):
+            return False
+        for qclass, entry in payload.items():
+            if isinstance(entry, dict) and entry.get("model"):
+                self._policy_map[qclass] = entry["model"]
+                # Persisted entries are proven decisions: pre-satisfy the
+                # confidence gate so select_model() actually applies them.
+                self._confidence[qclass] = max(
+                    int(entry.get("confidence") or 0), self.min_samples
+                )
+            elif isinstance(entry, str) and entry:
+                self._policy_map[qclass] = entry
+                self._confidence[qclass] = self.min_samples
+        return True
 
     @property
     def policy_map(self) -> Dict[str, str]:

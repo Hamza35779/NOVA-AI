@@ -183,6 +183,40 @@ class SmartRouter(InferenceEngine):
 
         return configured
 
+    def _proven_model(self, last_content: str) -> Optional[str]:
+        """Model proven better for this query class by the proving ground.
+
+        Consulted only when ``proving_adoption`` is enabled; any problem
+        (missing map, unservable model) falls back to the tier flow.
+        """
+        if not self.config.learning_enabled or not self.config.proving_adoption:
+            return None
+        try:
+            from nova_ai.core.paths import get_config_dir
+            from nova_ai.learning.proving.adoption import proven_model_for
+            from nova_ai.learning.routing._utils import classify_query
+
+            qclass = classify_query(last_content)
+            model = proven_model_for(
+                qclass, proving_root=get_config_dir() / "learning" / "proving"
+            )
+            if not model:
+                return None
+            if hasattr(self.engine, "can_serve") and not self.engine.can_serve(model):
+                logger.debug(
+                    "Proven model %r for class %r not servable; keeping tier flow",
+                    model, qclass,
+                )
+                return None
+            logger.debug(
+                "Proving ground adoption: serving proven model %r for class %r",
+                model, qclass,
+            )
+            return model
+        except Exception as exc:
+            logger.debug("Proving-ground lookup failed: %s", exc)
+            return None
+
     def generate(self, messages: Sequence[Message], **kwargs: Any) -> Dict[str, Any]:
         start_time = time.perf_counter()
 
@@ -197,6 +231,15 @@ class SmartRouter(InferenceEngine):
 
         tier = self.classify_complexity(messages, **kwargs)
         routed_model = self._resolve_model(tier)
+        # Proving-ground override (opt-in): serve the model proven better
+        # for this query class, when the tier-resolved model differs.
+        if last_content := (messages[-1].content or "" if messages else ""):
+            proven = self._proven_model(last_content)
+            if proven and proven != routed_model:
+                routed_model = proven
+                logger.info(
+                    "SmartRouter using proven model %r (class override)", proven
+                )
         logger.info(
             "SmartRouter routed query to '%s' tier (model=%s)", tier, routed_model
         )
@@ -242,6 +285,13 @@ class SmartRouter(InferenceEngine):
 
         tier = self.classify_complexity(messages, **kwargs)
         routed_model = self._resolve_model(tier)
+        if last_content := (messages[-1].content or "" if messages else ""):
+            proven = self._proven_model(last_content)
+            if proven and proven != routed_model:
+                routed_model = proven
+                logger.info(
+                    "SmartRouter using proven model %r (class override)", proven
+                )
         logger.info(
             "SmartRouter routed stream to '%s' tier (model=%s)", tier, routed_model
         )
@@ -266,6 +316,13 @@ class SmartRouter(InferenceEngine):
 
         tier = self.classify_complexity(messages, **kwargs)
         routed_model = self._resolve_model(tier)
+        if last_content := (messages[-1].content or "" if messages else ""):
+            proven = self._proven_model(last_content)
+            if proven and proven != routed_model:
+                routed_model = proven
+                logger.info(
+                    "SmartRouter using proven model %r (class override)", proven
+                )
         logger.info(
             "SmartRouter routed stream_full to '%s' tier (model=%s)", tier, routed_model
         )

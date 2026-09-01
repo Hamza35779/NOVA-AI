@@ -614,3 +614,7 @@ See [LLM-guided spec search guide](../user-guide/llm-guided-spec-search.md) for 
 ### Self-training (LoRA from traces)
 
 The `lora_finetune` op is now real: `LoraFinetuneApplier` (`src/nova_ai/learning/spec_search/execute/appliers/lora.py`) mines SFT pairs from traces, trains a LoRA adapter, and (with explicit `auto_apply`) activates it. Outside spec-search, the same pipeline runs via the `nova train` CLI, cron schedules, and the auto-trigger — always behind the benchmark gate and pending-review promotion. See [Self-Training](../learning/self-training.md).
+
+### Model proving ground (head-to-head model A/B)
+
+`nova_ai.learning.proving` closes the model-adoption loop: a benchmark synthesized from high-feedback traces (`PersonalBenchmarkSynthesizer`) is run through `EvalRunner` twice — candidate vs incumbent, same seed, same judge (the incumbent itself by default) — and `RunSummary.per_subject` keys accuracy by routing query class (`classify_query`). A verdict requires ≥ 3 scored samples per class per side; adoption additionally requires a ≥ `min_margin` win. Winners land in `~/.nova_ai/learning/proving/policy_map.json` via `nova prove adopt`, and SmartRouter serves them per class only with the opt-in `proving_adoption` router flag. The gauntlet is read-only; adoption is the only mutation and is reversible (`nova prove revert`). See [Model Proving Ground](../learning/proving-ground.md).

@@ -551,3 +551,38 @@ Export mined SFT pairs to JSONL for external training runs.
 nova train export-traces                      # pairs.jsonl in cwd
 nova train export-traces -o data/pairs.jsonl --min-quality 0.8
 ```
+
+---
+
+## `nova prove`
+
+The Model Proving Ground: A/B-test a candidate model against your incumbent on benchmarks synthesized from *your own* traces, per query class. See [Model Proving Ground](../learning/proving-ground.md) for the full guide and safety model.
+
+### `nova prove run <candidate>`
+
+Run the head-to-head gauntlet (background by default).
+
+```bash
+nova prove run qwen3:8b --incumbent qwen2.5:7b --foreground   # stream the scorecard
+nova prove run qwen3:8b --adopt                               # adopt winners immediately
+```
+
+### `nova prove status` / `nova prove list`
+
+Latest run with its per-class scorecard; run history.
+
+### `nova prove roster`
+
+Show the current per-class adoption map (`policy_map.json`).
+
+### `nova prove adopt <run-id> [--class code,math]`
+
+Adopt a completed run's winners into the routing map (manual review step; margin-gated).
+
+### `nova prove revert <class>`
+
+Remove a query class from the adoption map (rollback).
+
+### `nova prove watch [--prove]`
+
+Check for newly pulled models; with `--prove`, run the gauntlet for each.

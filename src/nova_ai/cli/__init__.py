@@ -34,6 +34,7 @@ from nova_ai.cli.model import model
 from nova_ai.cli.operators_cmd import operators
 from nova_ai.cli.optimize_cmd import optimize_group
 from nova_ai.cli.pearl_cmd import pearl
+from nova_ai.cli.prove_cmd import prove
 from nova_ai.cli.quickstart_cmd import quickstart
 from nova_ai.cli.registry_cmd import registry
 from nova_ai.cli.router_cmd import router_cmd
@@ -132,6 +133,7 @@ cli.add_command(compose, "compose")
 cli.add_command(gateway, "gateway")
 cli.add_command(tool, "tool")
 cli.add_command(train, "train")
+cli.add_command(prove, "prove")
 cli.add_command(registry, "registry")
 cli.add_command(config, "config")
 cli.add_command(scan, "scan")

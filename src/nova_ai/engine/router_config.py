@@ -22,3 +22,7 @@ class RouterConfig:
     research_tier: str = "large"
     code_tier: str = "large"
     default_tier: str = "medium"
+    # Serve models proven better per query class by the Model Proving Ground
+    # (~/.nova_ai/learning/proving/policy_map.json). Off by default: proven
+    # winners only take effect when the user opts in.
+    proving_adoption: bool = False

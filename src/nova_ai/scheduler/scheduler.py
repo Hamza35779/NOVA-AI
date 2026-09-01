@@ -236,6 +236,9 @@ class TaskScheduler:
                 if meta.get("kind") == "train":
                     result_text = self._run_training_task(task)
                     success = True
+                elif meta.get("kind") == "prove":
+                    result_text = self._run_proving_task(task)
+                    success = True
                 else:
                     raw_tools = (
                         task.tools
@@ -373,6 +376,48 @@ class TaskScheduler:
             self._training_learning_config = lambda: learning_config  # type: ignore[method-assign]
         if trace_store is not None:
             self._training_trace_store = lambda: trace_store  # type: ignore[method-assign]
+
+    def _run_proving_task(self, task: ScheduledTask) -> str:
+        """Execute a ``metadata["kind"] == "prove"`` task.
+
+        Checks for newly pulled models (updating ``known_models.json``) and,
+        when ``[learning.proving] enabled`` + ``auto_trigger`` are set, runs
+        the head-to-head gauntlet for each. Runs synchronously in the
+        scheduler thread (same trade-off as training tasks — a GPU-bound
+        prove run should not contend with other tasks anyway).
+        """
+        from nova_ai.core.config import DEFAULT_CONFIG_DIR
+        from nova_ai.learning.proving.store import ProvingRunStore
+        from nova_ai.learning.proving.watcher import maybe_auto_prove
+
+        proving_root = Path(DEFAULT_CONFIG_DIR) / "learning" / "proving"
+        run_store = ProvingRunStore(proving_root / "runs.db")
+
+        learning_cfg = self._training_learning_config()
+        config = learning_cfg.proving if learning_cfg is not None else None
+        if config is None or not config.enabled:
+            return "[prove] learning.proving.enabled is false; skipping"
+
+        results = maybe_auto_prove(
+            trace_store=self._training_trace_store(),
+            config=config,
+            run_store=run_store,
+            proving_root=proving_root,
+        )
+        if not results:
+            return "[prove] no new models since last check"
+        parts = []
+        for r in results:
+            if r.get("status") == "skipped":
+                parts.append(f"[prove] skipped: {r.get('reason', '?')}")
+            else:
+                adopted = r.get("adopted") or {}
+                tail = f", adopted={adopted}" if adopted else ""
+                parts.append(
+                    f"[prove] {r.get('candidate', '?')}: {r.get('status', '?')}"
+                    f" (run {r.get('run_id', '?')}{tail})"
+                )
+        return "; ".join(parts)
 
     # -- Guardrails ----------------------------------------------------------
 

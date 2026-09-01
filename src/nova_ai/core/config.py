@@ -847,6 +847,29 @@ class TrainingConfig:
     llamacpp_gguf_script: str = ""  # path to llama.cpp convert_hf_to_gguf.py
 
 
+@dataclass(slots=True)
+class ProvingConfig:
+    """Model proving ground config. Maps to ``[learning.proving]``.
+
+    Drives the head-to-head gauntlet (``nova prove``): a candidate model is
+    evaluated against the incumbent on a benchmark synthesized from the
+    user's own traces, per query class. The gauntlet itself is read-only —
+    the only mutation is adopting winners into the routing policy map, and
+    that requires either ``auto_adopt`` or an explicit ``nova prove adopt``.
+    """
+
+    enabled: bool = False
+    auto_trigger: bool = False  # prove automatically when a new model appears
+    auto_adopt: bool = False  # adopt winners without `nova prove adopt` (gate still applies)
+    min_margin: float = 0.05  # per-class accuracy margin required to adopt
+    min_samples: int = 10  # minimum synthesized benchmark samples per run
+    max_samples: int = 60  # cap on benchmark size (bounds GPU time)
+    schedule: str = ""  # cron expression for the watcher/prove task; empty = none
+    incumbent: str = ""  # default opponent; "" → intelligence.default_model
+    judge_engine: str = "local"  # "local" | "cloud" — engine backing the judge
+    judge_model: str = ""  # "" → judge with the incumbent model (same judge both sides)
+
+
 @dataclass
 class LearningConfig:
     """Learning system settings with per-primitive sub-policies."""
@@ -865,6 +888,7 @@ class LearningConfig:
     )
     metrics: MetricsConfig = field(default_factory=MetricsConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
+    proving: ProvingConfig = field(default_factory=ProvingConfig)
 
     # Training pipeline
     training_enabled: bool = False
@@ -2083,6 +2107,18 @@ policy = "heuristic"
 # latency_weight = 0.2
 # cost_weight = 0.1
 # efficiency_weight = 0.1
+
+# [learning.proving]
+# enabled = false              # Model Proving Ground: A/B new models on your traces
+# auto_trigger = false         # prove automatically when a new model appears
+# auto_adopt = false           # adopt winners without `nova prove adopt`
+# min_margin = 0.05            # per-class accuracy margin required to adopt
+# min_samples = 10             # min benchmark samples synthesized from traces
+# max_samples = 60             # cap on benchmark size
+# schedule = ""                # cron for the watcher/prove task
+# incumbent = ""               # default opponent; "" uses intelligence.default_model
+# judge_engine = "local"       # "local" | "cloud"
+# judge_model = ""             # "" judges with the incumbent model (same judge both sides)
 
 [telemetry]
 enabled = true

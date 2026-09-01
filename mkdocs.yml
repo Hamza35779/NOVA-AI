@@ -198,6 +198,7 @@ nav:
       - Security: user-guide/security.md
       - LLM-guided spec search: user-guide/llm-guided-spec-search.md
       - Self-Training: learning/self-training.md
+      - Model Proving Ground: learning/proving-ground.md
   - Leaderboard: leaderboard.md
   - Roadmap: development/roadmap.md
   - Development:
