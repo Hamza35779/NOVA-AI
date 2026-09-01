@@ -197,6 +197,7 @@ nav:
       - Benchmarks: user-guide/benchmarks.md
       - Security: user-guide/security.md
       - LLM-guided spec search: user-guide/llm-guided-spec-search.md
+      - Self-Training: learning/self-training.md
   - Leaderboard: leaderboard.md
   - Roadmap: development/roadmap.md
   - Development:

@@ -509,3 +509,45 @@ directly from `nova_ai.learning.spec_search.orchestrator` and call
 [`docs/user-guide/llm-guided-spec-search.md`](llm-guided-spec-search.md)
 for the architecture and the building blocks
 (`splits.py`, external corpora, `external_adapter`).
+
+---
+
+## `nova train`
+
+Self-training: fine-tune a local model from your own usage traces. See [Self-Training](../learning/self-training.md) for the full guide and safety model.
+
+### `nova train run`
+
+Mine traces, train a LoRA adapter, and deploy per `[learning.training]` config.
+
+```bash
+nova train run                    # Start in the background
+nova train run --foreground       # Block and stream progress
+nova train run --base-model Qwen/Qwen3-1.7B   # Override the base model
+```
+
+### `nova train status`
+
+Show the latest (or running) training run: status, pairs used, loss, adapter path, deploy results.
+
+### `nova train list`
+
+List recent training runs with trigger, status, and benchmark delta.
+
+### `nova train deploy <run-id>`
+
+Promote and deploy a `pending_review` adapter (the manual review step).
+
+```bash
+nova train deploy train_20260901_030000_a1b2c3 --target adapter
+nova train deploy train_20260901_030000_a1b2c3 --target ollama --target adapter
+```
+
+### `nova train export-traces`
+
+Export mined SFT pairs to JSONL for external training runs.
+
+```bash
+nova train export-traces                      # pairs.jsonl in cwd
+nova train export-traces -o data/pairs.jsonl --min-quality 0.8
+```

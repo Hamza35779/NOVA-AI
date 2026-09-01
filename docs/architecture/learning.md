@@ -610,3 +610,7 @@ Every edit is assigned a tier from a deterministic lookup table:
 | `manual` | LoRA fine-tuning (v2) | Never auto-apply |
 
 See [LLM-guided spec search guide](../user-guide/llm-guided-spec-search.md) for the architecture and the building blocks.
+
+### Self-training (LoRA from traces)
+
+The `lora_finetune` op is now real: `LoraFinetuneApplier` (`src/nova_ai/learning/spec_search/execute/appliers/lora.py`) mines SFT pairs from traces, trains a LoRA adapter, and (with explicit `auto_apply`) activates it. Outside spec-search, the same pipeline runs via the `nova train` CLI, cron schedules, and the auto-trigger — always behind the benchmark gate and pending-review promotion. See [Self-Training](../learning/self-training.md).

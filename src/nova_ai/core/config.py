@@ -7,6 +7,7 @@ found in the TOML file.
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import os
 import platform
@@ -822,6 +823,30 @@ class SpecSearchLearningConfig:
     )
 
 
+@dataclass(slots=True)
+class TrainingConfig:
+    """Self-training pipeline config. Maps to ``[learning.training]``.
+
+    Drives the trace→SFT-pairs→LoRA→deploy loop (``nova train``): how much
+    data is needed, which deployment targets receive the trained adapter,
+    and how much autonomy the pipeline has. Weight updates are the most
+    invasive edit class (spec-search pins ``LORA_FINETUNE`` at MANUAL tier),
+    so ``auto_apply`` defaults to false and the benchmark gate always runs.
+    """
+
+    enabled: bool = False
+    schedule: str = ""  # cron expression; empty = no scheduled runs
+    auto_trigger: bool = False  # train when enough new qualifying traces accrue
+    auto_apply: bool = False  # deploy without manual review (benchmark gate still enforced)
+    min_pairs: int = 50  # minimum SFT pairs before a run is worth starting
+    max_pairs: int = 5000  # cap on pairs per run (bounds training time)
+    deploy_targets: list[str] = field(
+        default_factory=lambda: ["adapter", "ollama"]
+    )  # subset of: adapter, ollama, llamacpp
+    ollama_tag_prefix: str = "nova-tuned"
+    llamacpp_gguf_script: str = ""  # path to llama.cpp convert_hf_to_gguf.py
+
+
 @dataclass
 class LearningConfig:
     """Learning system settings with per-primitive sub-policies."""
@@ -839,11 +864,27 @@ class LearningConfig:
         default_factory=SpecSearchLearningConfig,
     )
     metrics: MetricsConfig = field(default_factory=MetricsConfig)
+    training: TrainingConfig = field(default_factory=TrainingConfig)
 
     # Training pipeline
     training_enabled: bool = False
     training_schedule: str = ""
     min_improvement: float = 0.02
+
+    @property
+    def training_effective(self) -> TrainingConfig:
+        """Training config with deprecated flat fields folded in.
+
+        ``learning.training_enabled`` / ``learning.training_schedule``
+        predate the ``[learning.training]`` table; they act as aliases for
+        ``training.enabled`` / ``training.schedule`` until removed.
+        """
+        cfg = self.training
+        if self.training_enabled and not cfg.enabled:
+            cfg = dataclasses.replace(cfg, enabled=True)
+        if self.training_schedule and not cfg.schedule:
+            cfg = dataclasses.replace(cfg, schedule=self.training_schedule)
+        return cfg
 
     # Backward-compat properties for old flat field names
     @property

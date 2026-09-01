@@ -22,6 +22,9 @@ from nova_ai.learning.spec_search.execute.appliers.intelligence import (
     SetModelForQueryClassApplier,
     SetModelParamApplier,
 )
+from nova_ai.learning.spec_search.execute.appliers.lora import (
+    LoraFinetuneApplier,
+)
 from nova_ai.learning.spec_search.execute.appliers.lora_stub import (
     LoraStubApplier,
 )
@@ -57,7 +60,23 @@ def _build_registry() -> EditApplierRegistry:
     registry.register(AddToolToAgentApplier())
     registry.register(RemoveToolFromAgentApplier())
     registry.register(EditToolDescriptionApplier())
-    registry.register(LoraStubApplier())
+    # LORA_FINETUNE: the real applier handles training when the risk gate
+    # lets a MANUAL-tier edit through (auto mode / explicit auto_apply).
+    # The stub remains registered as the fallback for torch-free installs —
+    # its validate() always refuses, so it can only ever produce a clear
+    # rejection, never a silent skip. Registration order puts the stub
+    # first so torch-free environments keep their v1 refusal message.
+    try:
+        from nova_ai.learning.training.lora import HAS_TORCH
+
+        torch_available = HAS_TORCH
+    except ImportError:
+        torch_available = False
+
+    if torch_available:
+        registry.register(LoraFinetuneApplier())
+    else:
+        registry.register(LoraStubApplier())
     return registry
 
 

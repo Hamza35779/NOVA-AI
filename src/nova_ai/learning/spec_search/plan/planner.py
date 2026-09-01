@@ -57,11 +57,15 @@ TOOLS pillar:
 - edit_tool_description: {{"tool_name": "web_search", \
 "new_description": "Search the web for..."}}
 
+WEIGHT UPDATES (intelligence pillar, MANUAL tier — needs explicit user opt-in):
+- lora_finetune: {{"target_model": "qwen3:8b", "focus_note": "what to improve"}}
+
 Each edit object must have ALL of these fields:
 - id (string, e.g. "edit_001")
 - pillar ("intelligence", "agent", or "tools")
 - op (one of the operation names above)
-- target (dotted path, e.g. "agents.native_react.system_prompt")
+- target (dotted path, e.g. "agents.native_react.system_prompt"; \
+for lora_finetune use "models.<target_model>")
 - payload (object matching the schema above for the chosen op)
 - rationale (string explaining why)
 - expected_improvement (cluster id this addresses)

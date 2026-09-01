@@ -45,6 +45,7 @@ from nova_ai.cli.serve import serve
 from nova_ai.cli.skill_cmd import skill
 from nova_ai.cli.telemetry_cmd import telemetry
 from nova_ai.cli.tool_cmd import tool
+from nova_ai.cli.train_cmd import train
 from nova_ai.cli.vault_cmd import vault
 from nova_ai.cli.voice_cmd import voice
 from nova_ai.cli.workflow_cmd import workflow
@@ -130,6 +131,7 @@ cli.add_command(feedback_group, "feedback")
 cli.add_command(compose, "compose")
 cli.add_command(gateway, "gateway")
 cli.add_command(tool, "tool")
+cli.add_command(train, "train")
 cli.add_command(registry, "registry")
 cli.add_command(config, "config")
 cli.add_command(scan, "scan")

@@ -7,6 +7,7 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from nova_ai.scheduler.store import SchedulerStore
@@ -229,26 +230,32 @@ class TaskScheduler:
 
         try:
             if self._system is not None:
-                raw_tools = (
-                    task.tools
-                    if isinstance(task.tools, list)
-                    else task.tools.split(",")
-                )
-                tools_list = (
-                    [t.strip() for t in raw_tools if t.strip()] if task.tools else []
-                )
-                ask_kwargs: Dict[str, Any] = {
-                    "agent": task.agent,
-                    "tools": tools_list if tools_list else None,
-                }
                 meta = task.metadata or {}
-                if meta.get("operator_id"):
-                    ask_kwargs["system_prompt"] = meta.get("system_prompt", "")
-                    ask_kwargs["operator_id"] = meta["operator_id"]
-                result_text = self._system.ask(
-                    task.prompt,
-                    **ask_kwargs,
-                )
+                # Training-kind tasks dispatch to the self-training pipeline
+                # (trace → LoRA → gate → deploy), not the agent query path.
+                if meta.get("kind") == "train":
+                    result_text = self._run_training_task(task)
+                    success = True
+                else:
+                    raw_tools = (
+                        task.tools
+                        if isinstance(task.tools, list)
+                        else task.tools.split(",")
+                    )
+                    tools_list = (
+                        [t.strip() for t in raw_tools if t.strip()] if task.tools else []
+                    )
+                    ask_kwargs: Dict[str, Any] = {
+                        "agent": task.agent,
+                        "tools": tools_list if tools_list else None,
+                    }
+                    if meta.get("operator_id"):
+                        ask_kwargs["system_prompt"] = meta.get("system_prompt", "")
+                        ask_kwargs["operator_id"] = meta["operator_id"]
+                    result_text = self._system.ask(
+                        task.prompt,
+                        **ask_kwargs,
+                    )
             else:
                 result_text = f"[dry-run] Would execute: {task.prompt}"
             success = True
@@ -293,6 +300,79 @@ class TaskScheduler:
 
         if not success:
             self._check_circuit_breaker(task)
+
+    def _run_training_task(self, task: ScheduledTask) -> str:
+        """Execute a ``metadata["kind"] == "train"`` task via the pipeline.
+
+        Creates the TrainingRunStore lazily (first training task) and runs
+        the full mine→train→gate→deploy loop synchronously in the scheduler
+        thread — training is a deliberate, long-running background job, so
+        blocking the poll loop here is acceptable (no other task should
+        contend with a GPU-bound training run anyway).
+        """
+        from nova_ai.core.config import DEFAULT_CONFIG_DIR
+        from nova_ai.learning.training.store import TrainingRunStore
+        from nova_ai.learning.training.triggers import run_scheduled_training
+
+        db_path = Path(DEFAULT_CONFIG_DIR) / "learning" / "training" / "runs.db"
+        run_store = TrainingRunStore(db_path)
+
+        learning_cfg = self._training_learning_config()
+        config = learning_cfg.training_effective if learning_cfg is not None else None
+        if config is None or not config.enabled:
+            return "[train] learning.training.enabled is false; skipping"
+
+        record = run_scheduled_training(
+            trace_store=self._training_trace_store(),
+            config=config,
+            run_store=run_store,
+            min_improvement=learning_cfg.min_improvement
+            if learning_cfg is not None
+            else 0.02,
+        )
+        return (
+            f"[train] run {record.get('id', '?')} finished: "
+            f"{record.get('status', 'unknown')} "
+            f"(pairs={record.get('pairs', 0)}, "
+            f"delta={record.get('benchmark_delta')})"
+        )
+
+    def _training_learning_config(self) -> Any:
+        """LearningConfig for training tasks; None when unavailable.
+
+        Overridable via ``set_training_hooks`` for embedders that keep their
+        config elsewhere (tests, alternate homes).
+        """
+        try:
+            from nova_ai.core.config import load_config
+
+            return load_config().learning
+        except Exception as exc:
+            logger.warning("Could not load learning config for training: %s", exc)
+            return None
+
+    def _training_trace_store(self) -> Any:
+        """TraceStore for training tasks.
+
+        Opened lazily on the default home dir; the pipeline only needs
+        ``list_traces()``.
+        """
+        from nova_ai.core.config import DEFAULT_CONFIG_DIR
+        from nova_ai.traces.store import TraceStore
+
+        return TraceStore(Path(DEFAULT_CONFIG_DIR) / "traces.db")
+
+    def set_training_hooks(
+        self,
+        *,
+        learning_config: Any = None,
+        trace_store: Any = None,
+    ) -> None:
+        """Override training dependencies (tests, custom embedders)."""
+        if learning_config is not None:
+            self._training_learning_config = lambda: learning_config  # type: ignore[method-assign]
+        if trace_store is not None:
+            self._training_trace_store = lambda: trace_store  # type: ignore[method-assign]
 
     # -- Guardrails ----------------------------------------------------------
 
