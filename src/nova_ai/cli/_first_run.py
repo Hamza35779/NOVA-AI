@@ -29,15 +29,31 @@ def check_and_route(ctx: click.Context) -> None:
 
     # When running as a packaged desktop executable, double-clicking starts the web workstation
     if getattr(sys, "frozen", False):
+        import socket
         import threading
         import time
         import webbrowser
+
         from nova_ai.cli.serve import serve as serve_cmd
 
+        # The server takes tens of seconds to initialize (engine discovery,
+        # memory, scheduler) before uvicorn binds port 8000. A fixed sleep
+        # opened the browser into ERR_CONNECTION_REFUSED; instead, poll the
+        # port and open the tab the moment it accepts connections.
         def _open_browser() -> None:
-            time.sleep(1.2)
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
+                try:
+                    with socket.create_connection(("127.0.0.1", 8000), timeout=1):
+                        break
+                except OSError:
+                    time.sleep(0.5)
             webbrowser.open("http://localhost:8000")
 
+        print("Starting NOVA AI — the browser will open automatically when "
+              "the server is ready (usually 10-30 seconds).")
+        print("Keep this window open while using NOVA AI; closing it stops "
+              "the server.")
         threading.Thread(target=_open_browser, daemon=True).start()
         ctx.invoke(serve_cmd)
         return
