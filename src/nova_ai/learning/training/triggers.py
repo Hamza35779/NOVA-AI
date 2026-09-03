@@ -159,6 +159,7 @@ def run_scheduled_training(
     training_root: Any = None,
     min_improvement: float = 0.02,
     benchmark_runner: Any = None,
+    lane: str = "sft",
 ) -> dict[str, Any]:
     """Entry point for the cron-driven nightly run."""
     from nova_ai.learning.training.pipeline import run_training
@@ -171,6 +172,7 @@ def run_scheduled_training(
         trigger="scheduled",
         min_improvement=min_improvement,
         benchmark_runner=benchmark_runner,
+        lane=lane,
     )
 
 

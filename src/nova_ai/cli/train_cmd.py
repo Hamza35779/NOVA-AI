@@ -56,7 +56,15 @@ def train() -> None:
     help="Run in the foreground and stream progress (default: background).",
 )
 @click.option("--base-model", default=None, help="Base model (HF id or local path).")
-def run(foreground: bool, base_model: str | None) -> None:
+@click.option(
+    "--lane",
+    type=click.Choice(["sft", "dpo"]),
+    default="sft",
+    show_default=True,
+    help="sft: train on (input, output) pairs; dpo: train on preference pairs "
+    "from conversation forks/regens/races (requires learning.training.dpo_enabled).",
+)
+def run(foreground: bool, base_model: str | None, lane: str) -> None:
     """Mine traces, train a LoRA adapter, and deploy per config."""
     learning_cfg, cfg = _effective_training_config()
     if not cfg.enabled:
@@ -64,6 +72,14 @@ def run(foreground: bool, base_model: str | None) -> None:
             "[yellow]Self-training is disabled.[/yellow] Enable it with:\n\n"
             "  [learning.training]\n"
             '  enabled = true\n\n'
+            "in ~/.nova_ai/config.toml"
+        )
+        raise SystemExit(1)
+    if lane == "dpo" and not cfg.dpo_enabled:
+        console.print(
+            "[yellow]The DPO preference lane is disabled.[/yellow] Enable it with:\n\n"
+            "  [learning.training]\n"
+            "  dpo_enabled = true\n\n"
             "in ~/.nova_ai/config.toml"
         )
         raise SystemExit(1)
@@ -75,17 +91,19 @@ def run(foreground: bool, base_model: str | None) -> None:
         raise SystemExit(1)
 
     if foreground:
-        record = _run_foreground(learning_cfg, cfg, base_model)
+        record = _run_foreground(learning_cfg, cfg, base_model, lane=lane)
         _print_run(record)
         raise SystemExit(0 if record.get("status") in ("completed", "pending_review") else 1)
 
     # Background: spawn a detached python process running the same pipeline.
-    _spawn_background(base_model)
-    console.print("[green]Training started in the background.[/green]")
+    _spawn_background(base_model, lane=lane)
+    console.print(
+        f"[green]Training started in the background[/green] (lane={lane})."
+    )
     console.print("Check progress: [bold]nova train status[/bold]")
 
 
-def _run_foreground(learning_cfg, cfg, base_model: str | None):
+def _run_foreground(learning_cfg, cfg, base_model: str | None, lane: str = "sft"):
     from nova_ai.core.paths import get_config_dir
     from nova_ai.learning.training.pipeline import run_training
     from nova_ai.traces.store import TraceStore
@@ -99,10 +117,11 @@ def _run_foreground(learning_cfg, cfg, base_model: str | None):
         trigger="manual",
         base_model=base_model,
         min_improvement=learning_cfg.min_improvement,
+        lane=lane,
     )
 
 
-def _spawn_background(base_model: str | None) -> None:
+def _spawn_background(base_model: str | None, lane: str = "sft") -> None:
     """Launch a detached child process running the pipeline.
 
     Windows-safe: DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, no console
@@ -116,7 +135,7 @@ def _spawn_background(base_model: str | None) -> None:
     python = sys.executable
     script = (
         "from nova_ai.cli.train_cmd import _run_background_entry;"
-        f"_run_background_entry({base_model!r})"
+        f"_run_background_entry({base_model!r}, lane={lane!r})"
     )
     creationflags = 0
     if sys.platform == "win32":
@@ -139,10 +158,10 @@ def _spawn_background(base_model: str | None) -> None:
         )
 
 
-def _run_background_entry(base_model: str | None) -> None:
+def _run_background_entry(base_model: str | None, lane: str = "sft") -> None:
     """Entry point for the detached background process."""
     learning_cfg, cfg = _effective_training_config()
-    _run_foreground(learning_cfg, cfg, base_model)
+    _run_foreground(learning_cfg, cfg, base_model, lane=lane)
 
 
 @train.command()

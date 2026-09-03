@@ -104,6 +104,12 @@ energy-amd = ["amdsmi>=6.1"]
 energy-apple = ["zeus-ml[apple]"]
 energy-all = ["pynvml>=12.0", "amdsmi>=6.1", "zeus-ml[apple]"]
 orchestrator-training = ["torch>=2.0", "transformers>=4.40"]
+dpo-training = [
+    "torch>=2.0",
+    "transformers>=4.40",
+    "peft>=0.10",
+    "trl>=0.8",
+]
 learning-dspy = ["dspy>=2.6"]
 learning-gepa = ["gepa>=0.1"]
 channel-telegram = ["python-telegram-bot>=21.0"]

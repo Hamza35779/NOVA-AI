@@ -107,6 +107,40 @@ Background runs spawn a detached process (Windows-safe) writing to `~/.nova_ai/l
 | `~/.nova_ai/learning/training/runs.db` | Run history (`nova train list`) |
 | `~/.nova_ai/learning/training/merged/<model>/` | Merged models (llamacpp target) |
 
+## Preference tuning lane (DPO)
+
+SFT clones *an* answer; **DPO (Direct Preference Optimization)** teaches the model *which of two answers is better*. The second training lane consumes the preference pairs recorded by [conversation forking](conversation-forking.md) — fork/regenerate/model-race sibling choices — plus two trace-derived signals (same query asked twice with feedback improving, and a thumbs-down followed by a better later answer).
+
+```
+   ┌──────────────────┐    ┌──────────────────┐    ┌───────────────────┐
+   │ preference_pairs │───▶│ DPO miner        │───▶│ DPOTrainer (trl + │
+   │ fork / regen /   │    │ dedup, drop      │    │ LoRA, β=0.1, lr   │
+   │ race / thumbs    │    │ identical pairs  │    │ 5e-6, 1 epoch)    │
+   └──────────────────┘    └──────────────────┘    └─────────┬─────────┘
+                                                         ▼
+   ┌──────────────┐    ┌──────────────────┐    ┌───────────────────┐
+   │ nova-dpo-    │◀───│ deploy (manual   │◀───│ Same benchmark    │
+   │ <model> tags │    │ pending_review)  │    │ gate as SFT       │
+   └──────────────┘    └──────────────────┘    └───────────────────┘
+```
+
+```toml
+# ~/.nova_ai/config.toml — appended to [learning.training]
+dpo_enabled = true           # master switch for the DPO lane
+dpo_min_pairs = 20           # minimum preference pairs before a run starts
+dpo_tag_prefix = "nova-dpo"  # Ollama tag prefix for DPO deploys
+```
+
+```bash
+# See what preference data you have
+nova conversation pairs
+
+# Train + deploy the DPO adapter (same gates as SFT)
+nova train run --lane dpo
+```
+
+Lane behavior mirrors SFT exactly: pairs are capped at `max_pairs`, the benchmark gate and `pending_review` still apply, adapters save under `adapters/<run_id>/dpo/`, runs record `lane = "dpo"`, and scheduled runs pick the lane from the task's `lane` metadata. TRL is an optional dependency — `pip install 'nova-ai[dpo-training]'` — and the CLI refuses a DPO run with a clear message when `[learning.training] dpo_enabled` is off.
+
 ## Where it plugs into spec-search
 
 The `LoraFinetuneApplier` (`src/nova_ai/learning/spec_search/execute/appliers/lora.py`) implements the `lora_finetune` edit op, so the teacher can propose weight updates when diagnosis shows a skill gap that prompt edits can't fix. In TIERED/MANUAL autonomy it routes to review like any MANUAL-tier edit; with `auto_apply` it trains and activates the adapter directly. The old `LoraStubApplier` remains as the torch-free fallback that refuses the op with a clear message.
@@ -114,3 +148,10 @@ The `LoraFinetuneApplier` (`src/nova_ai/learning/spec_search/execute/appliers/lo
 ## Requirements
 
 Training requires `torch`, `transformers`, and `peft` (install with `pip install torch transformers peft`). Everything else — mining, export, run history, deployment plumbing — works without them; the CLI reports a clear install hint if torch is missing at train time.
+
+## See also
+
+- [Conversation Forking](conversation-forking.md) — where the DPO preference pairs come from.
+- [Model Proving Ground](proving-ground.md) — prove a freshly trained adapter against the base before adopting it.
+- [Memory Consolidation](memory-consolidation.md) — the other offline loop that distills your history.
+- [Skill Foundry](skill-foundry.md) — the sibling "learn from traces" pipeline for tool workflows.

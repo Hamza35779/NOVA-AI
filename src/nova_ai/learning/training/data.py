@@ -218,4 +218,132 @@ class TrainingDataMiner:
         return result
 
 
-__all__ = ["TrainingDataMiner"]
+def extract_preference_pairs(
+    conv_store: Any,
+    *,
+    trace_store: Any = None,
+    min_quality: float = 0.7,
+) -> List[Dict[str, Any]]:
+    """Build DPO preference pairs from conversation forks + trace signals.
+
+    Three sources, in priority order:
+
+    1. **Recorded pairs** (``conv_store.list_preference_pairs()``) — the
+       fork/regen/race picks made in the app or via ``nova conversation
+       pick``. Chosen vs rejected sibling answers on the same prompt.
+    2. **Regen signal from traces** — the same query asked twice with
+       feedback improving (the later, higher-scored answer is chosen).
+    3. **Thumbs signal from traces** — a low-rated answer followed by a
+       later better one on the same query (hash-matched, the
+       ``RoutingFeedbackStore.query_hash`` convention).
+
+    Returns a list of ``{prompt, chosen, rejected, source}`` dicts —
+    the schema ``DPOTrainer`` consumes.
+    """
+    pairs: List[Dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    # 1. Recorded sibling choices ------------------------------------------------
+    try:
+        recorded = conv_store.list_preference_pairs(limit=100000)
+    except AttributeError:
+        recorded = []
+    for rec in recorded:
+        chosen_node = conv_store.get_node(rec["chosen_id"])
+        if chosen_node is None:
+            continue
+        rejected_nodes = [
+            conv_store.get_node(rid)
+            for rid in rec["rejected_ids"]
+            if conv_store.get_node(rid) is not None
+        ]
+        prompt_text = "\n".join(
+            str(m.get("content", "")) for m in rec["prompt_path"]
+        ).strip()
+        for rejected in rejected_nodes:
+            key = (prompt_text, chosen_node["content"], rejected["content"])
+            same_answer = chosen_node["content"] == rejected["content"]
+            if (
+                key in seen
+                or same_answer
+                or not chosen_node["content"]
+                or not rejected["content"]
+            ):
+                continue
+            seen.add(key)
+            pairs.append(
+                {
+                    "prompt": prompt_text,
+                    "chosen": chosen_node["content"],
+                    "rejected": rejected["content"],
+                    "source": rec["source"],
+                }
+            )
+
+    # 2 + 3. Trace-derived signals ------------------------------------------------
+    if trace_store is not None:
+        pairs.extend(
+            _pairs_from_traces(trace_store, min_quality=min_quality, seen=seen)
+        )
+    return pairs
+
+
+def _hash_query(content: str) -> str:
+    """Query hash matching ``engine/router_learning._query_hash``."""
+    import hashlib
+
+    return hashlib.sha256(content.strip().lower().encode("utf-8")).hexdigest()
+
+
+def _pairs_from_traces(
+    trace_store: Any,
+    *,
+    min_quality: float,
+    seen: set[tuple[str, str, str]],
+) -> List[Dict[str, Any]]:
+    """Regen (feedback improves on repeat) and thumbs (down then better)."""
+    try:
+        traces = trace_store.list_traces(limit=100000)
+    except Exception:
+        return []
+
+    by_hash: Dict[str, List[Any]] = defaultdict(list)
+    for t in traces:
+        qh = _hash_query(t.query or "")
+        by_hash[qh].append(t)
+
+    pairs: List[Dict[str, Any]] = []
+    for group in by_hash.values():
+        if len(group) < 2:
+            continue
+        # Oldest first so "later" means "more recent attempt".
+        group.sort(key=lambda t: getattr(t, "started_at", None) or "")
+        for i, worse in enumerate(group):
+            if worse.feedback is None:
+                continue
+            for better in group[i + 1 :]:
+                if better.feedback is None:
+                    continue
+                if better.feedback <= worse.feedback:
+                    continue
+                if not better.result or not worse.result:
+                    continue
+                if better.result == worse.result:
+                    continue
+                key = (worse.query, better.result, worse.result)
+                if key in seen:
+                    continue
+                seen.add(key)
+                pairs.append(
+                    {
+                        "prompt": worse.query,
+                        "chosen": better.result,
+                        "rejected": worse.result,
+                        "source": "regen" if better.feedback >= min_quality else "thumbs",
+                    }
+                )
+                break  # one chosen per rejected answer
+    return pairs
+
+
+__all__ = ["TrainingDataMiner", "extract_preference_pairs"]

@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS training_runs (
 );
 """
 
+# Lane column (sft | dpo) added after the table shipped; ALTER for older DBs.
+_MIGRATE_LANE = "ALTER TABLE training_runs ADD COLUMN lane TEXT NOT NULL DEFAULT 'sft'"
+
 _CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_runs_started_at ON training_runs(started_at)",
     "CREATE INDEX IF NOT EXISTS idx_runs_status ON training_runs(status)",
@@ -48,8 +51,8 @@ _INSERT_RUN = """\
 INSERT OR REPLACE INTO training_runs (
     id, status, trigger, base_model, pairs, avg_loss, adapter_path,
     deploy_results, benchmark_before, benchmark_after, benchmark_delta,
-    started_at, ended_at, error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    started_at, ended_at, error, lane
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _UPDATE_RUN = """\
@@ -63,7 +66,7 @@ WHERE id = ?
 _RUN_COLUMNS = (
     "id, status, trigger, base_model, pairs, avg_loss, adapter_path, "
     "deploy_results, benchmark_before, benchmark_after, benchmark_delta, "
-    "started_at, ended_at, error"
+    "started_at, ended_at, error, lane"
 )
 
 
@@ -82,6 +85,12 @@ class TrainingRunStore:
         self._conn.execute(_CREATE_RUNS)
         for idx in _CREATE_INDEXES:
             self._conn.execute(idx)
+        # Older DBs predate the lane column (sft | dpo).
+        cols = {
+            row[1] for row in self._conn.execute("PRAGMA table_info(training_runs)")
+        }
+        if "lane" not in cols:
+            self._conn.execute(_MIGRATE_LANE)
         self._conn.commit()
 
     def close(self) -> None:
@@ -95,6 +104,7 @@ class TrainingRunStore:
         *,
         trigger: str = "manual",
         base_model: str = "",
+        lane: str = "sft",
     ) -> None:
         """Record a new run in ``running`` state."""
         self._conn.execute(
@@ -114,6 +124,7 @@ class TrainingRunStore:
                 _now_iso(),
                 None,
                 None,
+                lane,
             ),
         )
         self._conn.commit()
@@ -174,6 +185,7 @@ class TrainingRunStore:
             "started_at": row[11],
             "ended_at": row[12],
             "error": row[13],
+            "lane": row[14] if len(row) > 14 else "sft",
         }
 
     def get_run(self, run_id: str) -> Optional[dict[str, Any]]:

@@ -102,6 +102,8 @@ def run_training(
     benchmark_runner: Optional[Any] = None,
     auto_apply: Optional[bool] = None,
     min_improvement: float = 0.02,
+    lane: str = "sft",
+    conv_store: Optional[Any] = None,
 ) -> dict[str, Any]:
     """Mine traces, fine-tune, gate on the benchmark, and deploy.
 
@@ -129,6 +131,15 @@ def run_training(
         LearningConfig-level flag).
     min_improvement :
         Benchmark delta required to keep the adapter.
+    lane :
+        ``"sft"`` (default) or ``"dpo"``. The DPO lane trains on
+        *preference pairs* (chosen vs rejected answers from conversation
+        forks/regens/races, plus trace-derived signals) instead of
+        SFT pairs, saves under ``adapters/<run_id>/dpo``, and deploys
+        with ``config.dpo_tag_prefix`` Ollama tags.
+    conv_store :
+        ``ConversationStore`` (P3) supplying recorded preference pairs.
+        Required for ``lane="dpo"`` unless ``config.dpo_enabled`` is off.
 
     Returns
     -------
@@ -137,9 +148,10 @@ def run_training(
     """
     training_root = Path(training_root) if training_root else _default_training_root()
     run_id = f"train_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    lane = "dpo" if lane == "dpo" else "sft"
 
     resolved_base = base_model or _default_base_model()
-    run_store.start_run(run_id, trigger=trigger, base_model=resolved_base)
+    run_store.start_run(run_id, trigger=trigger, base_model=resolved_base, lane=lane)
 
     def _fail(error: str, **fields: Any) -> dict[str, Any]:
         run_store.finish_run(run_id, status="failed", error=error, **fields)
@@ -147,16 +159,38 @@ def run_training(
         logger.warning("Training run %s failed: %s", run_id, error)
         return record
 
-    # 1. Mine SFT pairs from traces ------------------------------------------
-    try:
-        miner = TrainingDataMiner(trace_store, min_quality=0.7)
-        pairs = miner.extract_sft_pairs()
-    except Exception as exc:
-        return _fail(f"trace mining failed: {exc}")
+    # 1. Mine training data -----------------------------------------------------
+    if lane == "dpo":
+        try:
+            from nova_ai.learning.training.data import extract_preference_pairs
 
-    if len(pairs) < config.min_pairs:
+            if conv_store is None:
+                from nova_ai.conversations.store import ConversationStore
+                from nova_ai.core.config import DEFAULT_CONFIG_DIR
+
+                conv_store = ConversationStore(
+                    Path(DEFAULT_CONFIG_DIR) / "conversations.db"
+                )
+            pairs = extract_preference_pairs(
+                conv_store, trace_store=trace_store, min_quality=0.7
+            )
+        except Exception as exc:
+            return _fail(f"preference mining failed: {exc}")
+        min_required = config.dpo_min_pairs
+        lane_dirname = "dpo"
+    else:
+        try:
+            miner = TrainingDataMiner(trace_store, min_quality=0.7)
+            pairs = miner.extract_sft_pairs()
+        except Exception as exc:
+            return _fail(f"trace mining failed: {exc}")
+        min_required = config.min_pairs
+        lane_dirname = "sft"
+
+    if len(pairs) < min_required:
         return _fail(
-            f"only {len(pairs)} qualifying pairs, min_pairs={config.min_pairs}"
+            f"lane={lane}: only {len(pairs)} qualifying pairs, "
+            f"min={min_required}"
         )
     pairs = pairs[: config.max_pairs]
 
@@ -170,7 +204,7 @@ def run_training(
             pre_score = None
 
     # 3. Train ---------------------------------------------------------------
-    adapter_dir = training_root / "adapters" / run_id
+    adapter_dir = training_root / "adapters" / run_id / lane_dirname
     try:
         from nova_ai.core.config import SFTConfig
         from nova_ai.learning.training.lora import HAS_TORCH
@@ -179,17 +213,25 @@ def run_training(
             return _fail(
                 "torch not available; install with: "
                 "pip install torch transformers peft"
+                + (" trl" if lane == "dpo" else "")
             )
 
-        sft_cfg = SFTConfig(
-            model_name=resolved_base,
-            checkpoint_dir=str(adapter_dir),
-            min_pairs=config.min_pairs,
-        )
-        from nova_ai.learning.intelligence.sft_trainer import SFTTrainer
+        if lane == "dpo":
+            from nova_ai.learning.training.dpo import DPOTrainer, DPOTrainingConfig
 
-        trainer = SFTTrainer(sft_cfg)
-        result = trainer.train_on_pairs(pairs)
+            dpo_cfg = DPOTrainingConfig(output_dir=str(adapter_dir / "final"))
+            trainer = DPOTrainer(dpo_cfg, model_name=resolved_base)
+            result = trainer.train(pairs)
+        else:
+            sft_cfg = SFTConfig(
+                model_name=resolved_base,
+                checkpoint_dir=str(adapter_dir),
+                min_pairs=config.min_pairs,
+            )
+            from nova_ai.learning.intelligence.sft_trainer import SFTTrainer
+
+            trainer = SFTTrainer(sft_cfg)
+            result = trainer.train_on_pairs(pairs)
     except Exception as exc:
         return _fail(f"training failed: {exc}")
 
@@ -210,6 +252,7 @@ def run_training(
     adapter_dir.mkdir(parents=True, exist_ok=True)
     meta = {
         "run_id": run_id,
+        "lane": lane,
         "base_model": resolved_base,
         "pairs": len(pairs),
         "avg_loss": avg_loss,
@@ -260,12 +303,15 @@ def run_training(
     # 5. Deploy --------------------------------------------------------------
     apply = config.auto_apply if auto_apply is None else auto_apply
     deploy_results: list[dict[str, Any]] = []
+    tag_prefix = (
+        config.dpo_tag_prefix if lane == "dpo" else config.ollama_tag_prefix
+    )
     if apply:
         report = deploy(
             Path(adapter_record_path),
             targets=config.deploy_targets,
             base_model=resolved_base,
-            tag_prefix=config.ollama_tag_prefix,
+            tag_prefix=tag_prefix,
             gguf_script=config.llamacpp_gguf_script,
         )
         deploy_results = report.to_list()
@@ -288,7 +334,8 @@ def run_training(
         error=error,
     )
     record = run_store.get_run(run_id) or {}
-    logger.info("Training run %s finished: %s", run_id, status)
+    record["lane"] = lane
+    logger.info("Training run %s finished: %s (lane=%s)", run_id, status, lane)
     return record
 
 
