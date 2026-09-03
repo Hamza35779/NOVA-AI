@@ -586,3 +586,25 @@ Remove a query class from the adoption map (rollback).
 ### `nova prove watch [--prove]`
 
 Check for newly pulled models; with `--prove`, run the gauntlet for each.
+
+---
+
+## `nova oracle`
+
+The Fleet Oracle: opt-in anonymized performance reports pooled via a git dataset, queried locally. See [Fleet Oracle](../learning/fleet-oracle.md) for the privacy model (a fixed field list — nothing else ever leaves the machine).
+
+### `nova oracle export [-o PATH]`
+
+Build the anonymized report from local telemetry and preview it (or write it to a file). This is the exact payload sharing would publish.
+
+### `nova oracle push`
+
+Push the report to `learning.fleet.dataset_repo`. Refuses unless `learning.fleet.share_reports = true` (default off).
+
+### `nova oracle ask "QUESTION"`
+
+Answer from the pooled dataset locally, e.g. `nova oracle ask "best 8B model for code on a 4090?"` — keyword-bucketed, no LLM, table shows the machines behind the answer.
+
+### `nova oracle status`
+
+Fleet config, sharing state, and the local dataset copy size.

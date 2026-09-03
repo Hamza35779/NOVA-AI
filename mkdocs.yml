@@ -199,6 +199,10 @@ nav:
       - LLM-guided spec search: user-guide/llm-guided-spec-search.md
       - Self-Training: learning/self-training.md
       - Model Proving Ground: learning/proving-ground.md
+      - Memory Consolidation: learning/memory-consolidation.md
+      - Skill Foundry: learning/skill-foundry.md
+      - Conversation Forking: learning/conversation-forking.md
+      - Fleet Oracle: learning/fleet-oracle.md
   - Leaderboard: leaderboard.md
   - Roadmap: development/roadmap.md
   - Development:

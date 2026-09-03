@@ -846,6 +846,11 @@ class TrainingConfig:
     ollama_tag_prefix: str = "nova-tuned"
     llamacpp_gguf_script: str = ""  # path to llama.cpp convert_hf_to_gguf.py
 
+    # DPO preference lane (lane="dpo" on nova train run / scheduler meta)
+    dpo_enabled: bool = False  # gate for the preference-tuning lane
+    dpo_min_pairs: int = 20  # preference pairs needed before a DPO run starts
+    dpo_tag_prefix: str = "nova-dpo"  # Ollama tag for DPO adapters
+
 
 @dataclass(slots=True)
 class ProvingConfig:
@@ -870,6 +875,67 @@ class ProvingConfig:
     judge_model: str = ""  # "" → judge with the incumbent model (same judge both sides)
 
 
+@dataclass(slots=True)
+class ConsolidationConfig:
+    """Memory consolidation ("sleep cycle") config. Maps to
+    ``[learning.consolidation]``.
+
+    Drives the nightly job (``nova memory consolidate run``): clusters
+    episodic traces, distills atomic facts with provenance, resolves
+    contradictions by recency + confidence, decays stale memory, and
+    promotes hot facts into a compact core-memory block injected into
+    every query. Facts are disposable — ``nova memory consolidate
+    forget <id>`` removes any of them.
+    """
+
+    enabled: bool = False
+    schedule: str = ""  # cron expression; empty = no scheduled runs
+    min_session_messages: int = 6  # skip clusters smaller than this
+    max_facts_per_run: int = 50  # cap on facts distilled per run
+    judge_model: str = ""  # "" -> intelligence.default_model (local extraction)
+    decay_days: int = 90  # facts untouched this long become 'decayed'
+    core_memory_max_chars: int = 4000  # core-memory block budget
+
+
+@dataclass(slots=True)
+class SkillForgeConfig:
+    """Skill Foundry config. Maps to ``[learning.skillforge]``.
+
+    Drives ``nova forge``: mine traces for repeated tool sequences, have
+    the local model synthesize a skill manifest chaining existing tools,
+    and run it through a verification gauntlet (static checks, sandboxed
+    replay on past instances, LLM judge). Adoption is manual by default
+    and reversible with ``nova forge revert``.
+    """
+
+    enabled: bool = False
+    auto_trigger: bool = False  # forge automatically when patterns accrue
+    auto_adopt: bool = False  # install passing skills without `nova forge adopt`
+    min_pattern_count: int = 3  # same tool-sequence must appear this often
+    min_feedback: float = 0.7  # average trace feedback required to mine a pattern
+    max_candidates_per_run: int = 3  # cap on skills synthesized per run
+    sandbox_timeout: float = 30.0  # seconds per sandboxed replay step
+    judge_model: str = ""  # "" -> intelligence.default_model (gauntlet judge)
+
+
+@dataclass(slots=True)
+class FleetConfig:
+    """Fleet Oracle config. Maps to ``[learning.fleet]``.
+
+    Drives ``nova oracle``: aggregate anonymized hardware + per-model
+    performance stats from this machine's telemetry, optionally share them
+    via a git-hosted dataset, and answer "best model for my hardware"
+    questions from the pooled fleet data. Opt-in by construction — sharing
+    is OFF until the user flips ``share_reports``.
+    """
+
+    share_reports: bool = False  # opt-in: push anonymized reports to the dataset
+    dataset_repo: str = ""  # git URL of the shared fleet dataset repo
+    min_calls_per_model: int = 5  # k-anonymity: models below this are dropped
+    since_days: int = 30  # aggregation window for report building
+    cache_dir: str = ""  # "" -> ~/.nova_ai/fleet/cache (dataset clone)
+
+
 @dataclass
 class LearningConfig:
     """Learning system settings with per-primitive sub-policies."""
@@ -889,6 +955,9 @@ class LearningConfig:
     metrics: MetricsConfig = field(default_factory=MetricsConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     proving: ProvingConfig = field(default_factory=ProvingConfig)
+    consolidation: ConsolidationConfig = field(default_factory=ConsolidationConfig)
+    skillforge: SkillForgeConfig = field(default_factory=SkillForgeConfig)
+    fleet: FleetConfig = field(default_factory=FleetConfig)
 
     # Training pipeline
     training_enabled: bool = False
@@ -2119,6 +2188,40 @@ policy = "heuristic"
 # incumbent = ""               # default opponent; "" uses intelligence.default_model
 # judge_engine = "local"       # "local" | "cloud"
 # judge_model = ""             # "" judges with the incumbent model (same judge both sides)
+
+# [learning.consolidation]
+# enabled = false              # Memory sleep cycle: distill traces into core facts
+# schedule = ""                # cron expression; empty = run manually
+# min_session_messages = 6     # skip clusters smaller than this
+# max_facts_per_run = 50       # cap on facts distilled per run
+# judge_model = ""             # "" uses intelligence.default_model
+# decay_days = 90              # facts untouched this long stop being served
+# core_memory_max_chars = 4000 # core-memory block budget
+
+# [learning.skillforge]
+# enabled = false              # Skill Foundry: synthesize skills from repeated tool runs
+# auto_trigger = false         # forge automatically when patterns accrue
+# auto_adopt = false           # install passing skills without `nova forge adopt`
+# min_pattern_count = 3        # same tool-sequence must appear this often
+# min_feedback = 0.7           # average trace feedback required to mine a pattern
+# max_candidates_per_run = 3   # cap on skills synthesized per run
+# sandbox_timeout = 30.0       # seconds per sandboxed replay step
+# judge_model = ""             # "" uses intelligence.default_model
+
+# [learning.training]
+# enabled = false              # self-training: mine traces, LoRA, deploy
+# min_pairs = 50               # SFT pairs needed before a run is worth starting
+# auto_apply = false           # deploy without `nova train deploy` (gate still applies)
+# dpo_enabled = false          # DPO preference lane (train from fork/race winners)
+# dpo_min_pairs = 20           # preference pairs needed before a DPO run starts
+# dpo_tag_prefix = "nova-dpo"  # Ollama tag for DPO adapters
+
+# [learning.fleet]
+# share_reports = false        # Fleet Oracle: opt-in sharing of anonymized reports
+# dataset_repo = ""            # git URL of the shared fleet dataset repo
+# min_calls_per_model = 5      # k-anonymity: drop models with fewer calls
+# since_days = 30              # aggregation window for report building
+# cache_dir = ""               # "" uses ~/.nova_ai/fleet/cache for the dataset clone
 
 [telemetry]
 enabled = true

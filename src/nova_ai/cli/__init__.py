@@ -18,11 +18,13 @@ from nova_ai.cli.clip_cmd import clip
 from nova_ai.cli.compose_cmd import compose
 from nova_ai.cli.config_cmd import config
 from nova_ai.cli.connect_cmd import connect
+from nova_ai.cli.conversation_cmd import conversation
 from nova_ai.cli.daemon_cmd import restart, start, status, stop
 from nova_ai.cli.digest_cmd import digest
 from nova_ai.cli.doctor_cmd import doctor
 from nova_ai.cli.eval_cmd import eval_group
 from nova_ai.cli.feedback_cmd import feedback_group
+from nova_ai.cli.forge_cmd import forge
 from nova_ai.cli.gateway_cmd import gateway
 from nova_ai.cli.host_cmd import host
 from nova_ai.cli.init_cmd import init
@@ -33,6 +35,7 @@ from nova_ai.cli.mine_cmd import mine
 from nova_ai.cli.model import model
 from nova_ai.cli.operators_cmd import operators
 from nova_ai.cli.optimize_cmd import optimize_group
+from nova_ai.cli.oracle_cmd import oracle
 from nova_ai.cli.pearl_cmd import pearl
 from nova_ai.cli.prove_cmd import prove
 from nova_ai.cli.quickstart_cmd import quickstart
@@ -134,6 +137,9 @@ cli.add_command(gateway, "gateway")
 cli.add_command(tool, "tool")
 cli.add_command(train, "train")
 cli.add_command(prove, "prove")
+cli.add_command(forge, "forge")
+cli.add_command(conversation, "conversation")
+cli.add_command(oracle, "oracle")
 cli.add_command(registry, "registry")
 cli.add_command(config, "config")
 cli.add_command(scan, "scan")

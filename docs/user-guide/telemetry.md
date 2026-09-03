@@ -421,3 +421,9 @@ TraceAnalyzer / TelemetryAggregator  -->  Learning System
 ```
 
 Both systems operate transparently -- no manual instrumentation is needed when using the CLI or SDK, as they automatically set up the event bus and telemetry store.
+
+---
+
+## Sharing aggregates: the Fleet Oracle
+
+The per-model aggregates shown here are also the input to the [Fleet Oracle](../learning/fleet-oracle.md): with `learning.fleet.share_reports = true`, `nova oracle push` publishes a fixed-field, k-anonymized summary (hardware shape + per-model latency/throughput/energy averages — never prompts, content, or paths) to a shared git dataset, and `nova oracle ask` answers "best model for my hardware?" from the pooled fleet data locally. Sharing is off by default.
