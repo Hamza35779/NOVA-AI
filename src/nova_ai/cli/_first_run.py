@@ -25,6 +25,23 @@ def check_and_route(ctx: click.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
 
+    import sys
+
+    # When running as a packaged desktop executable, double-clicking starts the web workstation
+    if getattr(sys, "frozen", False):
+        import threading
+        import time
+        import webbrowser
+        from nova_ai.cli.serve import serve as serve_cmd
+
+        def _open_browser() -> None:
+            time.sleep(1.2)
+            webbrowser.open("http://localhost:8000")
+
+        threading.Thread(target=_open_browser, daemon=True).start()
+        ctx.invoke(serve_cmd)
+        return
+
     # Late imports to avoid circular import with cli/__init__.py.
     from nova_ai.cli.chat_cmd import chat as chat_cmd
     from nova_ai.cli.init_cmd import init as init_cmd
