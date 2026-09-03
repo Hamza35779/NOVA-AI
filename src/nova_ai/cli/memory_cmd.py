@@ -204,3 +204,186 @@ def stats(backend: str | None) -> None:
     finally:
         if hasattr(mem, "close"):
             mem.close()
+
+
+# ---------------------------------------------------------------------------
+# ``nova memory consolidate`` — the memory sleep cycle
+# ---------------------------------------------------------------------------
+
+
+def _consolidation_root() -> Path:
+    from nova_ai.core.paths import get_config_dir
+
+    return get_config_dir() / "learning" / "consolidation"
+
+
+def _fact_store():
+    from nova_ai.memory.consolidation.store import FactStore
+
+    return FactStore(_consolidation_root() / "facts.db")
+
+
+def _run_store():
+    from nova_ai.memory.consolidation.store import ConsolidationRunStore
+
+    return ConsolidationRunStore(_consolidation_root() / "runs.db")
+
+
+def _effective_consolidation_config():
+    learning_cfg = load_config().learning
+    return learning_cfg.consolidation
+
+
+@memory.command("consolidate")
+@click.argument(
+    "action",
+    type=click.Choice(["run", "status", "facts", "forget"]),
+)
+@click.argument("extra", required=False)
+@click.option(
+    "--foreground",
+    is_flag=True,
+    default=False,
+    help="Run in the foreground (default: background).",
+)
+@click.option("-n", "--limit", default=20, help="Rows for `facts`.")
+def consolidate(action: str, extra: str | None, foreground: bool, limit: int) -> None:
+    """Memory sleep cycle: run | status | facts | forget FACT_ID."""
+    console = Console()
+
+    if action == "run":
+        cfg = _effective_consolidation_config()
+        if not cfg.enabled:
+            console.print(
+                "[red]learning.consolidation.enabled is false; "
+                "enable it in ~/.nova_ai/config.toml first.[/red]"
+            )
+            raise SystemExit(1)
+        if foreground:
+            summary = _run_foreground(cfg)
+            console.print(f"[green]{summary}[/green]")
+            return
+        _spawn_background()
+        console.print("[green]Consolidation started in the background.[/green]")
+        console.print("Check progress: [bold]nova memory consolidate status[/bold]")
+        return
+
+    if action == "status":
+        store = _run_store()
+        try:
+            run = store.latest_run()
+            if run is None:
+                console.print("[yellow]No consolidation runs yet.[/yellow]")
+                return
+            console.print(f"[bold]{run['id']}[/bold] — {run['status']}")
+            console.print(f"  Trigger: {run['trigger']}")
+            if run.get("summary"):
+                console.print(f"  Summary: {run['summary']}")
+            if run.get("error"):
+                console.print(f"  [red]Error: {run['error']}[/red]")
+        finally:
+            store.close()
+        return
+
+    if action == "facts":
+        store = _fact_store()
+        try:
+            facts = store.list_facts(limit=limit)
+            if not facts:
+                console.print("[yellow]No facts distilled yet.[/yellow]")
+                return
+            table = Table(title="Consolidated Facts")
+            table.add_column("ID", style="dim")
+            table.add_column("Conf.", style="cyan")
+            table.add_column("Topic")
+            table.add_column("Fact")
+            for fact in facts:
+                table.add_row(
+                    fact["id"],
+                    f"{fact['confidence']:.2f}",
+                    fact["topic"] or "-",
+                    fact["content"][:80],
+                )
+            console.print(table)
+        finally:
+            store.close()
+        return
+
+    # action == "forget"
+    if not extra:
+        console.print("[red]Usage: nova memory consolidate forget FACT_ID[/red]")
+        raise SystemExit(1)
+    store = _fact_store()
+    try:
+        updated = store.set_status(extra, "forgotten")
+        if updated:
+            console.print(f"[green]Fact {extra} forgotten.[/green]")
+        else:
+            console.print(f"[yellow]Fact '{extra}' not found.[/yellow]")
+            raise SystemExit(1)
+    finally:
+        store.close()
+
+
+def _run_foreground(cfg):
+    from nova_ai.core.paths import get_config_dir
+    from nova_ai.memory.consolidation.pipeline import run_consolidation
+    from nova_ai.traces.store import TraceStore
+
+    trace_store = TraceStore(get_config_dir() / "traces.db")
+    fact_store = _fact_store()
+    run_store = _run_store()
+    try:
+        return run_consolidation(
+            trace_store=trace_store,
+            fact_store=fact_store,
+            config=cfg,
+            run_store=run_store,
+            trigger="manual",
+        )
+    finally:
+        trace_store.close()
+        fact_store.close()
+        run_store.close()
+
+
+def _spawn_background() -> None:
+    """Launch a detached child process running the pipeline."""
+    import os
+    import subprocess
+    import sys
+
+    from nova_ai.core.config import DEFAULT_CONFIG_DIR
+
+    log_path = _consolidation_root() / "last_run.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    python = sys.executable
+    script = (
+        "from nova_ai.cli.memory_cmd import _run_background_entry;"
+        "_run_background_entry()"
+    )
+    creationflags = 0
+    close_fds = True
+    if sys.platform == "win32":
+        creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+        close_fds = False
+
+    with open(log_path, "ab") as log_f:
+        subprocess.Popen(
+            [python, "-c", script],
+            stdout=log_f,
+            stderr=log_f,
+            stdin=subprocess.DEVNULL,
+            close_fds=close_fds,
+            creationflags=creationflags,
+            start_new_session=sys.platform != "win32",
+            env={**os.environ, "NOVA_CONSOLIDATION_BACKGROUND": "1"},
+            cwd=str(DEFAULT_CONFIG_DIR),
+        )
+
+
+def _run_background_entry() -> None:
+    """Entry point for the detached background process."""
+    cfg = _effective_consolidation_config()
+    _run_foreground(cfg)

@@ -239,6 +239,12 @@ class TaskScheduler:
                 elif meta.get("kind") == "prove":
                     result_text = self._run_proving_task(task)
                     success = True
+                elif meta.get("kind") == "consolidate":
+                    result_text = self._run_consolidation_task(task)
+                    success = True
+                elif meta.get("kind") == "skillforge":
+                    result_text = self._run_skillforge_task(task)
+                    success = True
                 else:
                     raw_tools = (
                         task.tools
@@ -325,6 +331,11 @@ class TaskScheduler:
         if config is None or not config.enabled:
             return "[train] learning.training.enabled is false; skipping"
 
+        # Optional DPO lane: metadata {"kind": "train", "lane": "dpo"}.
+        lane = "dpo" if (task.metadata or {}).get("lane") == "dpo" else "sft"
+        if lane == "dpo" and not getattr(config, "dpo_enabled", False):
+            return "[train] lane=dpo but learning.training.dpo_enabled is false; skipping"
+
         record = run_scheduled_training(
             trace_store=self._training_trace_store(),
             config=config,
@@ -332,11 +343,12 @@ class TaskScheduler:
             min_improvement=learning_cfg.min_improvement
             if learning_cfg is not None
             else 0.02,
+            lane=lane,
         )
         return (
             f"[train] run {record.get('id', '?')} finished: "
             f"{record.get('status', 'unknown')} "
-            f"(pairs={record.get('pairs', 0)}, "
+            f"(lane={record.get('lane', lane)}, pairs={record.get('pairs', 0)}, "
             f"delta={record.get('benchmark_delta')})"
         )
 
@@ -418,6 +430,100 @@ class TaskScheduler:
                     f" (run {r.get('run_id', '?')}{tail})"
                 )
         return "; ".join(parts)
+
+    def _run_consolidation_task(self, task: ScheduledTask) -> str:
+        """Execute a ``metadata["kind"] == "consolidate"`` task.
+
+        Runs one memory sleep-cycle (mine → distill → decay). Runs
+        synchronously in the scheduler thread (same trade-off as the
+        train/prove tasks — an LLM-bound consolidation run should not
+        contend with other tasks anyway).
+        """
+        from nova_ai.core.config import DEFAULT_CONFIG_DIR
+        from nova_ai.memory.consolidation.pipeline import run_consolidation
+        from nova_ai.memory.consolidation.store import (
+            ConsolidationRunStore,
+            FactStore,
+        )
+
+        root = Path(DEFAULT_CONFIG_DIR) / "learning" / "consolidation"
+        learning_cfg = self._training_learning_config()
+        config = learning_cfg.consolidation if learning_cfg is not None else None
+        if config is None or not config.enabled:
+            return "[consolidate] learning.consolidation.enabled is false; skipping"
+
+        trace_store = self._training_trace_store()
+        fact_store = FactStore(root / "facts.db")
+        run_store = ConsolidationRunStore(root / "runs.db")
+        try:
+            result = run_consolidation(
+                trace_store=trace_store,
+                fact_store=fact_store,
+                config=config,
+                run_store=run_store,
+                trigger="scheduled",
+            )
+        finally:
+            fact_store.close()
+            run_store.close()
+
+        if result.get("status") == "skipped":
+            return f"[consolidate] skipped: {result.get('reason', '?')}"
+        return (
+            f"[consolidate] run {result.get('run_id', '?')}: "
+            f"{result.get('status', '?')} "
+            f"(facts_added={result.get('facts_added', 0)}, "
+            f"superseded={result.get('facts_superseded', 0)}, "
+            f"decayed={result.get('decayed', 0)})"
+        )
+
+    def _run_skillforge_task(self, task: ScheduledTask) -> str:
+        """Execute a ``metadata["kind"] == "skillforge"`` task.
+
+        Mines repeated tool patterns and forges candidate skills through
+        the gauntlet. Synchronous like the other learning tasks — the
+        synthesis LLM call would contend with other tasks anyway.
+        """
+        from nova_ai.cli.forge_cmd import _build_tool_executor
+        from nova_ai.core.config import DEFAULT_CONFIG_DIR
+        from nova_ai.learning.skillforge.pipeline import run_skillforge
+        from nova_ai.learning.skillforge.store import SkillForgeRunStore
+
+        root = Path(DEFAULT_CONFIG_DIR) / "learning" / "skillforge"
+        learning_cfg = self._training_learning_config()
+        config = learning_cfg.skillforge if learning_cfg is not None else None
+        if config is None or not config.enabled:
+            return "[skillforge] learning.skillforge.enabled is false; skipping"
+
+        trace_store = self._training_trace_store()
+        run_store = SkillForgeRunStore(root / "runs.db")
+        try:
+            result = run_skillforge(
+                trace_store=trace_store,
+                config=config,
+                run_store=run_store,
+                skills_root=Path(DEFAULT_CONFIG_DIR) / "skills",
+                tool_executor=_build_tool_executor(),
+                trigger="scheduled",
+            )
+        finally:
+            run_store.close()
+
+        if result.get("status") == "skipped":
+            return f"[skillforge] skipped: {result.get('reason', '?')}"
+        if result.get("status") == "failed":
+            return f"[skillforge] failed: {result.get('error', '?')}"
+        skills = result.get("skills", [])
+        parts = [
+            f"{s['skill_name']}: {s['status']}{' (adopted)' if s.get('adopted') else ''}"
+            for s in skills
+        ]
+        return (
+            f"[skillforge] run {result.get('run_id', '?')}: "
+            f"{result.get('status', '?')} "
+            f"(patterns={result.get('patterns_mined', 0)}, "
+            f"passed={result.get('passed', 0)}) [{'; '.join(parts)}]"
+        )
 
     # -- Guardrails ----------------------------------------------------------
 

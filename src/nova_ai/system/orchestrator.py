@@ -61,6 +61,34 @@ class QueryOrchestrator:
             except Exception as exc:
                 logger.warning("Failed to inject memory context: %s", exc)
 
+        # Consolidated core memory ("sleep cycle" facts) — opt-in via
+        # [learning.consolidation] enabled. Any failure keeps the query as-is.
+        if getattr(s.config.learning, "consolidation", None) is not None:
+            try:
+                if s.config.learning.consolidation.enabled:
+                    from nova_ai.core.paths import get_config_dir
+                    from nova_ai.memory.consolidation.inject import (
+                        inject as inject_core,
+                    )
+                    from nova_ai.memory.consolidation.store import FactStore
+
+                    fact_store = FactStore(
+                        get_config_dir()
+                        / "learning"
+                        / "consolidation"
+                        / "facts.db"
+                    )
+                    try:
+                        messages = inject_core(
+                            messages,
+                            fact_store,
+                            max_chars=s.config.learning.consolidation.core_memory_max_chars,
+                        )
+                    finally:
+                        fact_store.close()
+            except Exception as exc:
+                logger.debug("Core-memory injection skipped: %s", exc)
+
         use_agent = agent or s.agent_name
         if not agent and use_agent != "none":
             detected = self._detect_agent_intent(query)

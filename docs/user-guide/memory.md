@@ -324,6 +324,26 @@ Use it to inform your response, citing sources where applicable:
 
 ---
 
+## Core Memory (distilled facts)
+
+Beyond raw document retrieval, NOVA can consolidate your conversations into a compact **core memory** — a short list of durable facts ("prefers dark mode", "deploys on Fridays are forbidden") that is prepended to every query alongside retrieved context. This runs as a background "sleep cycle" and is off by default:
+
+```toml
+# ~/.nova_ai/config.toml
+[learning.consolidation]
+enabled = true
+```
+
+```bash
+nova memory consolidate run --foreground   # run one cycle now
+nova memory consolidate facts              # see what NOVA learned
+nova memory consolidate forget FACT_ID     # remove a wrong fact
+```
+
+See [Memory Consolidation](../learning/memory-consolidation.md) for the full pipeline (clustering, fact distillation, contradiction resolution, decay).
+
+---
+
 ## CLI Usage
 
 ```bash
