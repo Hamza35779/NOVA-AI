@@ -52,15 +52,35 @@ def scheduler() -> None:
 )
 @click.option("--agent", default="simple", help="Agent to use for execution.")
 @click.option("--tools", default="", help="Comma-separated tool names.")
+@click.option(
+    "--metadata",
+    "metadata_json",
+    default="",
+    help='JSON metadata for the task (e.g. \'{"kind": "prove"}\').',
+)
 def scheduler_create(
     prompt: str,
     schedule_type: str,
     schedule_value: str,
     agent: str,
     tools: str,
+    metadata_json: str,
 ) -> None:
     """Create a new scheduled task."""
     console = Console()
+    metadata: dict = {}
+    if metadata_json.strip():
+        import json
+
+        try:
+            parsed = json.loads(metadata_json)
+        except json.JSONDecodeError as exc:
+            console.print(f"[red]Invalid --metadata JSON: {exc}[/red]")
+            sys.exit(1)
+        if not isinstance(parsed, dict):
+            console.print("[red]--metadata must be a JSON object.[/red]")
+            sys.exit(1)
+        metadata = parsed
     store = _get_store()
     try:
         sched = _get_scheduler(store)
@@ -70,6 +90,7 @@ def scheduler_create(
             schedule_value=schedule_value,
             agent=agent,
             tools=tools,
+            metadata=metadata,
         )
         console.print(f"[green]Created task {task.id}[/green]")
         console.print(f"  Type: {task.schedule_type}")
@@ -78,6 +99,8 @@ def scheduler_create(
         console.print(f"  Agent: {task.agent}")
         if task.tools:
             console.print(f"  Tools: {task.tools}")
+        if metadata:
+            console.print(f"  Metadata: {metadata}")
     finally:
         store.close()
 

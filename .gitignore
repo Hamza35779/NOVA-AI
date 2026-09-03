@@ -142,3 +142,7 @@ frontend/tsconfig.tsbuildinfo
 
 # PyInstaller build debris
 *.spec
+
+# GitHub API debug dumps (gh jobs listing pulled during local debugging)
+jobs.json
+jobs_auth.json
