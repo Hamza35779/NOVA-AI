@@ -329,6 +329,9 @@ def create_app(
     app.include_router(persona_router)
     app.include_router(model_hub_router)
     app.include_router(gguf_hub_router)
+    from nova_ai.server.conversation_routes import router as conversation_router
+
+    app.include_router(conversation_router)
     include_all_routes(app)
 
     # Restore SendBlue channel bindings from database on startup

@@ -127,6 +127,18 @@ export interface ChatMessage {
   usage?: TokenUsage;
   telemetry?: MessageTelemetry;
   audio?: { url: string };
+  /** Conversation-tree node id (server-side); enables fork/regenerate/race. */
+  nodeId?: string;
+  /** Alternative answers for the same prompt (siblings in the tree). */
+  siblings?: MessageSibling[];
+  /** Index into `siblings` currently displayed (-1 = the message itself). */
+  activeSibling?: number;
+}
+
+export interface MessageSibling {
+  nodeId: string;
+  content: string;
+  model: string;
 }
 
 export interface Conversation {

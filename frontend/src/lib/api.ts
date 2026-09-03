@@ -281,8 +281,7 @@ export async function fetchTelemetry(): Promise<unknown> {
   return res.json();
 }
 
-export async function fetchTraces(limit: number = 50): Promise<unknown> {
-  if (isTauri()) {
+export async function fetchTraces(limit: number = 50): Promise<unknown> {  if (isTauri()) {
     try {
       return await tauriInvoke('fetch_traces', { apiUrl: getBase(), limit });
     } catch {}
@@ -1205,3 +1204,83 @@ export const setActivePersonaAPI = (id: string) =>
 // Mobile Pairing API
 export const getMobilePairingInfo = () =>
   fetch(`${getBase()}/api/mobile/pairing-info`).then(r => r.json());
+
+// Conversation tree API (fork / regenerate / race / preference pairs)
+
+export interface ConvNode {
+  id: string;
+  conversation_id: string;
+  parent_id: string;
+  role: string;
+  content: string;
+  model: string;
+  engine: string;
+  created_at: string;
+  metadata: Record<string, unknown>;
+  feedback: number | null;
+}
+
+export interface ConvTree {
+  nodes: ConvNode[];
+  children: Record<string, ConvNode[]>;
+}
+
+export const createTreeConversation = (title: string) =>
+  apiFetch(`/api/conversations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  }).then(r => r.json());
+
+export const getConversationTree = (convId: string) =>
+  apiFetch(`/api/conversations/${convId}/tree`).then(r => r.json());
+
+export const addTreeNode = (
+  convId: string,
+  body: { role: string; content: string; parent_id?: string; model?: string },
+) =>
+  apiFetch(`/api/conversations/${convId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+
+export const regenerateNode = (convId: string, promptNodeId?: string, model?: string) =>
+  apiFetch(`/api/conversations/${convId}/regenerate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt_node_id: promptNodeId, model }),
+  }).then(r => r.json());
+
+export const raceModels = (
+  convId: string,
+  promptNodeId: string,
+  models: string[],
+  judge = false,
+) =>
+  apiFetch(`/api/conversations/${convId}/race`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ models, judge, prompt_node_id: promptNodeId }),
+  }).then(r => r.json());
+
+export const forkConversation = (convId: string, nodeId: string) =>
+  apiFetch(`/api/conversations/${convId}/fork`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ node_id: nodeId }),
+  }).then(r => r.json());
+
+export const pickSiblingAPI = (nodeId: string, source = 'regen') =>
+  apiFetch(`/api/conversations/nodes/${nodeId}/pick`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source }),
+  }).then(r => r.json());
+
+export const sendNodeFeedback = (nodeId: string, score: number) =>
+  apiFetch(`/api/conversations/nodes/${nodeId}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ score }),
+  }).then(r => r.json());

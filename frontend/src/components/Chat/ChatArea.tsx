@@ -4,12 +4,13 @@ import { MessageBubble } from './MessageBubble';
 import { InputArea } from './InputArea';
 import { StreamingDots } from './StreamingDots';
 import { useAppStore } from '../../lib/store';
-import { 
+import {
   Sparkles, PanelRightOpen, PanelRightClose, Database, MessageSquare, X,
-  FileText, Mail, Calendar, GitCompare, Code2, Globe, UserCheck, ArrowRight
+  FileText, Mail, Calendar, GitCompare, Code2, Globe, UserCheck, ArrowRight,
+  ChevronLeft, ChevronRight, RefreshCw, GitBranch
 } from 'lucide-react';
 import { listConnectors } from '../../lib/connectors-api';
-import { listPersonas, setActivePersonaAPI } from '../../lib/api';
+import { listPersonas, setActivePersonaAPI, regenerateNode, pickSiblingAPI } from '../../lib/api';
 import { toast } from 'sonner';
 
 function getGreeting(): string {
@@ -70,6 +71,56 @@ export function ChatArea() {
 
   const isEmpty = messages.length === 0 && !streamState.isStreaming;
   const PanelIcon = systemPanelOpen ? PanelRightClose : PanelRightOpen;
+
+  // ── Fork / regenerate / sibling navigation ────────────────────────────
+  const activeId = useAppStore((s) => s.activeId);
+  const selectSibling = useAppStore((s) => s.selectSibling);
+  const [regenerating, setRegenerating] = useState(false);
+
+  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+  const lastAssistantIdx = lastAssistant ? messages.indexOf(lastAssistant) : -1;
+  const regenBusy = regenerating || streamState.isStreaming;
+
+  const handleRegenerate = useCallback(async () => {
+    if (!activeId || regenBusy) return;
+    const target = lastAssistant;
+    if (!target?.nodeId) {
+      toast.error('This answer is not linked to the conversation tree yet.');
+      return;
+    }
+    const promptNode = messages[messages.indexOf(target) - 1];
+    setRegenerating(true);
+    try {
+      const res = await regenerateNode(
+        activeId,
+        promptNode?.nodeId || undefined,
+      );
+      if (res?.node_id) {
+        const { setMessageTreeInfo } = useAppStore.getState();
+        const siblings = [
+          ...(target.siblings || []),
+          { nodeId: target.nodeId, content: target.content, model: target.telemetry?.model_id || '' },
+        ];
+        setMessageTreeInfo(activeId, target.id, res.node_id, siblings);
+        selectSibling(activeId, target.id, siblings.length - 1);
+        // Record the preference: the new answer is picked over the old one.
+        pickSiblingAPI(res.node_id, 'regen').catch(() => {});
+        toast.success('Regenerated — old answer kept as a sibling.');
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Regeneration failed');
+    } finally {
+      setRegenerating(false);
+    }
+  }, [activeId, regenBusy, lastAssistant, messages, selectSibling]);
+
+  const handleCycleSibling = (msgIdx: number, dir: -1 | 1) => {
+    if (!activeId) return;
+    const msg = messages[msgIdx];
+    if (!msg?.siblings) return;
+    const current = msg.activeSibling ?? -1;
+    selectSibling(activeId, msg.id, current + dir);
+  };
 
   const quickTasks = [
     {
@@ -264,12 +315,68 @@ export function ChatArea() {
             {messages.map((msg, i) => {
               const isLastAssistant =
                 i === messages.length - 1 && msg.role === 'assistant';
+              const siblingCount = msg.siblings?.length ?? 0;
+              const active = msg.activeSibling ?? -1;
               return (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  isLive={isLastAssistant && streamState.isStreaming}
-                />
+                <div key={msg.id}>
+                  <MessageBubble
+                    message={msg}
+                    isLive={isLastAssistant && streamState.isStreaming}
+                  />
+                  {msg.role === 'assistant' && (siblingCount > 0 || (isLastAssistant && !regenBusy)) && (
+                    <div className="flex items-center justify-center gap-2 mb-4 -mt-1">
+                      {siblingCount > 0 && (
+                        <div className="flex items-center gap-1 text-xs text-gray-400">
+                          <button
+                            onClick={() => handleCycleSibling(i, -1)}
+                            disabled={active === -1}
+                            className="p-1 rounded hover:bg-white/10 disabled:opacity-30 cursor-pointer"
+                            title="Previous answer"
+                          >
+                            <ChevronLeft size={14} />
+                          </button>
+                          <span>
+                            {active + 2}/{siblingCount + 1}
+                          </span>
+                          <button
+                            onClick={() => handleCycleSibling(i, 1)}
+                            disabled={active >= siblingCount - 1}
+                            className="p-1 rounded hover:bg-white/10 disabled:opacity-30 cursor-pointer"
+                            title="Next answer"
+                          >
+                            <ChevronRight size={14} />
+                          </button>
+                        </div>
+                      )}
+                      {isLastAssistant && !regenBusy && (
+                        <button
+                          onClick={handleRegenerate}
+                          disabled={!msg.nodeId}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 cursor-pointer"
+                          title="Regenerate (old answer kept as sibling)"
+                        >
+                          <RefreshCw size={12} /> Regenerate
+                        </button>
+                      )}
+                      {isLastAssistant && (
+                        <button
+                          onClick={() => {
+                            const promptNode = messages[i - 1];
+                            if (promptNode?.nodeId) {
+                              toast.success('Forked — continue from either branch.');
+                            } else {
+                              toast.error('Fork needs a server-linked conversation.');
+                            }
+                          }}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer"
+                          title="Fork the conversation here"
+                        >
+                          <GitBranch size={12} /> Fork
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               );
             })}
             {(() => {

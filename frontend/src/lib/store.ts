@@ -4,6 +4,7 @@ import type {
   ChatMessage,
   LiveEnergyMetrics,
   LogEntry,
+  MessageSibling,
   ModelInfo,
   MessageTelemetry,
   ResearchSearchTrace,
@@ -169,6 +170,15 @@ interface AppState {
     researchTraces?: ResearchSearchTrace[],
     researchSources?: ResearchSource[],
   ) => void;
+  /** Attach a server node id + siblings to a message (fork/race support). */
+  setMessageTreeInfo: (
+    conversationId: string,
+    messageId: string,
+    nodeId: string,
+    siblings?: MessageSibling[],
+  ) => void;
+  /** Switch a message to a sibling answer by index (-1 = original). */
+  selectSibling: (conversationId: string, messageId: string, siblingIndex: number) => void;
   setStreamState: (state: Partial<StreamState>) => void;
   resetStream: () => void;
 
@@ -431,6 +441,44 @@ export const useAppStore = create<AppState>((set, get) => {
 
     setStreamState: (partial: Partial<StreamState>) => {
       set((s) => ({ streamState: { ...s.streamState, ...partial } }));
+    },
+
+    setMessageTreeInfo: (conversationId, messageId, nodeId, siblings) => {
+      const store = loadConversations();
+      const conv = store.conversations[conversationId];
+      if (!conv) return;
+      const msg = conv.messages.find((m) => m.id === messageId);
+      if (!msg) return;
+      msg.nodeId = nodeId;
+      if (siblings) msg.siblings = siblings;
+      saveConversations(store);
+      set({ messages: [...conv.messages] });
+    },
+
+    selectSibling: (conversationId, messageId, siblingIndex) => {
+      const store = loadConversations();
+      const conv = store.conversations[conversationId];
+      if (!conv) return;
+      const msg = conv.messages.find((m) => m.id === messageId);
+      if (!msg || !msg.siblings) return;
+      // Siblings array sits after the original: index -1..siblings.length-1
+      const clamped = Math.max(-1, Math.min(siblingIndex, msg.siblings.length - 1));
+      if (clamped === -1) {
+        msg.activeSibling = -1;
+      } else {
+        const sib = msg.siblings[clamped];
+        if (!sib) return;
+        if (msg.activeSibling !== undefined && msg.activeSibling !== -1) {
+          // Stash the currently shown content back into its sibling slot.
+          const prev = msg.siblings[msg.activeSibling];
+          if (prev) prev.content = msg.content;
+        }
+        msg.content = sib.content;
+        msg.activeSibling = clamped;
+      }
+      conv.updatedAt = Date.now();
+      saveConversations(store);
+      set({ messages: [...conv.messages] });
     },
 
     resetStream: () => {
