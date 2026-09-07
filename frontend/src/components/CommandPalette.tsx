@@ -314,7 +314,7 @@ export function CommandPalette() {
 
         {/* Status messages */}
         {pullError && (
-          <div className="px-4 py-2 text-xs" style={{ color: 'var(--color-error)', background: 'rgba(220,38,38,0.05)' }}>
+          <div className="px-4 py-2 text-xs" style={{ color: 'var(--color-error)', background: 'var(--color-accent-subtle)' }}>
             {pullError}
           </div>
         )}
@@ -365,8 +365,8 @@ export function CommandPalette() {
                     <button
                       onClick={() => handleDelete(model.id)}
                       disabled={isDeleting}
-                      className="p-1 rounded transition-colors cursor-pointer"
-                      style={{ color: 'var(--color-text-tertiary)', opacity: 0 }}
+                      className="p-1 rounded transition-colors cursor-pointer opacity-0 focus:opacity-100"
+                      style={{ color: 'var(--color-text-tertiary)' }}
                       title="Delete model"
                       onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--color-error)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.opacity = '0'; e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}

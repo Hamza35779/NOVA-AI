@@ -42,10 +42,10 @@ export function MicButton({ state, onClick, disabled, reason }: MicButtonProps) 
           background: state === 'recording'
             ? 'var(--color-error)'
             : state === 'wake-listening'
-              ? 'rgba(124, 58, 237, 0.25)'
+              ? 'var(--color-accent-purple-subtle)'
               : 'transparent',
           color: state === 'recording'
-            ? 'white'
+            ? 'var(--color-on-accent)'
             : isInactive
               ? 'var(--color-text-tertiary)'
               : 'var(--color-text-secondary)',

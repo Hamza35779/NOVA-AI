@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UploadCloud, FileText, Trash2, MessageSquare } from 'lucide-react';
 import { listDocs, deleteDoc, uploadFiles } from '../../lib/api';
 
@@ -23,7 +23,7 @@ export function DocLibrary({ onChat }: { onChat: (docId: string | null) => void 
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files);
     if (!files.length) return;
-    
+
     setLoading(true);
     try {
       await uploadFiles(files);
@@ -59,12 +59,15 @@ export function DocLibrary({ onChat }: { onChat: (docId: string | null) => void 
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0F0B1E] text-white p-4">
+    <div className="flex flex-col h-full p-4" style={{ color: 'var(--color-text)' }}>
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-bold">Document Library</h2>
-        <button 
+        <button
           onClick={() => onChat(null)}
-          className="bg-[#7C3AED] hover:bg-purple-600 px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+          className="px-4 py-2 rounded-lg text-sm flex items-center gap-2 cursor-pointer transition-colors"
+          style={{ background: 'var(--color-accent-purple)', color: 'var(--color-on-accent)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-accent-purple-hover)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--color-accent-purple)')}
         >
           <MessageSquare size={16} /> Chat with all
         </button>
@@ -73,36 +76,61 @@ export function DocLibrary({ onChat }: { onChat: (docId: string | null) => void 
       <label
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
-        className="border-2 border-dashed border-purple-500/30 rounded-xl p-8 flex flex-col items-center justify-center mb-6 bg-[#1E1533] hover:bg-[#1E1533]/80 transition cursor-pointer"
+        className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center mb-6 transition cursor-pointer"
+        style={{ borderColor: 'var(--color-accent-purple)', background: 'var(--color-accent-purple-subtle)' }}
       >
         <input type="file" multiple className="hidden" onChange={handleFileChange} />
-        <UploadCloud size={48} className="text-[#06B6D4] mb-4" />
-        <p className="text-gray-300">Drag & drop files here or click to upload</p>
-        <p className="text-gray-500 text-sm mt-2">PDF, DOCX, TXT, MD, CSV</p>
-        {loading && <p className="text-purple-400 mt-4 animate-pulse">Uploading...</p>}
+        <UploadCloud size={48} className="mb-4" style={{ color: 'var(--color-accent)' }} />
+        <p style={{ color: 'var(--color-text)' }}>Drag & drop files here or click to upload</p>
+        <p className="text-sm mt-2" style={{ color: 'var(--color-text-tertiary)' }}>PDF, DOCX, TXT, MD, CSV</p>
+        {loading && <p className="mt-4 animate-pulse" style={{ color: 'var(--color-accent-purple)' }}>Uploading...</p>}
       </label>
 
       <div className="flex-1 overflow-y-auto space-y-3">
         {docs.map(doc => (
-          <div key={doc.id} className="bg-[#1E1533] p-4 rounded-xl flex items-center justify-between border border-white/5">
+          <div
+            key={doc.id}
+            className="p-4 rounded-xl flex items-center justify-between transition-all hover:-translate-y-0.5"
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.boxShadow = 'var(--shadow-md)')}
+            onMouseLeave={(e) => (e.currentTarget.style.boxShadow = 'var(--shadow-sm)')}
+          >
             <div className="flex items-center gap-3 overflow-hidden">
-              <FileText className="text-[#7C3AED] shrink-0" size={24} />
+              <FileText className="shrink-0" size={24} style={{ color: 'var(--color-accent-purple)' }} />
               <div className="truncate">
                 <p className="font-medium truncate">{doc.filename || doc.id}</p>
-                <p className="text-xs text-gray-400">{doc.chunk_count || 0} chunks</p>
+                <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{doc.chunk_count || 0} chunks</p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <button 
+              <button
                 onClick={() => onChat(doc.id)}
-                className="p-2 hover:bg-white/10 rounded-lg text-gray-300 hover:text-white transition"
+                className="p-2 rounded-lg transition cursor-pointer"
+                style={{ color: 'var(--color-text-secondary)' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+                  e.currentTarget.style.color = 'var(--color-text)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--color-text-secondary)';
+                }}
                 title="Chat with this doc"
               >
                 <MessageSquare size={18} />
               </button>
-              <button 
+              <button
                 onClick={() => handleDelete(doc.id)}
-                className="p-2 hover:bg-red-500/20 rounded-lg text-gray-400 hover:text-red-400 transition"
+                className="p-2 rounded-lg transition cursor-pointer"
+                style={{ color: 'var(--color-text-tertiary)' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'color-mix(in srgb, var(--color-error) 15%, transparent)';
+                  e.currentTarget.style.color = 'var(--color-error)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--color-text-tertiary)';
+                }}
                 title="Delete"
               >
                 <Trash2 size={18} />
@@ -111,7 +139,7 @@ export function DocLibrary({ onChat }: { onChat: (docId: string | null) => void 
           </div>
         ))}
         {docs.length === 0 && !loading && (
-          <div className="text-center text-gray-500 mt-10">
+          <div className="text-center mt-10" style={{ color: 'var(--color-text-tertiary)' }}>
             No documents uploaded yet.
           </div>
         )}

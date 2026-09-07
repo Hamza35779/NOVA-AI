@@ -80,8 +80,8 @@ function TaskNode({ task }: { task: SubTask }) {
 function Arrow() {
   return (
     <svg width="28" height="16" viewBox="0 0 28 16" className="shrink-0 self-center">
-      <line x1="0" y1="8" x2="22" y2="8" stroke="#475569" strokeWidth="1.5" />
-      <polygon points="22,4 28,8 22,12" fill="#475569" />
+      <line x1="0" y1="8" x2="22" y2="8" stroke="var(--color-text-tertiary)" strokeWidth="1.5" />
+      <polygon points="22,4 28,8 22,12" fill="var(--color-text-tertiary)" />
     </svg>
   );
 }
@@ -195,13 +195,15 @@ export function TaskPlannerPanel() {
     <div className="flex flex-col h-full p-4 gap-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold" style={{ color: '#F1F5F9' }}>
+        <h2 className="text-base font-bold" style={{ color: 'var(--color-text)' }}>
           Task Planner
         </h2>
         <button
           onClick={fetchPlans}
-          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-          style={{ color: '#94A3B8' }}
+          className="p-1.5 rounded-lg transition-colors cursor-pointer"
+          style={{ color: 'var(--color-text-secondary)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           title="Refresh"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -211,7 +213,7 @@ export function TaskPlannerPanel() {
       {/* Plan list */}
       <div className="flex flex-col gap-2 overflow-y-auto max-h-48">
         {plans.length === 0 && (
-          <p className="text-sm" style={{ color: '#475569' }}>
+          <p className="text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             No active plans. Plans are created automatically when Nova runs multi-step tasks.
           </p>
         )}
@@ -219,27 +221,28 @@ export function TaskPlannerPanel() {
           <button
             key={plan.plan_id}
             onClick={() => handleSelectPlan(plan.plan_id)}
-            className={`text-left p-3 rounded-xl border transition-all ${
-              selectedPlanId === plan.plan_id ? 'border-purple-500' : 'border-white/10'
-            }`}
-            style={{ background: '#1E1533' }}
+            className="text-left p-3 rounded-xl transition-all cursor-pointer"
+            style={{
+              background: 'var(--color-surface)',
+              border: `1px solid ${selectedPlanId === plan.plan_id ? 'var(--color-accent-purple)' : 'var(--color-border)'}`,
+            }}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium truncate" style={{ color: '#F1F5F9' }}>
+              <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
                 {plan.goal}
               </span>
               <span
                 className="text-xs px-2 py-0.5 rounded-full shrink-0"
                 style={{
                   background: `${STATUS_COLORS[plan.status] ?? '#475569'}22`,
-                  color: STATUS_COLORS[plan.status] ?? '#94A3B8',
+                  color: STATUS_COLORS[plan.status] ?? 'var(--color-text-secondary)',
                 }}
               >
                 {plan.status}
               </span>
             </div>
             {/* Progress bar */}
-            <div className="mt-2 h-1 rounded-full bg-white/10">
+            <div className="mt-2 h-1 rounded-full" style={{ background: 'var(--color-border)' }}>
               <div
                 className="h-1 rounded-full transition-all"
                 style={{
@@ -256,14 +259,14 @@ export function TaskPlannerPanel() {
       {selectedPlan && (
         <div className="flex flex-col gap-3 flex-1 overflow-auto">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold" style={{ color: '#CBD5E1' }}>
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
               {selectedPlan.goal}
             </h3>
             {selectedPlan.status === 'running' && (
               <button
                 onClick={() => handleCancel(selectedPlan.plan_id)}
-                className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg transition-colors"
-                style={{ background: '#EF444422', color: '#EF4444' }}
+                className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg transition-colors cursor-pointer"
+                style={{ background: 'color-mix(in srgb, var(--color-error) 13%, transparent)', color: 'var(--color-error)' }}
               >
                 <X size={11} /> Cancel
               </button>

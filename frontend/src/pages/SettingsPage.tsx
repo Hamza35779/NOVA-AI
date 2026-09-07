@@ -262,7 +262,7 @@ export function SettingsPage() {
               Settings
             </h1>
             {saved && (
-              <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full" style={{
+              <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full sync-bump" style={{
                 background: 'var(--color-accent-subtle)',
                 color: 'var(--color-success)',
               }}>
@@ -408,7 +408,9 @@ export function SettingsPage() {
             <SettingRow label="" description={srcMsg}>
               <button onClick={saveSource}
                 className="text-sm px-3 py-1.5 rounded-lg outline-none cursor-pointer"
-                style={{ background: 'var(--color-accent, var(--color-bg-tertiary))', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
+                style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)', border: '1px solid transparent' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-accent-hover)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--color-accent)')}>
                 Save inference source
               </button>
             </SettingRow>
@@ -479,10 +481,11 @@ export function SettingsPage() {
                 }}
               >
                 <span
-                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform bg-white"
+                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform"
                   style={{
                     transform: memoryEnabled ? 'translateX(20px)' : 'translateX(0)',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    boxShadow: 'var(--shadow-sm)',
+                    background: 'var(--color-surface)',
                   }}
                 />
               </button>
@@ -596,10 +599,11 @@ export function SettingsPage() {
                 }}
               >
                 <span
-                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform bg-white"
+                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform"
                   style={{
                     transform: settings.speechEnabled ? 'translateX(20px)' : 'translateX(0)',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    boxShadow: 'var(--shadow-sm)',
+                    background: 'var(--color-surface)',
                   }}
                 />
               </button>
@@ -658,11 +662,11 @@ export function SettingsPage() {
                 onClick={handleClear}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                 style={{
-                  color: confirmClear ? 'white' : 'var(--color-error)',
+                  color: confirmClear ? 'var(--color-on-accent)' : 'var(--color-error)',
                   background: confirmClear ? 'var(--color-error)' : 'transparent',
                   border: '1px solid var(--color-error)',
                 }}
-                onMouseEnter={(e) => { if (!confirmClear) e.currentTarget.style.background = 'rgba(220,38,38,0.1)'; }}
+                onMouseEnter={(e) => { if (!confirmClear) e.currentTarget.style.background = 'color-mix(in srgb, var(--color-error) 10%, transparent)'; }}
                 onMouseLeave={(e) => { if (!confirmClear) e.currentTarget.style.background = 'transparent'; }}
               >
                 <Trash2 size={12} /> {confirmClear ? 'Click again to confirm' : 'Clear'}
@@ -681,7 +685,8 @@ export function SettingsPage() {
                 <span
                   className="inline-block h-3.5 w-3.5 rounded-full transition-transform"
                   style={{
-                    background: 'white',
+                    background: 'var(--color-surface)',
+                    boxShadow: 'var(--shadow-sm)',
                     transform: autoUpdateEnabled ? 'translateX(18px)' : 'translateX(2px)',
                   }}
                 />

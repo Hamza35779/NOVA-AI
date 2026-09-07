@@ -125,20 +125,23 @@ export function ConversationList({ searchQuery }: Props) {
                     fontWeight: isActive ? 500 : 400,
                   }}
                 >
-                  {conv.pinned && <Pin size={12} className="text-[#7C3AED] shrink-0 fill-[#7C3AED]" />}
+                  {conv.pinned && <Pin size={12} className="shrink-0" style={{ color: 'var(--color-accent-purple)' }} />}
                   <span className="truncate">{conv.title}</span>
                 </div>
                 <div className="text-[11px] mt-0.5 flex justify-between items-center" style={{ color: 'var(--color-text-tertiary)' }}>
                   <span>{formatRelativeTime(updatedAt)}</span>
                   {msgCount > 0 && (
-                    <span className="bg-[#7C3AED]/20 text-[#7C3AED] px-1.5 rounded-full text-[10px]">
+                    <span
+                      className="px-1.5 rounded-full text-[10px]"
+                      style={{ background: 'var(--color-accent-purple-subtle)', color: 'var(--color-accent-purple)' }}
+                    >
                       {msgCount}
                     </span>
                   )}
                 </div>
               </div>
             </button>
-            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity pr-1">
+            <div className="flex items-center opacity-45 group-hover:opacity-100 transition-opacity pr-1">
               {usingApi && (
                 <button
                   onClick={(e) => handlePin(conv.id, conv.pinned, e)}

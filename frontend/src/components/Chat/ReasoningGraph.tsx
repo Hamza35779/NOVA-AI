@@ -47,13 +47,13 @@ const KIND_META: Record<
 > = {
   plan: {
     icon: <Brain className="h-3.5 w-3.5" />,
-    text: 'var(--color-accent-purple, #a78bfa)',
-    ring: 'rgba(167, 139, 250, 0.25)',
+    text: 'var(--color-accent-purple)',
+    ring: 'var(--color-accent-purple-subtle)',
   },
   thought: {
     icon: <CircleDashed className="h-3.5 w-3.5" />,
     text: 'var(--color-text-secondary)',
-    ring: 'rgba(113, 113, 122, 0.2)',
+    ring: 'var(--color-border)',
   },
   tool_call: {
     icon: <Wrench className="h-3.5 w-3.5" />,
@@ -63,22 +63,22 @@ const KIND_META: Record<
   observation: {
     icon: <Hammer className="h-3.5 w-3.5" />,
     text: 'var(--color-text-secondary)',
-    ring: 'rgba(113, 113, 122, 0.2)',
+    ring: 'var(--color-border)',
   },
   repair_attempt: {
     icon: <RefreshCcw className="h-3.5 w-3.5" />,
-    text: '#f59e0b',
-    ring: 'rgba(245, 158, 11, 0.2)',
+    text: 'var(--color-accent-amber)',
+    ring: 'var(--color-accent-amber-subtle)',
   },
   repair_success: {
     icon: <CheckCircle2 className="h-3.5 w-3.5" />,
-    text: '#10b981',
-    ring: 'rgba(16, 185, 129, 0.2)',
+    text: 'var(--color-success)',
+    ring: 'var(--color-accent-subtle)',
   },
   repair_exhausted: {
     icon: <ShieldAlert className="h-3.5 w-3.5" />,
-    text: '#ef4444',
-    ring: 'rgba(239, 68, 68, 0.2)',
+    text: 'var(--color-error)',
+    ring: 'var(--color-accent-subtle)',
   },
 };
 

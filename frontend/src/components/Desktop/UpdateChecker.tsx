@@ -141,7 +141,7 @@ export function UpdateChecker() {
 
       {state === 'ready' && (
         <div style={styles.row}>
-          <span style={{ color: '#a6e3a1' }}>Update installed.</span>
+          <span style={{ color: 'var(--color-success)' }}>Update installed.</span>
           <div style={styles.actions}>
             <button style={styles.successBtn} onClick={handleRelaunch}>Relaunch now</button>
             <button style={styles.secondaryBtn} onClick={() => setDismissed(true)}>Later</button>
@@ -151,7 +151,7 @@ export function UpdateChecker() {
 
       {state === 'error' && (
         <div style={styles.row}>
-          <span style={{ color: '#f38ba8' }}>Update error: {errorMsg}</span>
+          <span style={{ color: 'var(--color-error)' }}>Update error: {errorMsg}</span>
         </div>
       )}
     </div>
@@ -161,8 +161,9 @@ export function UpdateChecker() {
 const styles: Record<string, React.CSSProperties> = {
   banner: {
     padding: '10px 24px',
-    backgroundColor: '#181825',
-    borderBottom: '1px solid #313244',
+    backgroundColor: 'var(--color-bg-tertiary)',
+    borderBottom: '1px solid var(--color-border)',
+    color: 'var(--color-text)',
   },
   row: {
     display: 'flex',
@@ -180,8 +181,8 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 14px',
     border: 'none',
     borderRadius: '4px',
-    backgroundColor: '#89b4fa',
-    color: '#1e1e2e',
+    backgroundColor: 'var(--color-accent)',
+    color: 'var(--color-on-accent)',
     fontSize: '12px',
     fontWeight: 600,
     cursor: 'pointer',
@@ -190,18 +191,18 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 14px',
     border: 'none',
     borderRadius: '4px',
-    backgroundColor: '#a6e3a1',
-    color: '#1e1e2e',
+    backgroundColor: 'var(--color-success)',
+    color: 'var(--color-on-accent)',
     fontSize: '12px',
     fontWeight: 600,
     cursor: 'pointer',
   },
   secondaryBtn: {
     padding: '4px 14px',
-    border: '1px solid #45475a',
+    border: '1px solid var(--color-border)',
     borderRadius: '4px',
     backgroundColor: 'transparent',
-    color: '#a6adc8',
+    color: 'var(--color-text-secondary)',
     fontSize: '12px',
     cursor: 'pointer',
   },
@@ -209,7 +210,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0',
     border: 'none',
     backgroundColor: 'transparent',
-    color: '#585b70',
+    color: 'var(--color-text-tertiary)',
     fontSize: '11px',
     cursor: 'pointer',
     textDecoration: 'underline',
@@ -218,13 +219,13 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     maxWidth: '300px',
     height: '6px',
-    backgroundColor: '#313244',
+    backgroundColor: 'var(--color-border)',
     borderRadius: '3px',
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#89b4fa',
+    backgroundColor: 'var(--color-accent)',
     borderRadius: '3px',
     transition: 'width 0.3s ease',
   },

@@ -89,7 +89,7 @@ export function ModelHubPage() {
               {installing === m.id ? 'Installing...' : 'Install'}
             </button>
             {installing === m.id && (
-              <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2" style={{ background: 'var(--color-border)' }}>
+              <div className="w-full rounded-full h-1.5 mt-2" style={{ background: 'var(--color-border)' }}>
                 <div className="bg-blue-600 h-1.5 rounded-full animate-pulse w-1/2" style={{ background: 'var(--color-accent)' }}></div>
               </div>
             )}

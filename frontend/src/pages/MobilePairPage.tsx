@@ -23,15 +23,15 @@ export function MobilePairPage() {
         Access NOVA AI on your phone by connecting to the local network URL below.
       </p>
 
-      <div className="p-8 rounded-2xl mb-8 flex flex-col items-center bg-white shadow-sm border border-gray-100">
+      <div className="p-8 rounded-2xl mb-8 flex flex-col items-center" style={{ background: '#ffffff', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--color-border)' }}>
         {qrCodeData ? (
           <img src={qrCodeData} alt="QR Code" className="w-64 h-64 mb-6" />
         ) : (
-          <div className="w-64 h-64 bg-gray-100 flex items-center justify-center rounded-xl mb-6">
-            <QrCode size={48} className="text-gray-400" />
+          <div className="w-64 h-64 flex items-center justify-center rounded-xl mb-6" style={{ background: 'var(--color-bg-secondary)' }}>
+            <QrCode size={48} style={{ color: 'var(--color-text-tertiary)' }} />
           </div>
         )}
-        <div className="font-mono text-lg bg-gray-50 px-6 py-3 rounded-lg border text-gray-800">
+        <div className="font-mono text-lg px-6 py-3 rounded-lg border" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
           {pairingUrl}
         </div>
       </div>

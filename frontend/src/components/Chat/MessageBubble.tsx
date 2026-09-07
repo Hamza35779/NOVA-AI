@@ -95,7 +95,7 @@ function CopyMessageButton({ content }: { content: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+      className="p-1 rounded opacity-45 hover:opacity-100 transition-opacity cursor-pointer"
       style={{ color: 'var(--color-text-tertiary)' }}
       title="Copy message"
     >
@@ -111,7 +111,7 @@ export function MessageBubble({ message, isLive = false }: Props) {
     return (
       <div className="flex justify-end mb-4">
         <div
-          className="max-w-[85%] px-4 py-2.5 text-sm leading-relaxed"
+          className="max-w-[85%] px-4 py-2.5 text-sm leading-relaxed transition-transform active:scale-[0.99]"
           style={{
             background: 'var(--color-user-bubble)',
             color: 'var(--color-user-bubble-text)',
@@ -194,25 +194,34 @@ export function MessageBubble({ message, isLive = false }: Props) {
       )}
 
       {/* Footer: actions + x-ray */}
-      <div className="flex items-center gap-1 mt-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center gap-1 mt-2 text-xs opacity-45 group-hover:opacity-100 transition-opacity">
         <CopyMessageButton content={cleanContent} />
         <button
           onClick={() => toast.success('👍 Feedback saved! Reinforced smart model router.')}
-          className="p-1 text-gray-400 hover:text-green-400 rounded transition cursor-pointer hover:bg-white/5"
+          className="p-1 rounded transition cursor-pointer"
+          style={{ color: 'var(--color-text-tertiary)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-success)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-tertiary)')}
           title="Good response (trains model router)"
         >
           <ThumbsUp size={13} />
         </button>
         <button
           onClick={() => toast.info('👎 Feedback recorded. Router will adjust tier for similar queries.')}
-          className="p-1 text-gray-400 hover:text-red-400 rounded transition cursor-pointer hover:bg-white/5"
+          className="p-1 rounded transition cursor-pointer"
+          style={{ color: 'var(--color-text-tertiary)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-error)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-tertiary)')}
           title="Poor response (upgrades tier next time)"
         >
           <ThumbsDown size={13} />
         </button>
         <button
           onClick={() => window.location.href = '/compare'}
-          className="flex items-center gap-1 px-2 py-0.5 text-gray-400 hover:text-[#06B6D4] rounded transition cursor-pointer hover:bg-white/5"
+          className="flex items-center gap-1 px-2 py-0.5 rounded transition cursor-pointer"
+          style={{ color: 'var(--color-text-tertiary)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-accent)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-tertiary)')}
           title="Compare this response with other models"
         >
           <GitCompare size={12} />

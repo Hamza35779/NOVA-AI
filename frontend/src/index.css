@@ -413,6 +413,12 @@
     color: var(--color-text-tertiary);
   }
 
+  /* Gentle breathing glow — attach to any focal element (e.g. the empty-state
+     hero icon) to make the app feel alive at rest. */
+  .hud-breathe {
+    animation: hud-breathe 2.6s ease-in-out infinite;
+  }
+
   .hud-title {
     font-weight: 600;
   }
@@ -564,6 +570,18 @@
     animation: hud-heartbeat 1.6s ease-in-out infinite;
   }
 
+  /* Staggered entrance for the empty-state quick-task cards. Applied via
+     inline animationDelay (index * 70ms) so the grid cascades in. */
+  .rise-in {
+    opacity: 0;
+    animation: nova-ai-rise-in 480ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  @keyframes nova-ai-rise-in {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
   /* Blinking caret — place after titles */
   .hud-caret {
     display: inline-block;
@@ -599,9 +617,20 @@
     .hud-scan-beam::before,
     .hud-heartbeat,
     .hud-caret,
+    .rise-in,
+    .hud-breathe,
     .hud-panel > h3::after,
     .hud-panel-head::after {
       animation: none !important;
+    }
+
+    .rise-in {
+      opacity: 1;
+    }
+
+    .hover\:translate-x-1,
+    .group:hover .group-hover\:translate-x-1 {
+      transform: none !important;
     }
   }
 }

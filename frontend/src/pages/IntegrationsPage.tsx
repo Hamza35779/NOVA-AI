@@ -205,17 +205,17 @@ export function IntegrationsPage() {
       : filteredBySearch.filter((c) => c.category.toLowerCase().includes(selectedCategory.toLowerCase()));
 
   return (
-    <div className="flex-1 h-full overflow-y-auto p-6 md:p-10" style={{ background: 'var(--color-bg-primary)' }}>
+    <div className="flex-1 h-full overflow-y-auto p-6 md:p-10" style={{ background: 'var(--color-bg)' }}>
       {/* Header */}
       <div className="max-w-6xl mx-auto mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-[var(--color-border)]">
           <div>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-cyan-500 flex items-center justify-center text-white shadow-lg">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-cyan-500 flex items-center justify-center shadow-lg" style={{ color: '#ffffff' }}>
                 <Layers size={22} />
               </div>
               <div>
-                <h1 className="text-2xl md:text-3xl font-extrabold text-[var(--color-text-primary)]">
+                <h1 className="text-2xl md:text-3xl font-extrabold text-[var(--color-text)]">
                   App & Software Integrations
                 </h1>
                 <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
@@ -225,7 +225,10 @@ export function IntegrationsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+            <span
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+              style={{ background: 'var(--color-accent-purple-subtle)', color: 'var(--color-accent-purple)', border: '1px solid var(--color-accent-purple)' }}
+            >
               <Sparkles size={14} /> Agentic Multi-App Hub
             </span>
           </div>
@@ -240,7 +243,7 @@ export function IntegrationsPage() {
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search integrations..."
             aria-label="Search integrations"
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)] focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30"
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)] focus:outline-none focus:border-[var(--color-accent-purple)]"
           />
         </div>
 
@@ -248,13 +251,23 @@ export function IntegrationsPage() {
         {error && (
           <div
             role="alert"
-            className="mt-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-sm text-red-400"
+            className="mt-4 flex items-center gap-3 px-4 py-3 rounded-xl text-sm"
+            style={{
+              background: 'color-mix(in srgb, var(--color-error) 10%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--color-error) 30%, transparent)',
+              color: 'var(--color-error)',
+            }}
           >
             <AlertCircle size={18} className="shrink-0" />
             <span className="flex-1">{error}</span>
             <button
               onClick={fetchIntegrations}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 transition-all cursor-pointer"
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+              style={{
+                background: 'color-mix(in srgb, var(--color-error) 20%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-error) 30%, transparent)',
+                color: 'var(--color-error)',
+              }}
             >
               Retry
             </button>
@@ -269,11 +282,12 @@ export function IntegrationsPage() {
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
                 aria-pressed={selectedCategory === cat}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                className="px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer"
+                style={
                   selectedCategory === cat
-                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/20'
-                    : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] border border-[var(--color-border)]'
-                }`}
+                    ? { background: 'var(--color-accent-purple)', color: 'var(--color-on-accent)', boxShadow: 'var(--shadow-md)' }
+                    : { background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }
+                }
               >
                 {cat}
               </button>
@@ -315,7 +329,7 @@ export function IntegrationsPage() {
       ) : displayedCategories.length === 0 ? (
         <div className="max-w-6xl mx-auto text-center py-16">
           <Search size={40} className="mx-auto text-[var(--color-text-secondary)] mb-4 opacity-50" />
-          <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-1">No integrations found</h3>
+          <h3 className="text-lg font-semibold text-[var(--color-text)] mb-1">No integrations found</h3>
           <p className="text-sm text-[var(--color-text-secondary)]">
             Try a different search term or clear the filter.
           </p>
@@ -326,11 +340,11 @@ export function IntegrationsPage() {
           {displayedCategories.map((group) => (
             <div key={group.category} className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-[var(--color-text-primary)] flex items-center gap-2">
-                  {group.category.includes('Messaging') && <MessageSquare size={18} className="text-cyan-400" />}
-                  {group.category.includes('Developer') && <Terminal size={18} className="text-purple-400" />}
-                  {group.category.includes('Document') && <FileText size={18} className="text-emerald-400" />}
-                  {group.category.includes('Notes') && <Share2 size={18} className="text-amber-400" />}
+                <h2 className="text-lg font-bold text-[var(--color-text)] flex items-center gap-2">
+                  {group.category.includes('Messaging') && <MessageSquare size={18} style={{ color: 'var(--color-accent)' }} />}
+                  {group.category.includes('Developer') && <Terminal size={18} style={{ color: 'var(--color-accent-purple)' }} />}
+                  {group.category.includes('Document') && <FileText size={18} style={{ color: 'var(--color-success)' }} />}
+                  {group.category.includes('Notes') && <Share2 size={18} style={{ color: 'var(--color-accent-amber)' }} />}
                   {group.category}
                 </h2>
                 <span className="text-xs text-[var(--color-text-secondary)]">{group.apps.length} integrations</span>
@@ -340,27 +354,34 @@ export function IntegrationsPage() {
                 {group.apps.map((app) => (
                   <div
                     key={app.id}
-                    className="rounded-2xl p-5 border border-[var(--color-border)] bg-[var(--color-bg-secondary)] hover:border-purple-500/40 transition-all flex flex-col justify-between shadow-sm"
+                    className="rounded-2xl p-5 transition-all flex flex-col justify-between"
+                    style={{
+                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-bg-secondary)',
+                      boxShadow: 'var(--shadow-sm)',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent-purple)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--color-border)')}
                   >
                     <div>
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-text-primary)] font-bold text-sm">
+                          <div className="w-10 h-10 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-text)] font-bold text-sm">
                             {app.id.includes('cisco') ? (
-                              <Network size={20} className="text-cyan-400" />
+                              <Network size={20} style={{ color: 'var(--color-accent)' }} />
                             ) : app.id.includes('docx') || app.id.includes('pdf') ? (
-                              <FileText size={20} className="text-emerald-400" />
+                              <FileText size={20} style={{ color: 'var(--color-success)' }} />
                             ) : app.id.includes('pptx') ? (
-                              <Presentation size={20} className="text-orange-400" />
+                              <Presentation size={20} style={{ color: 'var(--color-accent-amber)' }} />
                             ) : app.id.includes('claude') || app.id.includes('gemini') || app.id.includes('opencode') ? (
-                              <Terminal size={20} className="text-purple-400" />
+                              <Terminal size={20} style={{ color: 'var(--color-accent-purple)' }} />
                             ) : (
-                              <Globe size={20} className="text-indigo-400" />
+                              <Globe size={20} style={{ color: 'var(--color-accent)' }} />
                             )}
                           </div>
                           <div>
-                            <h3 className="font-bold text-sm text-[var(--color-text-primary)]">{app.name}</h3>
-                            <span className="text-[11px] font-mono text-purple-400">{app.id}</span>
+                            <h3 className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>{app.name}</h3>
+                            <span className="text-[11px] font-mono" style={{ color: 'var(--color-accent-purple)' }}>{app.id}</span>
                           </div>
                         </div>
 
@@ -371,15 +392,15 @@ export function IntegrationsPage() {
                           aria-checked={app.enabled}
                           aria-label={`${app.enabled ? 'Disable' : 'Enable'} ${app.name} integration`}
                           disabled={actionLoading === app.id}
-                          className={`w-11 h-6 rounded-full transition-colors relative p-0.5 cursor-pointer ${
-                            app.enabled ? 'bg-purple-600' : 'bg-gray-700'
-                          }`}
+                          className="w-11 h-6 rounded-full transition-colors relative p-0.5 cursor-pointer"
+                          style={{ background: app.enabled ? 'var(--color-accent-purple)' : 'var(--color-disabled-bg)' }}
                           title={app.enabled ? 'Click to Disable' : 'Click to Enable'}
                         >
                           <div
-                            className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                            className={`w-5 h-5 rounded-full transition-transform ${
                               app.enabled ? 'translate-x-5' : 'translate-x-0'
                             }`}
+                            style={{ background: 'var(--color-surface)' }}
                           />
                         </button>
                       </div>
@@ -391,9 +412,8 @@ export function IntegrationsPage() {
 
                     <div className="flex items-center justify-between pt-3 border-t border-[var(--color-border)] mt-2">
                       <span
-                        className={`text-[11px] font-semibold flex items-center gap-1 ${
-                          app.enabled ? 'text-green-400' : 'text-gray-400'
-                        }`}
+                        className="text-[11px] font-semibold flex items-center gap-1"
+                        style={{ color: app.enabled ? 'var(--color-success)' : 'var(--color-text-tertiary)' }}
                       >
                         {app.enabled ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
                         {app.enabled ? 'Connected' : app.status}
@@ -403,7 +423,12 @@ export function IntegrationsPage() {
                         onClick={() => handleQuickAction(app.id)}
                         disabled={actionLoading === app.id}
                         aria-label={`Run task for ${app.name}`}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        style={{
+                          background: 'var(--color-accent-purple-subtle)',
+                          color: 'var(--color-accent-purple)',
+                          border: '1px solid var(--color-accent-purple)',
+                        }}
                       >
                         <Play size={12} />
                         {actionLoading === app.id ? 'Running...' : 'Run Task'}

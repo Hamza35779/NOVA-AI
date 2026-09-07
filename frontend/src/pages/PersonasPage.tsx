@@ -60,7 +60,7 @@ export function PersonasPage() {
         <button
           onClick={() => setShowModal(true)}
           className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors"
-          style={{ background: 'var(--color-accent)', color: '#fff' }}
+          style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
         >
           <Plus size={16} /> Create Persona
         </button>
@@ -85,7 +85,20 @@ export function PersonasPage() {
               >
                 <Check size={16} /> {activeId === p.id ? 'Active' : 'Set Active'}
               </button>
-              <button className="p-2 border rounded hover:bg-red-50 hover:text-red-600 hover:border-red-600 transition-colors" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+              <button
+                className="p-2 border rounded transition-colors cursor-pointer"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--color-error)';
+                  e.currentTarget.style.color = 'var(--color-error)';
+                  e.currentTarget.style.background = 'color-mix(in srgb, var(--color-error) 8%, transparent)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--color-border)';
+                  e.currentTarget.style.color = 'var(--color-text-secondary)';
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
                 <Trash size={16} />
               </button>
             </div>
@@ -94,8 +107,8 @@ export function PersonasPage() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md rounded-lg shadow-xl p-6 flex flex-col gap-4" style={{ background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)' }}>
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ background: 'rgba(0,0,0,0.5)' }}>
+          <div className="w-full max-w-md rounded-lg shadow-xl p-6 flex flex-col gap-4" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
             <h2 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>Create New Persona</h2>
             
             <input placeholder="Name (e.g. Code Reviewer)" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="p-2 rounded border bg-transparent w-full" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }} />
@@ -110,7 +123,7 @@ export function PersonasPage() {
 
             <div className="flex gap-2 mt-2 justify-end">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 rounded text-sm hover:opacity-80" style={{ color: 'var(--color-text-secondary)' }}>Cancel</button>
-              <button onClick={handleCreate} className="px-4 py-2 rounded text-sm text-white" style={{ background: 'var(--color-accent)' }}>Create</button>
+              <button onClick={handleCreate} className="px-4 py-2 rounded text-sm cursor-pointer" style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}>Create</button>
             </div>
           </div>
         </div>

@@ -6,8 +6,8 @@ export function DocsPage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
 
   return (
-    <div className="flex h-screen w-full bg-[#0F0B1E]">
-      <div className="w-[40%] min-w-[300px] border-r border-white/10">
+    <div className="flex h-full w-full">
+      <div className="w-[40%] min-w-[300px]">
         <DocLibrary onChat={setSelectedDocId} />
       </div>
       <div className="flex-1 min-w-[400px]">

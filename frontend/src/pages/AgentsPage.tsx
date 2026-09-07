@@ -591,7 +591,7 @@ function ToolsPicker({
                 color: hovered
                   ? hovered.configured
                     ? 'var(--color-accent)'
-                    : '#f59e0b'
+                    : 'var(--color-accent-amber)'
                   : 'var(--color-text-tertiary)',
                 opacity: hovered ? 1 : 0.5,
               }}
@@ -1842,7 +1842,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
           <div
             className="text-sm px-3 py-2 rounded-lg"
             style={{
-              background: 'rgba(255,80,80,0.08)',
+              background: 'color-mix(in srgb, var(--color-error) 8%, transparent)',
               border: '1px solid var(--color-error)',
               color: 'var(--color-error)',
             }}

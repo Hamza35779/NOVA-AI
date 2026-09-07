@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Bell, X, Check, AlertCircle } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Bell, Check } from 'lucide-react';
 import { listNotifications, clearNotifications, getBase } from '../lib/api';
 import { toast } from 'sonner';
 
@@ -62,51 +62,82 @@ export default function NotificationBell() {
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-gray-500 hover:text-indigo-600 rounded-full hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+        className="relative p-2 rounded-full transition-colors"
+        style={{ color: 'var(--color-text-secondary)' }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = 'var(--color-accent)';
+          e.currentTarget.style.background = 'var(--color-bg-secondary)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = 'var(--color-text-secondary)';
+          e.currentTarget.style.background = 'transparent';
+        }}
+        title="Notifications"
       >
         <Bell className="w-5 h-5" />
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-900"></span>
+          <span
+            className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full"
+            style={{ background: 'var(--color-error)', border: '2px solid var(--color-bg)' }}
+          ></span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden">
-          <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
-            <h3 className="font-semibold text-gray-900 dark:text-white">Notifications</h3>
+        <div
+          className="absolute right-0 mt-2 w-80 rounded-xl shadow-xl z-50 overflow-hidden"
+          style={{
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          <div
+            className="flex justify-between items-center px-4 py-3"
+            style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)' }}
+          >
+            <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>Notifications</h3>
             {unreadCount > 0 && (
-              <button 
+              <button
                 onClick={handleClear}
-                className="text-xs text-gray-500 hover:text-indigo-600 flex items-center gap-1"
+                className="text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                style={{ color: 'var(--color-text-tertiary)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-accent)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-tertiary)')}
               >
                 <Check className="w-3 h-3" /> Mark all read
               </button>
             )}
           </div>
-          
+
           <div className="max-h-96 overflow-y-auto">
             {notifications.length === 0 ? (
-              <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+              <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
                 No new notifications.
               </div>
             ) : (
               <div className="flex flex-col">
                 {notifications.map((n, i) => (
-                  <div key={i} className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors flex gap-3">
+                  <div
+                    key={i}
+                    className="px-4 py-3 transition-colors flex gap-3"
+                    style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-secondary)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
                     <div className="mt-1 flex-shrink-0">
                       {n.urgency === 'high' ? (
-                        <div className="w-2 h-2 rounded-full bg-red-500 mt-1.5" />
+                        <div className="w-2 h-2 rounded-full mt-1.5" style={{ background: 'var(--color-error)' }} />
                       ) : n.urgency === 'normal' ? (
-                        <div className="w-2 h-2 rounded-full bg-yellow-500 mt-1.5" />
+                        <div className="w-2 h-2 rounded-full mt-1.5" style={{ background: 'var(--color-accent-amber)' }} />
                       ) : (
-                        <div className="w-2 h-2 rounded-full bg-gray-300 mt-1.5" />
+                        <div className="w-2 h-2 rounded-full mt-1.5" style={{ background: 'var(--color-text-tertiary)' }} />
                       )}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{n.message}</p>
+                      <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{n.title}</p>
+                      <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--color-text-secondary)' }}>{n.message}</p>
                     </div>
                   </div>
                 ))}

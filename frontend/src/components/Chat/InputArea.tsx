@@ -589,9 +589,9 @@ export function InputArea() {
             aria-pressed={webSearch}
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50"
             style={{
-              background: webSearch ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
-              border: `1px solid ${webSearch ? '#06B6D4' : 'var(--color-border)'}`,
-              color: webSearch ? '#06B6D4' : 'var(--color-text-tertiary)',
+              background: webSearch ? 'var(--color-accent-subtle)' : 'transparent',
+              border: `1px solid ${webSearch ? 'var(--color-accent)' : 'var(--color-border)'}`,
+              color: webSearch ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
             }}
             title={webSearch ? 'Web Search Grounding: on' : 'Web Search Grounding: off'}
           >
@@ -618,6 +618,15 @@ export function InputArea() {
           background: 'var(--color-input-bg)',
           border: '1px solid var(--color-input-border)',
           boxShadow: 'var(--shadow-sm)',
+          transition: 'border-color 180ms ease, box-shadow 180ms ease',
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = 'var(--color-accent)';
+          e.currentTarget.style.boxShadow = '0 0 0 3px var(--color-accent-subtle)';
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = 'var(--color-input-border)';
+          e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
         }}
       >
         <input
@@ -632,10 +641,19 @@ export function InputArea() {
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading || streamState.isStreaming}
-          className="p-1.5 text-gray-400 hover:text-white rounded-lg transition hover:bg-white/5 cursor-pointer disabled:opacity-50"
+          className="p-1.5 rounded-lg transition cursor-pointer disabled:opacity-50"
+          style={{ color: 'var(--color-text-tertiary)' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--color-text)';
+            e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--color-text-tertiary)';
+            e.currentTarget.style.background = 'transparent';
+          }}
           title="Attach files (PDF, DOCX, TXT, MD, CSV) for RAG context"
         >
-          <Paperclip size={16} className={uploading ? 'animate-pulse text-[#7C3AED]' : ''} />
+          <Paperclip size={16} style={uploading ? { color: 'var(--color-accent-purple)' } : undefined} />
         </button>
         <textarea
           ref={textareaRef}
@@ -672,7 +690,24 @@ export function InputArea() {
               className="p-2 rounded-xl transition-colors shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-default"
               style={{
                 background: input.trim() ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
-                color: input.trim() ? 'white' : 'var(--color-text-tertiary)',
+                color: input.trim() ? 'var(--color-on-accent)' : 'var(--color-text-tertiary)',
+                transition: 'background 160ms ease, color 160ms ease, transform 120ms ease, box-shadow 160ms ease',
+              }}
+              onMouseEnter={(e) => {
+                if (input.trim()) {
+                  e.currentTarget.style.background = 'var(--color-accent-hover)';
+                  e.currentTarget.style.boxShadow = '0 0 0 4px var(--color-accent-subtle)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = input.trim() ? 'var(--color-accent)' : 'var(--color-bg-tertiary)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+              onMouseDown={(e) => {
+                if (input.trim()) e.currentTarget.style.transform = 'scale(0.92)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
               }}
             >
               <Send size={16} />

@@ -127,8 +127,8 @@ export function ChatArea() {
       title: 'Document Analysis',
       desc: 'Chat with PDFs, DOCX, and CSV spreadsheets',
       icon: FileText,
-      color: '#06B6D4',
-      bg: 'rgba(6, 182, 212, 0.1)',
+      color: 'var(--color-accent)',
+      bg: 'var(--color-accent-subtle)',
       action: () => navigate('/docs'),
     },
     {
@@ -150,8 +150,8 @@ export function ChatArea() {
       title: 'Code Architect',
       desc: 'Scaffold Rust, Go, Python, and TypeScript apps',
       icon: Code2,
-      color: '#10B981',
-      bg: 'rgba(16, 185, 129, 0.1)',
+      color: 'var(--color-success)',
+      bg: 'color-mix(in srgb, var(--color-success) 12%, transparent)',
       action: () => {
         const el = document.querySelector('textarea');
         if (el) {
@@ -172,16 +172,16 @@ export function ChatArea() {
       title: 'Daily Briefing & Prep',
       desc: 'Morning schedule briefing & meeting notes',
       icon: Calendar,
-      color: '#F59E0B',
-      bg: 'rgba(245, 158, 11, 0.1)',
+      color: 'var(--color-accent-amber)',
+      bg: 'var(--color-accent-amber-subtle)',
       action: () => navigate('/calendar'),
     },
     {
       title: 'Compare Models',
       desc: 'A/B benchmark 2-4 models side-by-side',
       icon: GitCompare,
-      color: '#8B5CF6',
-      bg: 'rgba(139, 92, 246, 0.1)',
+      color: 'var(--color-accent-purple)',
+      bg: 'var(--color-accent-purple-subtle)',
       action: () => navigate('/compare'),
     },
   ];
@@ -189,9 +189,9 @@ export function ChatArea() {
   return (
     <div className="flex flex-col h-full">
       {/* Top action bar: Persona Selector & System Panel Toggle */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 shrink-0" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
         <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-[80%]">
-          <span className="text-xs text-gray-400 font-medium mr-1 flex items-center gap-1">
+          <span className="text-xs font-medium mr-1 flex items-center gap-1" style={{ color: 'var(--color-text-tertiary)' }}>
             <UserCheck size={13} /> Persona:
           </span>
           {personas.slice(0, 5).map((p) => {
@@ -202,9 +202,26 @@ export function ChatArea() {
                 onClick={() => handleSelectPersona(p.id)}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium transition cursor-pointer flex items-center gap-1 shrink-0 ${
                   isActive
-                    ? 'bg-[#7C3AED] text-white shadow-sm'
-                    : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200'
+                    ? 'shadow-sm'
+                    : ''
                 }`}
+                style={
+                  isActive
+                    ? { background: 'var(--color-accent-purple)', color: 'var(--color-on-accent)' }
+                    : { background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-subtle)' }
+                }
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+                    e.currentTarget.style.color = 'var(--color-text)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'var(--color-bg-secondary)';
+                    e.currentTarget.style.color = 'var(--color-text-secondary)';
+                  }
+                }}
                 title={p.description}
               >
                 <span>{p.avatar || '🤖'}</span>
@@ -215,7 +232,10 @@ export function ChatArea() {
         </div>
         <button
           onClick={toggleSystemPanel}
-          className="p-1.5 rounded-md transition-colors cursor-pointer text-gray-400 hover:text-white"
+          className="p-1.5 rounded-md transition-colors cursor-pointer"
+          style={{ color: 'var(--color-text-tertiary)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-text)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-tertiary)')}
           title={`${systemPanelOpen ? 'Hide' : 'Show'} system panel (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+I)`}
         >
           <PanelIcon size={16} />
@@ -260,15 +280,15 @@ export function ChatArea() {
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center min-h-[80%] max-w-4xl mx-auto px-4 py-8">
             <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 shadow-lg"
-              style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.2), rgba(6,182,212,0.2))', border: '1px solid rgba(124,58,237,0.4)', color: 'var(--color-accent)' }}
+              className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 shadow-lg hud-breathe"
+              style={{ background: 'linear-gradient(135deg, var(--color-accent-purple-subtle), var(--color-accent-subtle))', border: '1px solid var(--color-accent-purple)', color: 'var(--color-accent)' }}
             >
-              <Sparkles size={28} className="text-[#06B6D4]" />
+              <Sparkles size={28} style={{ color: 'var(--color-accent)' }} />
             </div>
-            <h2 className="text-2xl font-bold mb-2 tracking-tight text-white">
+            <h2 className="text-2xl font-bold mb-2 tracking-tight" style={{ color: 'var(--color-text)', fontFamily: 'var(--font-display)' }}>
               {getGreeting()}
             </h2>
-            <p className="text-sm text-center max-w-md mb-8 text-gray-400">
+            <p className="text-sm text-center max-w-md mb-8" style={{ color: 'var(--color-text-secondary)' }}>
               Private, local AI workstation. What would you like to accomplish?
             </p>
 
@@ -280,18 +300,22 @@ export function ChatArea() {
                   <button
                     key={idx}
                     onClick={t.action}
-                    className="flex flex-col items-start p-4 rounded-xl text-left transition-all duration-200 cursor-pointer group hover:-translate-y-0.5 border"
+                    className="rise-in flex flex-col items-start p-4 rounded-xl text-left transition-all duration-200 cursor-pointer group hover:-translate-y-0.5 border"
                     style={{
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      borderColor: 'rgba(255, 255, 255, 0.08)',
+                      background: 'var(--color-surface)',
+                      borderColor: 'var(--color-border)',
+                      boxShadow: 'var(--shadow-sm)',
+                      animationDelay: `${idx * 70}ms`,
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.borderColor = t.color;
                       e.currentTarget.style.background = t.bg;
+                      e.currentTarget.style.boxShadow = 'var(--shadow-md)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                      e.currentTarget.style.borderColor = 'var(--color-border)';
+                      e.currentTarget.style.background = 'var(--color-surface)';
+                      e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
                     }}
                   >
                     <div className="flex items-center justify-between w-full mb-2.5">
@@ -301,10 +325,10 @@ export function ChatArea() {
                       >
                         <Icon size={18} />
                       </div>
-                      <ArrowRight size={14} className="text-gray-500 group-hover:translate-x-1 group-hover:text-white transition-all" />
+                      <ArrowRight size={14} className="group-hover:translate-x-1 transition-all" style={{ color: 'var(--color-text-tertiary)' }} />
                     </div>
-                    <h3 className="text-sm font-semibold text-white mb-1">{t.title}</h3>
-                    <p className="text-xs text-gray-400 leading-relaxed">{t.desc}</p>
+                    <h3 className="text-sm font-semibold mb-1" style={{ color: 'var(--color-text)' }}>{t.title}</h3>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>{t.desc}</p>
                   </button>
                 );
               })}
@@ -326,11 +350,20 @@ export function ChatArea() {
                   {msg.role === 'assistant' && (siblingCount > 0 || (isLastAssistant && !regenBusy)) && (
                     <div className="flex items-center justify-center gap-2 mb-4 -mt-1">
                       {siblingCount > 0 && (
-                        <div className="flex items-center gap-1 text-xs text-gray-400">
+                        <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
                           <button
                             onClick={() => handleCycleSibling(i, -1)}
                             disabled={active === -1}
-                            className="p-1 rounded hover:bg-white/10 disabled:opacity-30 cursor-pointer"
+                            className="p-1 rounded disabled:opacity-30 cursor-pointer"
+                            style={{ color: 'var(--color-text-tertiary)' }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+                              e.currentTarget.style.color = 'var(--color-text)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.color = 'var(--color-text-tertiary)';
+                            }}
                             title="Previous answer"
                           >
                             <ChevronLeft size={14} />
@@ -341,7 +374,16 @@ export function ChatArea() {
                           <button
                             onClick={() => handleCycleSibling(i, 1)}
                             disabled={active >= siblingCount - 1}
-                            className="p-1 rounded hover:bg-white/10 disabled:opacity-30 cursor-pointer"
+                            className="p-1 rounded disabled:opacity-30 cursor-pointer"
+                            style={{ color: 'var(--color-text-tertiary)' }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+                              e.currentTarget.style.color = 'var(--color-text)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.color = 'var(--color-text-tertiary)';
+                            }}
                             title="Next answer"
                           >
                             <ChevronRight size={14} />
@@ -352,7 +394,16 @@ export function ChatArea() {
                         <button
                           onClick={handleRegenerate}
                           disabled={!msg.nodeId}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 cursor-pointer"
+                          className="flex items-center gap-1 px-2 py-0.5 rounded text-xs disabled:opacity-30 cursor-pointer"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+                            e.currentTarget.style.color = 'var(--color-text)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = 'var(--color-text-tertiary)';
+                          }}
                           title="Regenerate (old answer kept as sibling)"
                         >
                           <RefreshCw size={12} /> Regenerate
@@ -368,7 +419,16 @@ export function ChatArea() {
                               toast.error('Fork needs a server-linked conversation.');
                             }
                           }}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer"
+                          className="flex items-center gap-1 px-2 py-0.5 rounded text-xs cursor-pointer"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--color-bg-tertiary)';
+                            e.currentTarget.style.color = 'var(--color-text)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.color = 'var(--color-text-tertiary)';
+                          }}
                           title="Fork the conversation here"
                         >
                           <GitBranch size={12} /> Fork

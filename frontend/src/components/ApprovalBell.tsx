@@ -5,7 +5,7 @@ import type { PendingApproval } from '../lib/api';
 
 const TIER_STYLES: Record<string, { label: string; color: string; bg: string }> = {
   trivial: { label: 'Trivial', color: 'var(--color-text-secondary)', bg: 'color-mix(in srgb, var(--color-text-secondary) 10%, transparent)' },
-  low:     { label: 'Low',     color: '#3b82f6',                    bg: 'rgba(59,130,246,0.12)' },
+  low:     { label: 'Low',     color: 'var(--color-accent)',        bg: 'var(--color-accent-subtle)' },
   medium:  { label: 'Medium',  color: 'var(--color-warning)',       bg: 'color-mix(in srgb, var(--color-warning) 12%, transparent)' },
   high:    { label: 'High',    color: 'var(--color-error)',         bg: 'color-mix(in srgb, var(--color-error) 12%, transparent)' },
 };
@@ -94,7 +94,7 @@ export function ApprovalBell() {
         {count > 0 && (
           <span
             className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-bold px-1 leading-none"
-            style={{ background: 'var(--color-error)', color: '#fff' }}
+            style={{ background: 'var(--color-error)', color: 'var(--color-on-accent)' }}
           >
             {count > 99 ? '99+' : count}
           </span>

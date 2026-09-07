@@ -15,7 +15,12 @@ export function DashboardPage() {
             <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
               System Overview
             </h1>
-            <div className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+            <div className="text-xs flex items-center gap-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
+              <span
+                className="hud-heartbeat"
+                aria-hidden="true"
+                style={{ width: 5, height: 5 }}
+              />
               {stamp}
             </div>
           </div>
@@ -24,7 +29,7 @@ export function DashboardPage() {
           </p>
         </header>
 
-        <HardwareGauges className="mb-4" />
+        <HardwareGauges className="mb-4 rise-in" />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           <EnergyDashboard />

@@ -69,15 +69,12 @@ export function ModelComparePage() {
             <button
               key={m.id}
               onClick={() => toggleModel(m.id)}
-              className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                selectedModels.includes(m.id)
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-transparent text-gray-700 border-gray-300 hover:bg-gray-100'
-              }`}
+              className="px-3 py-1 rounded-full text-sm transition-colors cursor-pointer"
               style={{
                  borderColor: selectedModels.includes(m.id) ? 'var(--color-accent)' : 'var(--color-border)',
                  backgroundColor: selectedModels.includes(m.id) ? 'var(--color-accent)' : 'transparent',
-                 color: selectedModels.includes(m.id) ? '#fff' : 'var(--color-text)'
+                 color: selectedModels.includes(m.id) ? 'var(--color-on-accent)' : 'var(--color-text)',
+                 border: '1px solid'
               }}
             >
               {m.name || m.id}
@@ -112,7 +109,7 @@ export function ModelComparePage() {
         onClick={handleRun}
         disabled={loading || selectedModels.length < 2 || !prompt}
         className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium self-start mb-6 disabled:opacity-50"
-        style={{ background: 'var(--color-accent)', color: '#fff' }}
+        style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
       >
         <Play size={16} /> {loading ? 'Running...' : 'Run Comparison'}
       </button>
