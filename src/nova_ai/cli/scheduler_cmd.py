@@ -333,6 +333,18 @@ def scheduler_start(poll_interval: int) -> None:
     from nova_ai.scheduler.scheduler import TaskScheduler
 
     sched = TaskScheduler(store, poll_interval=poll_interval)
+    # Build the full system so due tasks execute for real. Without it every
+    # task would hit the "[dry-run]" branch and be logged as success=True.
+    try:
+        from nova_ai.system.builder import SystemBuilder
+
+        system = SystemBuilder().scheduler(True).build()
+        sched.set_system(system)
+    except Exception as exc:
+        console.print(
+            f"[yellow]Warning: could not build execution system "
+            f"({exc}); tasks will run in dry-run mode.[/yellow]"
+        )
     sched.start()
     console.print(
         f"[green]Scheduler running (poll every {poll_interval}s). "

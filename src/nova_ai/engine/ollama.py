@@ -12,6 +12,7 @@ import httpx
 
 from nova_ai.core.registry import EngineRegistry
 from nova_ai.core.types import Message
+from nova_ai.core.utils import soft_fail
 from nova_ai.engine._base import (
     EngineConnectionError,
     InferenceEngine,
@@ -57,6 +58,12 @@ class OllamaEngine(InferenceEngine):
         self._host = host.rstrip("/")
         self._timeout = timeout
         self._client = httpx.Client(base_url=self._host, timeout=timeout)
+        # Async counterpart for stream()/stream_full()/​_run_stream(): the sync
+        # client's request methods block, so calling them from these async
+        # generators stalled the entire event loop for up to the 1800s
+        # timeout while Ollama was generating. (generate()/health() stay on
+        # the sync client — they're documented blocking call paths.)
+        self._async_client = httpx.AsyncClient(base_url=self._host, timeout=timeout)
         # Last stream usage — captured from Ollama's final chunk
         self._last_stream_usage: Dict[str, int] = {}
 
@@ -215,9 +222,11 @@ class OllamaEngine(InferenceEngine):
         elif kwargs["think"] is not None:
             payload["think"] = kwargs["think"]
         try:
-            with self._client.stream("POST", "/api/chat", json=payload) as resp:
+            async with self._async_client.stream(
+                "POST", "/api/chat", json=payload
+            ) as resp:
                 resp.raise_for_status()
-                for line in resp.iter_lines():
+                async for line in resp.aiter_lines():
                     if not line.strip():
                         continue
                     try:
@@ -308,7 +317,9 @@ class OllamaEngine(InferenceEngine):
     ) -> AsyncIterator[StreamChunk]:
         """Execute the streaming request and yield parsed StreamChunks."""
         try:
-            with self._client.stream("POST", "/api/chat", json=payload) as resp:
+            async with self._async_client.stream(
+                "POST", "/api/chat", json=payload
+            ) as resp:
                 if resp.status_code == 400 and retry_without_tools:
                     # Model doesn't support tools — retry without them.
                     payload.pop("tools", None)
@@ -320,7 +331,7 @@ class OllamaEngine(InferenceEngine):
                 resp.raise_for_status()
 
                 finish_reason: str | None = None
-                for line in resp.iter_lines():
+                async for line in resp.aiter_lines():
                     if not line.strip():
                         continue
                     try:
@@ -394,8 +405,8 @@ class OllamaEngine(InferenceEngine):
             resp = self._client.get(path, timeout=timeout)
             if resp.status_code == 200:
                 return resp
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional engine capability")
 
         # Try fallback host if default host failed
         alt_host = self._FALLBACK_HOST if "127.0.0.1" in self._host else self._DEFAULT_HOST
@@ -406,8 +417,8 @@ class OllamaEngine(InferenceEngine):
                     self._host = alt_host
                     self._client = httpx.Client(base_url=self._host, timeout=self._timeout)
                     return resp
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional engine capability")
         return None
 
     def list_models(self) -> List[str]:
@@ -427,6 +438,12 @@ class OllamaEngine(InferenceEngine):
 
     def close(self) -> None:
         self._client.close()
+        # The AsyncClient may be bound to a running loop; closing it there
+        # is best-effort — process teardown releases the sockets anyway.
+        try:
+            self._async_client.close()
+        except RuntimeError:
+            pass
 
 
 __all__ = ["OllamaEngine"]

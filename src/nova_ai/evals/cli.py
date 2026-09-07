@@ -18,6 +18,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.evals.core.display import (
     print_banner,
     print_completion,
@@ -27,6 +28,8 @@ from nova_ai.evals.core.display import (
     print_subject_table,
     print_suite_summary,
 )
+
+logger = logging.getLogger(__name__)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -987,8 +990,8 @@ def _run_agentic(
         if telemetry_session is not None and hasattr(telemetry_session, "stop"):
             try:
                 telemetry_session.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
 
     # Export results
     jsonl_path = run_dir / "traces.jsonl"

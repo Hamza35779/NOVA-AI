@@ -37,6 +37,7 @@ called from your app startup:
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -46,6 +47,7 @@ from nova_ai.core.config import load_config
 from nova_ai.core.paths import get_config_dir
 from nova_ai.core.registry import AgentRegistry
 from nova_ai.core.types import Message, Role, ToolCall
+from nova_ai.core.utils import soft_fail
 from nova_ai.tools.approval_store import (
     DECISION_ALWAYS_APPROVE,
     DECISION_ALWAYS_DENY,
@@ -55,6 +57,8 @@ from nova_ai.tools.approval_store import (
     ApprovalStore,
 )
 from nova_ai.tools.proactive_tools import get_store
+
+logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """You are a proactive personal assistant agent. You have already collected
 data from the user's connected sources (email, messages, calendar). Your job is to:
@@ -255,11 +259,11 @@ def _build_notification_channel(channel_spec: str) -> Optional[Any]:
             instance = channel_cls()
             try:
                 instance.connect()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional agent step")
             return instance
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional agent step")
 
     return None
 
@@ -286,8 +290,8 @@ class ProactiveAgent(ToolUsingAgent):
                 self._notification_channel_id = p.notification_channel
                 self._hours_back = p.hours_back
                 self._timezone = p.timezone
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional agent step")
 
         # Build the required tools and inject them into the executor.
         # This must happen before super().__init__ is called because
@@ -427,8 +431,8 @@ class ProactiveAgent(ToolUsingAgent):
                 f.write(raw_full + "\n")
                 f.write(f"--- parsed proposals: {len(proposed)} ---\n")
                 f.write(json.dumps(proposed, indent=2, default=str) + "\n")
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional agent step")
 
         # --- Step 3: Route each proposed action ---
         auto_approve_ids: List[str] = []
@@ -495,9 +499,17 @@ class ProactiveAgent(ToolUsingAgent):
                     }
                 ),
             )
-            self._executor.execute(send_call)
+            # channel_send reports failure via ToolResult.success=False (no
+            # backend configured, send rejected, …) rather than raising, so
+            # only mark notification_sent when the send actually went out —
+            # the unconditional flag previously claimed deliveries that
+            # never happened.
+            send_result = self._executor.execute(send_call)
+            send_ok = bool(getattr(send_result, "success", False))
             for action in pending_actions:
-                store.update_status(action.id, action.status, notification_sent=True)
+                store.update_status(
+                    action.id, action.status, notification_sent=send_ok
+                )
 
         self._emit_turn_end(turns=1)
         return AgentResult(

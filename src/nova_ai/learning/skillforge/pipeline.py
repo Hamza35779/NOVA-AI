@@ -105,6 +105,11 @@ def run_skillforge(
     for pattern in patterns[:max_candidates]:
         attempt += 1
         candidate_run_id = run_id if attempt == 1 else f"{run_id}_{attempt}"
+        if attempt > 1:
+            # Candidates after the first get their own run record. It must
+            # be inserted before finish_run: finish_run only UPDATEs, so a
+            # never-started id would be silently dropped.
+            run_store.start_run(candidate_run_id, trigger=trigger)
         synthesizer = SkillSynthesizer(llm)
         try:
             manifest = synthesizer.synthesize(pattern)
@@ -184,7 +189,22 @@ def run_skillforge(
             }
         )
 
+    # The first candidate shares the parent's run id, so its finish_run
+    # already made that row terminal (passed/failed/adopted/
+    # synthesis_failed). The parent would stay "running" forever only when
+    # the loop never processed anything — close it out in that case.
+    if attempt == 0:
+        error = "no patterns could be synthesized into skills"
+        run_store.finish_run(run_id, status="failed", error=error)
+        return {
+            "status": "failed",
+            "run_id": run_id,
+            "error": error,
+        }
     if not forged:
+        # Every candidate failed synthesis: the parent record already
+        # carries the last synthesis_failed status; report failure without
+        # overwriting it with a parent "completed".
         return {
             "status": "failed",
             "run_id": run_id,

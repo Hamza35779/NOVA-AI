@@ -5,11 +5,15 @@ from __future__ import annotations
 import logging
 import pathlib
 import time
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+import nova_ai
+from nova_ai.core.utils import soft_fail
 from nova_ai.server.analytics_routes import router as analytics_router
 from nova_ai.server.api_routes import include_all_routes
 from nova_ai.server.clipboard_router import router as clipboard_router
@@ -27,8 +31,12 @@ from nova_ai.server.persona_router import router as persona_router
 from nova_ai.server.research_router import router as research_router
 from nova_ai.server.routes import router
 from nova_ai.server.search_router import router as search_router
+from nova_ai.server.system_telemetry_router import router as system_telemetry_router
 from nova_ai.server.tasks_api import router as tasks_router
 from nova_ai.server.upload_router import router as upload_router
+
+if TYPE_CHECKING:
+    from starlette.types import Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +142,7 @@ _NO_CACHE_HEADERS = {
 class _NoCacheStaticFiles(StaticFiles):
     """StaticFiles subclass that adds no-cache headers to every response."""
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         async def _send_with_headers(message):
             if message["type"] == "http.response.start":
                 extra = [(k.encode(), v.encode()) for k, v in _NO_CACHE_HEADERS.items()]
@@ -188,7 +196,7 @@ def create_app(
     app = FastAPI(
         title="NOVA AI API",
         description="OpenAI-compatible API server for NOVA AI",
-        version="0.1.0",
+        version=nova_ai.__version__,
     )
 
     from fastapi.middleware.cors import CORSMiddleware
@@ -212,7 +220,6 @@ def create_app(
             "tauri://localhost",
             "http://tauri.localhost",
             "https://tauri.localhost",
-            "chrome-extension://*",
         ]
     )
     app.add_middleware(
@@ -261,16 +268,41 @@ def create_app(
         cfg = config if config is not None else load_config()
         if cfg.traces.enabled:
             app.state.trace_store = TraceStore(db_path=cfg.traces.db_path)
-    except Exception:
-        pass  # traces are optional; don't block server startup
+    except Exception as exc:
+        soft_fail(logger, exc, "traces are optional; don't block server startup")
 
-    # Wire up external analytics if enabled (PostHog) — never block startup.
+    # External analytics lifecycle (PostHog) is owned by the lifespan below —
+    # never block startup.
     # Note: we do NOT fire app_opened here. The frontend owns that event
     # because "server started" (this code path) is not the same as "user
     # opened the app" — the server can run headless via cron, daemons,
     # or test suites.
     app.state.analytics_client = None
     app.state.analytics_bridge = None
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        # --- startup ---
+        # Restore SendBlue channel bindings from database on startup so
+        # incoming webhooks keep working after a server restart.
+        _restore_sendblue_bindings(app)
+        yield
+        # --- shutdown ---
+        bridge = getattr(app.state, "analytics_bridge", None)
+        if bridge is not None:
+            try:
+                bridge.stop()
+            except Exception as exc:
+                soft_fail(logger, exc, "optional server subsystem")
+        client = getattr(app.state, "analytics_client", None)
+        if client is not None:
+            try:
+                client.shutdown()
+            except Exception as exc:
+                soft_fail(logger, exc, "optional server subsystem")
+
+    app.router.lifespan_context = _lifespan
+
     try:
         from nova_ai.analytics import (
             AnalyticsClient,
@@ -288,21 +320,6 @@ def create_app(
                 _bridge = EventBridge(_bus_ref, _client)
                 _bridge.start()
                 app.state.analytics_bridge = _bridge
-
-            @app.on_event("shutdown")
-            async def _shutdown_analytics() -> None:
-                bridge = getattr(app.state, "analytics_bridge", None)
-                if bridge is not None:
-                    try:
-                        bridge.stop()
-                    except Exception:
-                        pass
-                client = getattr(app.state, "analytics_client", None)
-                if client is not None:
-                    try:
-                        client.shutdown()
-                    except Exception:
-                        pass
     except Exception as _exc:
         logger.debug("Analytics init skipped: %s", _exc)
 
@@ -329,13 +346,11 @@ def create_app(
     app.include_router(persona_router)
     app.include_router(model_hub_router)
     app.include_router(gguf_hub_router)
+    app.include_router(system_telemetry_router)
     from nova_ai.server.conversation_routes import router as conversation_router
 
     app.include_router(conversation_router)
     include_all_routes(app)
-
-    # Restore SendBlue channel bindings from database on startup
-    _restore_sendblue_bindings(app)
 
     # Add security headers middleware
     try:

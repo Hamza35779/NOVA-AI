@@ -295,6 +295,30 @@ def _hash_query(content: str) -> str:
     return hashlib.sha256(content.strip().lower().encode("utf-8")).hexdigest()
 
 
+def _started_at_epoch(trace: Any) -> float:
+    """Coerce ``Trace.started_at`` to a comparable float epoch.
+
+    The column is declared float, but traces saved with a ``datetime`` come
+    back from SQLite as ISO strings (sqlite3's deprecated default datetime
+    adapter), so the field is a float/str mix in practice. Sorting with a
+    string fallback (``or ""``) mixed the two types and raised TypeError.
+    """
+    value = getattr(trace, "started_at", None)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value:
+        try:
+            return float(value)
+        except ValueError:
+            try:
+                from datetime import datetime
+
+                return datetime.fromisoformat(value).timestamp()
+            except ValueError:
+                return 0.0
+    return 0.0
+
+
 def _pairs_from_traces(
     trace_store: Any,
     *,
@@ -317,7 +341,7 @@ def _pairs_from_traces(
         if len(group) < 2:
             continue
         # Oldest first so "later" means "more recent attempt".
-        group.sort(key=lambda t: getattr(t, "started_at", None) or "")
+        group.sort(key=_started_at_epoch)
         for i, worse in enumerate(group):
             if worse.feedback is None:
                 continue

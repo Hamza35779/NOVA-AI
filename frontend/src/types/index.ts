@@ -127,12 +127,31 @@ export interface ChatMessage {
   usage?: TokenUsage;
   telemetry?: MessageTelemetry;
   audio?: { url: string };
+  /** Agentic reasoning trace (plan / thoughts / tool calls / repairs). */
+  reasoningSteps?: ReasoningStepInfo[];
   /** Conversation-tree node id (server-side); enables fork/regenerate/race. */
   nodeId?: string;
   /** Alternative answers for the same prompt (siblings in the tree). */
   siblings?: MessageSibling[];
   /** Index into `siblings` currently displayed (-1 = the message itself). */
   activeSibling?: number;
+}
+
+export interface ReasoningStepInfo {
+  id: string;
+  kind:
+    | 'plan'
+    | 'thought'
+    | 'tool_call'
+    | 'observation'
+    | 'repair_attempt'
+    | 'repair_success'
+    | 'repair_exhausted';
+  label: string;
+  detail?: string;
+  status: 'pending' | 'running' | 'done' | 'error';
+  timestamp: number;
+  repairIndex?: number;
 }
 
 export interface MessageSibling {

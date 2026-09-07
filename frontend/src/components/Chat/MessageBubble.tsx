@@ -10,6 +10,8 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { AudioPlayer } from './AudioPlayer';
 import { ToolCallCard } from './ToolCallCard';
+import { ReasoningGraph } from './ReasoningGraph';
+import type { ReasoningStepInfo } from '../../types';
 import { ResearchTimeline } from './ResearchTimeline';
 import { rehypeCitations } from '../../lib/rehype-citations';
 import { XRayFooter } from './XRayFooter';
@@ -151,6 +153,17 @@ export function MessageBubble({ message, isLive = false }: Props) {
           isLive={isLive}
           hasContent={cleanContent.length > 0}
         />
+      )}
+
+      {/* Agentic reasoning graph (plan / thoughts / tool calls / repairs) */}
+      {message.reasoningSteps && message.reasoningSteps.length > 0 && (
+        <div className="mb-3">
+          <ReasoningGraph
+            steps={message.reasoningSteps}
+            isLive={isLive}
+            defaultOpen={isLive || (message.toolCalls?.length ?? 0) > 0}
+          />
+        </div>
       )}
 
       {/* Tool calls */}

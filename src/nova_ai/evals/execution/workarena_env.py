@@ -12,6 +12,10 @@ import re
 from types import TracebackType
 from typing import Any, Callable, Dict, MutableMapping, Optional, Tuple, Type
 
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
+
 LOGGER = logging.getLogger(__name__)
 
 _MAX_OBS_CHARS = 16_000
@@ -192,8 +196,8 @@ class WorkArenaTaskEnv:
             if pw is not None:
                 try:
                     pw.stop()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional eval step")
                 _bgym_core._set_global_playwright(None)
         except (ImportError, AttributeError):
             pass

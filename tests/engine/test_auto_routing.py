@@ -68,9 +68,7 @@ def _user(text: str) -> list[Message]:
 class TestAutoRouting:
     def test_simple_query_stays_local(self) -> None:
         local = _FakeEngine(["qwen3.5:9b"])
-        cloud = _FakeEngine(
-            ["claude-sonnet-5", "gpt-5-mini"], is_cloud=True
-        )
+        cloud = _FakeEngine(["claude-sonnet-5", "gpt-5-mini"], is_cloud=True)
         multi = MultiEngine([("local", local), ("cloud", cloud)])
 
         result = multi.generate(_user("hi"), model=AUTO_MODEL)
@@ -141,3 +139,24 @@ class TestAutoRouting:
         local = _FakeEngine(["qwen3.5:9b"])
         multi = MultiEngine([("local", local)])
         assert AUTO_MODEL not in multi.list_models()
+
+    def test_no_local_model_raises_clear_error(self) -> None:
+        """Auto routing with no usable local model must fail loudly.
+
+        The router used to return "" and MultiEngine then raised a cryptic
+        "Model '' not found in any engine" error.
+        """
+        local = _FakeEngine([])  # local engine offers nothing
+        cloud = _FakeEngine(["claude-sonnet-5"], is_cloud=True)
+        multi = MultiEngine([("local", local), ("cloud", cloud)])
+
+        with pytest.raises(ValueError, match="No local model available"):
+            multi.generate(_user("hi"), model=AUTO_MODEL)
+
+    def test_no_local_model_complex_query_uses_cloud(self) -> None:
+        local = _FakeEngine([])
+        cloud = _FakeEngine(["claude-sonnet-5"], is_cloud=True)
+        multi = MultiEngine([("local", local), ("cloud", cloud)])
+
+        multi.generate(_user(COMPLEX_QUERY), model=AUTO_MODEL)
+        assert cloud.calls == ["claude-sonnet-5"]

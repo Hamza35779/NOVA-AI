@@ -7,6 +7,7 @@ single mutation that installs a skill, and ``nova forge revert`` undoes it.
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
@@ -17,6 +18,9 @@ from rich.console import Console
 from rich.table import Table
 
 from nova_ai.core.config import load_config
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 console = Console()
 
@@ -109,7 +113,8 @@ def _build_tool_executor():
     for name in ToolRegistry.keys():
         try:
             tools.append(ToolRegistry.create(name))
-        except Exception:
+        except Exception as exc:
+            soft_fail(logger, exc, "optional CLI step")
             continue
     return ToolExecutor(tools)
 

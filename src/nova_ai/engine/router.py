@@ -9,6 +9,7 @@ import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Sequence
 
 from nova_ai.core.types import Message
+from nova_ai.core.utils import soft_fail
 from nova_ai.engine._stubs import InferenceEngine, StreamChunk
 from nova_ai.engine.multi import MultiEngine
 from nova_ai.engine.router_config import RouterConfig
@@ -74,8 +75,8 @@ class SmartRouter(InferenceEngine):
                         heuristic_tier, corrected,
                     )
                     return corrected
-            except Exception:
-                pass  # Never let learning break routing
+            except Exception as exc:
+                soft_fail(logger, exc, "Never let learning break routing")
 
         return heuristic_tier
 
@@ -153,11 +154,28 @@ class SmartRouter(InferenceEngine):
 
     def _resolve_model(self, tier: str) -> str:
         """Resolve model name for a tier with dynamic engine discovery fallback."""
-        # Check if the self-optimizer has a recommendation for this tier
+        # Check if the self-optimizer has a recommendation for this tier.
+        # get_recommended_model_for_tier already filters placeholder hints
+        # ("<downgrade-to-...>"); the startswith check here is belt-and-braces
+        # against stale tuning data written by an older auto_tune.
         optimizer = get_optimizer()
         optimizer_rec = optimizer.get_recommended_model_for_tier(tier)
         if optimizer_rec and not optimizer_rec.startswith("<"):
-            return optimizer_rec
+            # A recommended model is only useful when some engine can serve
+            # it — MultiEngine inherits the always-True default can_serve,
+            # so verify against its model map before trusting it.
+            engine = self.engine
+            servable = True
+            if hasattr(engine, "_model_map"):
+                if optimizer_rec not in engine._model_map:
+                    engine._refresh_map()
+                    servable = optimizer_rec in engine._model_map
+            if servable:
+                return optimizer_rec
+            logger.warning(
+                "Optimizer-recommended model %r not servable; keeping tier flow",
+                optimizer_rec,
+            )
 
         configured = self.config.tiers.get(
             tier, self.config.tiers.get(self.config.default_tier, "qwen2.5:7b")
@@ -178,8 +196,8 @@ class SmartRouter(InferenceEngine):
                 elif tier == "large":
                     return available[-1]
                 return available[len(available) // 2]
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional engine capability")
 
         return configured
 
@@ -267,8 +285,8 @@ class SmartRouter(InferenceEngine):
                 last_content = messages[-1].content or "" if messages else ""
                 msg_id = kwargs.get("message_id", f"msg_{int(time.time() * 1000)}")
                 get_feedback_store().record_decision(msg_id, last_content, tier)
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional engine capability")
         return result
 
     async def stream(

@@ -35,7 +35,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from nova_ai.core.registry import EngineRegistry
 from nova_ai.core.types import Message
-from nova_ai.engine._base import InferenceEngine
+from nova_ai.core.utils import soft_fail
+from nova_ai.engine._base import InferenceEngine, messages_to_dicts
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +238,6 @@ def download_gguf_model(
         ValueError: If the model ID is not found in the catalog.
         RuntimeError: If the download fails.
     """
-    import httpx
 
     # Resolve catalog entry
     entry = next((m for m in GGUF_CATALOG if m["id"] == model_id), None)
@@ -260,33 +260,27 @@ def download_gguf_model(
 
     logger.info("Downloading %s from %s", filename, hf_url)
 
+    # Resilient path: chunked Range downloads, resume state, checksum gate.
+    # The legacy progress_callback signature is (downloaded, total); adapt.
+    from nova_ai.engine.model_downloader import (
+        DownloadSpec,
+        ResilientDownloader,
+    )
+
+    def _adapt_progress(done: int, total: int, _speed: float) -> None:
+        if progress_callback:
+            progress_callback(done, total)
+
     try:
-        with httpx.stream(
-            "GET",
-            hf_url,
-            follow_redirects=True,
-            timeout=None,
-            headers={"User-Agent": "nova-ai/1.2.1"},
-        ) as resp:
-            resp.raise_for_status()
-            total = int(resp.headers.get("content-length", 0))
-            downloaded = 0
-            tmp = dest.with_suffix(".tmp")
-            try:
-                with tmp.open("wb") as fh:
-                    for chunk in resp.iter_bytes(chunk_size=1024 * 256):
-                        fh.write(chunk)
-                        downloaded += len(chunk)
-                        if progress_callback:
-                            progress_callback(downloaded, total)
-                tmp.rename(dest)
-            except Exception:
-                tmp.unlink(missing_ok=True)
-                raise
-    except httpx.HTTPStatusError as exc:
-        raise RuntimeError(
-            f"Download failed with HTTP {exc.response.status_code}: {hf_url}"
-        ) from exc
+        downloader = ResilientDownloader()
+        spec = DownloadSpec(
+            url=hf_url,
+            dest=dest,
+            sha256=entry.get("sha256"),
+            md5=entry.get("md5"),
+            progress=_adapt_progress,
+        )
+        downloader.download(spec)
     except Exception as exc:
         raise RuntimeError(f"Download failed: {exc}") from exc
 
@@ -321,7 +315,13 @@ class GGUFEngine(InferenceEngine):
             return False
 
     def _load(self, model_path: str) -> Any:
-        """Load a GGUF model file into memory (cached after first load)."""
+        """Load a GGUF model file into memory (cached after first load).
+
+        Launch parameters are auto-computed by the offload planner from live
+        hardware when ``NOVA_GGUF_AUTO_OFFLOAD`` is not ``"0"`` (the default).
+        Explicit ``NOVA_GGUF_CTX`` / ``NOVA_GGUF_GPU_LAYERS`` env vars still
+        take precedence for manual control.
+        """
         if model_path in self._models:
             return self._models[model_path]
 
@@ -331,11 +331,48 @@ class GGUFEngine(InferenceEngine):
 
             from llama_cpp import Llama  # type: ignore[import-untyped]
 
+            env_ctx = os.environ.get("NOVA_GGUF_CTX")
+            env_layers = os.environ.get("NOVA_GGUF_GPU_LAYERS")
+
+            n_ctx = int(env_ctx) if env_ctx else 4096
+            n_gpu_layers = int(env_layers) if env_layers is not None else -1
+            n_threads: Optional[int] = None
+
+            if os.environ.get("NOVA_GGUF_AUTO_OFFLOAD", "1") != "0":
+                try:
+                    from nova_ai.engine.offload import OffloadPlanner
+
+                    size_gb = Path(model_path).stat().st_size / 1024**3
+                    plan = OffloadPlanner().plan(
+                        model_size_gb=size_gb,
+                        context_length=n_ctx,
+                        filename=Path(model_path).name,
+                    )
+                    if not env_ctx:
+                        n_ctx = plan.n_ctx
+                    if env_layers is None:
+                        n_gpu_layers = plan.n_gpu_layers
+                    n_threads = plan.n_threads or None
+                    logger.info(
+                        "Auto-offload plan for %s: device=%s layers=%s ctx=%d (%s)",
+                        Path(model_path).name,
+                        plan.device,
+                        n_gpu_layers,
+                        n_ctx,
+                        plan.notes or "fits",
+                    )
+                except Exception:  # noqa: BLE001 — planner is best-effort
+                    logger.debug(
+                        "Offload planning failed; using defaults", exc_info=True
+                    )
+
             logger.info("Loading GGUF model: %s", model_path)
             llm = Llama(
                 model_path=model_path,
-                n_ctx=int(os.environ.get("NOVA_GGUF_CTX", "4096")),
-                n_gpu_layers=int(os.environ.get("NOVA_GGUF_GPU_LAYERS", "-1")),
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                n_threads_batch=n_threads,
                 verbose=False,
                 use_mlock=False,
             )
@@ -376,10 +413,12 @@ class GGUFEngine(InferenceEngine):
         model_path = self._resolve_model_path(model)
         llm = self._load(model_path)
 
+        # Message is a @dataclass(slots=True); the old isinstance(m, dict)
+        # filter dropped EVERY message, so GGUF inference ran with zero
+        # context. Normalize both Message objects and raw dicts.
         chat_messages = [
-            {"role": m["role"], "content": m["content"]}
-            for m in messages
-            if isinstance(m, dict)
+            {"role": d["role"], "content": d["content"]}
+            for d in messages_to_dicts(list(messages))
         ]
 
         response = llm.create_chat_completion(
@@ -413,10 +452,11 @@ class GGUFEngine(InferenceEngine):
         model_path = self._resolve_model_path(model)
         llm = self._load(model_path)
 
+        # Same fix as generate(): Message dataclasses were being dropped by
+        # an isinstance(m, dict) filter, emptying the conversation.
         chat_messages = [
-            {"role": m["role"], "content": m["content"]}
-            for m in messages
-            if isinstance(m, dict)
+            {"role": d["role"], "content": d["content"]}
+            for d in messages_to_dicts(list(messages))
         ]
 
         loop = asyncio.get_event_loop()
@@ -474,8 +514,8 @@ class GGUFEngine(InferenceEngine):
             for llm in self._models.values():
                 try:
                     llm.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional engine capability")
             self._models.clear()
 
 

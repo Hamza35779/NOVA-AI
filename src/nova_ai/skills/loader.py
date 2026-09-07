@@ -16,6 +16,10 @@ except ModuleNotFoundError:
 
 import logging
 
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -281,7 +285,8 @@ def discover_skills(directory: str | Path) -> list[SkillManifest]:
     for toml_file in sorted(directory.glob("*.toml")):
         try:
             manifests.append(load_skill(toml_file))
-        except Exception:
+        except Exception as exc:
+            soft_fail(logger, exc, "optional skill step")
             continue
 
     # Walk one or two levels deep looking for skill packages
@@ -292,7 +297,8 @@ def discover_skills(directory: str | Path) -> list[SkillManifest]:
         if (child / "skill.toml").exists() or (child / "SKILL.md").exists():
             try:
                 manifests.append(load_skill_directory(child))
-            except Exception:
+            except Exception as exc:
+                soft_fail(logger, exc, "optional skill step")
                 continue
             continue
 
@@ -305,7 +311,8 @@ def discover_skills(directory: str | Path) -> list[SkillManifest]:
             ).exists():
                 try:
                     manifests.append(load_skill_directory(grandchild))
-                except Exception:
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional skill step")
                     continue
 
     return manifests

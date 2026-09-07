@@ -22,12 +22,16 @@ Conversion to EvalRecord:
 from __future__ import annotations
 
 import ast
+import logging
 import random
 from typing import Iterable, List, MutableMapping, Optional
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.evals.core.dataset import DatasetProvider
 from nova_ai.evals.core.splits import apply_split
 from nova_ai.evals.core.types import EvalRecord
+
+logger = logging.getLogger(__name__)
 
 HF_DATASET_ID = "neulab/agent-data-collection"
 # Use 'std' split — the normalised, model-agnostic format present in every config.
@@ -154,8 +158,8 @@ class ADPDataset(DatasetProvider):
                     rows.append(dict(row))  # type: ignore[arg-type]
                     if row_cap is not None and len(rows) >= row_cap:
                         break
-            except Exception:
-                # Skip configs that fail to load (gated, missing, etc.)
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
                 continue
 
         effective_seed = 42 if seed is None else seed

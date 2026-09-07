@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.evals.core.backend import InferenceBackend
 from nova_ai.evals.core.dataset import DatasetProvider
 from nova_ai.evals.core.export import _hardware_info_dict
@@ -37,6 +38,8 @@ from nova_ai.evals.core.types import (
     RunConfig,
     RunSummary,
 )
+
+logger = logging.getLogger(__name__)
 
 try:
     from nova_ai.telemetry.efficiency import compute_efficiency
@@ -192,12 +195,23 @@ class EvalRunner:
         )
 
         # --- Warmup phase (discard results) ---
+        # Warmup samples are run once to prime caches/connections and then
+        # EXCLUDED from the main run: slice them off `records` so the main
+        # loop re-runs the same samples. Previously the slice was only used
+        # for the warmup pass, so warmup samples were effectively counted
+        # twice (warmup + main) while the summary reported them as excluded.
         warmup_count = cfg.warmup_samples
         if warmup_count > 0 and records:
+            warmup_count = min(warmup_count, len(records))
             warmup_records = records[:warmup_count]
             for rec in warmup_records:
                 self._process_one(rec)
-            LOGGER.info("Warmup complete: %d samples discarded", len(warmup_records))
+            records = records[warmup_count:]
+            LOGGER.info(
+                "Warmup complete: %d samples discarded (%d remain for scoring)",
+                warmup_count,
+                len(records),
+            )
 
         # Open output file for incremental JSONL writing
         output_path = self._resolve_output_path()
@@ -416,7 +430,11 @@ class EvalRunner:
             energy_j = full.get("energy_joules", 0.0) or 0.0
             power_w = full.get("power_watts") or full.get("peak_power_w") or 0.0
             throughput = full.get("throughput_tok_per_sec", 0.0) or 0.0
-            accuracy_score = 1.0 if is_correct else 0.0
+            # is_correct=None means the scorer could not score the sample
+            # (judge unreachable, infra failure, ...). It is excluded from
+            # accuracy, so it must not count as 0-efficiency either —
+            # leave IPW/IPJ at 0 for unscorable samples.
+            accuracy_score = 1.0 if is_correct is True else 0.0
 
             # Compute IPW and IPJ
             ipw = (accuracy_score / power_w) if power_w > 0 else 0.0
@@ -816,8 +834,8 @@ class EvalRunner:
             if env is not None:
                 try:
                     env.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional eval step")
 
     @staticmethod
     def _format_messages_as_prompt(messages: List[Dict[str, str]]) -> str:

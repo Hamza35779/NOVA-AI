@@ -19,7 +19,11 @@ from nova_ai.core.types import (
     ToolCall,
     ToolResult,
 )
-from nova_ai.core.utils import get_python_executable, open_browser
+from nova_ai.core.utils import (
+    get_python_executable,
+    open_browser,
+    soft_fail,
+)
 
 __all__ = [
     "AgentRegistry",
@@ -37,4 +41,5 @@ __all__ = [
     "ToolResult",
     "get_python_executable",
     "open_browser",
+    "soft_fail",
 ]

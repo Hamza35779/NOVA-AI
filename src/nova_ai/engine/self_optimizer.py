@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +114,8 @@ class SelfOptimizer:
         for cb in self._callbacks:
             try:
                 cb(entry)
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional engine capability")
 
     def _update_profile(self, component: str, entry: ExecutionRecord) -> None:
         """Update the rolling profile for a component. Caller holds lock."""
@@ -313,25 +314,53 @@ class SelfOptimizer:
 
         The recommendation is written by auto_tune() when a configured model
         is found to be consistently too slow or unreliable for its tier.
+        Placeholder hints (``<downgrade-to-...>``) are NOT returned — they are
+        intents, not model ids, and router._resolve_model() would hand one
+        straight to the engine, crashing every request in that tier.
         """
-        return self._tuning.get(f"router.{tier}.preferred_model")
+        rec = self._tuning.get(f"router.{tier}.preferred_model")
+        if rec and rec.startswith("<"):
+            return None
+        return rec
 
     def apply_router_correction(self, config: Any) -> None:
         """Mutate a RouterConfig's tiers dict based on accumulated tuning data.
 
         Called once when the router initialises to apply any persisted corrections.
+
+        Two hint shapes are understood:
+        - a concrete model id: applied verbatim
+        - ``<downgrade-to-<tier>>``: resolved to that tier's configured model.
+          auto_tune() has no access to the router config when it runs, so it
+          records the *intent*; the resolution happens here. An unresolvable
+          hint is ignored — letting a literal ``<downgrade-to-...>`` land in
+          ``config.tiers`` would crash every request in that tier with
+          ``ValueError: Model ... not found`` (MultiEngine accepts any model
+          name and only discovers the miss at dispatch).
         """
         with self._lock:
             for tier in ("small", "medium", "large"):
                 recommended = self._tuning.get(f"router.{tier}.preferred_model")
-                if recommended and hasattr(config, "tiers") and isinstance(config.tiers, dict):
-                    current = config.tiers.get(tier)
-                    if current != recommended:
-                        config.tiers[tier] = recommended
-                        logger.info(
-                            "SelfOptimizer corrected router tier '%s': %s -> %s",
-                            tier, current, recommended,
-                        )
+                if (
+                    not recommended
+                    or not hasattr(config, "tiers")
+                    or not isinstance(config.tiers, dict)
+                ):
+                    continue
+                if recommended.startswith("<downgrade-to-"):
+                    target_tier = recommended[len("<downgrade-to-") : -1]
+                    recommended = config.tiers.get(target_tier)
+                    if not recommended:
+                        continue
+                if recommended.startswith("<"):
+                    continue
+                current = config.tiers.get(tier)
+                if current != recommended:
+                    config.tiers[tier] = recommended
+                    logger.info(
+                        "SelfOptimizer corrected router tier '%s': %s -> %s",
+                        tier, current, recommended,
+                    )
 
     # ── Feedback Loop ──────────────────────────────────────────
 

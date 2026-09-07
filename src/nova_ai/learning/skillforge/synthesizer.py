@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.skills.types import SkillManifest
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,8 @@ def _tool_catalog() -> str:
         try:
             spec = tool.spec
             params = spec.parameters or {}
-        except Exception:
+        except Exception as exc:
+            soft_fail(logger, exc, "optional learning step")
             continue
         lines.append(f"- {name} | {spec.description} | params: {params}")
     return "\n".join(lines)

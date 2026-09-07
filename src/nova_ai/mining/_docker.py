@@ -17,12 +17,17 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from nova_ai.mining._stubs import MiningConfig
 
+import logging
+
+from nova_ai.core.utils import soft_fail
 from nova_ai.mining._constants import (
     PEARL_CACHE_DIR,
     PEARL_IMAGE_TAG,
     PEARL_PINNED_REF,
     PEARL_REPO,
 )
+
+logger = logging.getLogger(__name__)
 
 CONTAINER_NAME = "nova_ai-pearl-miner"
 LOCAL_MODEL_BIND_PATH = "/models/nova_ai-local-pearl-model"
@@ -253,7 +258,14 @@ class PearlDockerLauncher:
 
         ``image`` must already be resolved by ``ensure_image()``.
         Returns the docker.models.containers.Container object.
+
+        Raises ``ConfigurationError`` up front when a container with the
+        miner's name already exists — previously the run() call failed with
+        a cryptic daemon-side name conflict (or, worse, the stale container
+        kept the GPUs captive while start() was reported as failed).
         """
+        self._require_no_stale_container()
+
         extra = config.extra
         # Resolve secret env vars (we hold the *name*, not the value).
         password_env = extra.get("pearld_rpc_password_env", "PEARLD_RPC_PASSWORD")
@@ -375,6 +387,32 @@ class PearlDockerLauncher:
             ) from None
         return self._container
 
+    def _require_no_stale_container(self) -> None:
+        """Raise ``ConfigurationError`` when a miner container already exists.
+
+        A leftover container (previous crash, failed stop) still holds the
+        GPUs; starting a second one can never work, so fail with an
+        actionable message instead of a docker name-conflict traceback.
+        Uses :meth:`_current_container` (which maps a docker ``NotFound`` and
+        daemon unavailability to "no container") rather than querying the
+        client directly, so its error semantics apply.
+        """
+        existing = self._current_container()
+        if existing is None:
+            return
+        status = ""
+        try:
+            existing.reload()
+            status = str(getattr(existing, "status", "") or "")
+        except Exception:  # noqa: BLE001 - daemon hiccup: still refuse
+            pass
+        raise ConfigurationError(
+            f"container {CONTAINER_NAME!r} already exists "
+            f"(status={status or 'unknown'})"
+            f" — run `nova mine stop` first, or remove it with"
+            f" `docker rm -f {CONTAINER_NAME}`"
+        )
+
     def _current_container(self) -> Any | None:
         if self._container is not None:
             return self._container
@@ -389,17 +427,48 @@ class PearlDockerLauncher:
         return self._container
 
     def stop(self, timeout: int = 30) -> None:
+        """Stop and remove the miner container.
+
+        Failure semantics matter here: this container holds the host's GPUs
+        (``restart_policy=unless-stopped``), so a failed stop that is silently
+        swallowed leaves the miner running and mining. Escalate in three
+        steps — graceful stop, force-kill, force-remove — and only clear the
+        in-memory reference once the container is actually gone.
+        """
         container = self._current_container()
         if container is None:
             return
+
+        name = getattr(container, "name", CONTAINER_NAME)
         try:
             container.stop(timeout=timeout)
-        except Exception:  # noqa: BLE001 - best-effort
-            pass
+        except Exception as exc:  # noqa: BLE001 - escalated to kill below
+            logger.warning(
+                "Graceful stop of container %s failed (%s); escalating to kill",
+                name,
+                exc,
+            )
+            try:
+                container.kill()
+            except Exception as kill_exc:  # noqa: BLE001
+                logger.warning("Kill of container %s failed: %s", name, kill_exc)
+
+        # Remove with force=True so an exited-but-not-removed container
+        # doesn't linger and get restarted by the restart policy.
         try:
-            container.remove()
-        except Exception:  # noqa: BLE001 - best-effort
-            pass
+            container.remove(force=True)
+        except Exception as exc:  # noqa: BLE001 - surface loudly, don't crash
+            logger.error(
+                "Failed to remove miner container %s — the container may "
+                "still exist and (given restart_policy=unless-stopped) may "
+                "restart on daemon restart. Inspect with `docker ps -a`. (%s)",
+                name,
+                exc,
+            )
+            soft_fail(logger, exc, "optional mining step")
+            self._container = None
+            return
+
         self._container = None
 
     def is_running(self) -> bool:

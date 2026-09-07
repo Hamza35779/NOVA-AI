@@ -13,10 +13,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sqlite3
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
+
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # DDL
@@ -173,8 +178,8 @@ class AttachmentStore:
         """Close the underlying SQLite connection."""
         try:
             self._conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional connector")
 
 
 __all__ = ["AttachmentStore"]

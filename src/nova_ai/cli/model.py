@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
@@ -14,9 +15,12 @@ from rich.table import Table
 
 from nova_ai.core.config import load_config
 from nova_ai.core.registry import ModelRegistry
+from nova_ai.core.utils import soft_fail
 from nova_ai.engine import discover_engines, discover_models
 from nova_ai.intelligence import merge_discovered_models, register_builtin_models
 from nova_ai.intelligence.model_catalog import BUILTIN_MODELS
+
+logger = logging.getLogger(__name__)
 
 
 @click.group()
@@ -165,7 +169,8 @@ def ollama_pull(host: str, model_name: str, console: Console) -> bool:
                     continue
                 try:
                     data = json.loads(line)
-                except Exception:
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional CLI step")
                     continue
                 status = data.get("status", "")
                 if "total" in data and "completed" in data:

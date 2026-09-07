@@ -20,6 +20,42 @@ from nova_ai.tools._stubs import BaseTool, ToolSpec
 logger = logging.getLogger(__name__)
 
 
+def _default_executor(tool_name: str, params: Dict[str, Any]) -> Any:
+    """Fire a scheduled tool when no executor has been injected.
+
+    Builds a one-shot executor over every registered tool (same approach as
+    ``nova_ai.cli.forge_cmd._build_tool_executor``). Tools that need runtime
+    deps injected (e.g. ``llm`` needs an engine) report the failure in their
+    ``ToolResult`` rather than silently no-op'ing; a system-built executor
+    overrides this via ``TaskScheduler.set_executor`` (see
+    ``SystemBuilder.build``).
+    """
+    from nova_ai.core.registry import ToolRegistry
+    from nova_ai.core.types import ToolCall
+    from nova_ai.tools._stubs import ToolExecutor
+
+    if not ToolRegistry.contains(tool_name):
+        return ToolResult(
+            tool_name=tool_name,
+            content=f"Unknown tool: {tool_name}",
+            success=False,
+        )
+    try:
+        tool = ToolRegistry.create(tool_name)
+    except Exception as exc:
+        return ToolResult(
+            tool_name=tool_name,
+            content=f"Failed to build tool '{tool_name}': {exc}",
+            success=False,
+        )
+    call = ToolCall(
+        id=f"scheduled-{uuid.uuid4().hex[:8]}",
+        name=tool_name,
+        arguments=json.dumps(params or {}),
+    )
+    return ToolExecutor([tool]).execute(call)
+
+
 @dataclass
 class ScheduledJob:
     """Represents a scheduled task."""
@@ -142,9 +178,13 @@ class TaskScheduler:
             job.run_count += 1
             logger.info("Running scheduled job '%s' (run #%d)", job.name, job.run_count)
 
-            if job.tool_name and self._executor:
+            if job.tool_name:
+                if self._executor is not None:
+                    executor = self._executor
+                else:
+                    executor = _default_executor
                 try:
-                    self._executor(job.tool_name, job.tool_params)
+                    executor(job.tool_name, job.tool_params)
                 except Exception as e:
                     logger.error("Scheduled job '%s' failed: %s", job.name, e)
 
@@ -175,7 +215,15 @@ class TaskScheduler:
         timer.start()
 
     def _load_jobs(self) -> None:
-        """Load persisted jobs from disk."""
+        """Load persisted jobs from disk and restart their timers.
+
+        Previously jobs were restored into ``_jobs`` WITHOUT restarting
+        timers — recurring jobs silently died on process restart. Timers are
+        now armed for every active job on load. One-shot jobs whose deadline
+        already passed while the process was down fire once on startup
+        (matching cron's "catch-up" semantics); recurring jobs resume on
+        their interval from now.
+        """
         jobs_file = self._persist_dir / "jobs.json"
         if not jobs_file.exists():
             return
@@ -185,6 +233,7 @@ class TaskScheduler:
                 job = ScheduledJob(**{k: v for k, v in raw.items() if k != "id"})
                 job.id = raw.get("id", job.id)
                 self._jobs[job.id] = job
+                self._start_timer(job)
         except (json.JSONDecodeError, TypeError, KeyError) as e:
             logger.warning("Failed to load scheduler jobs: %s", e)
 

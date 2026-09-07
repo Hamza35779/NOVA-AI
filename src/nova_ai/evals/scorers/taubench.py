@@ -36,6 +36,16 @@ class TauBenchScorer(Scorer):
         info = record.metadata.get("tau_info", {})
         n_messages = record.metadata.get("tau_n_messages", 0)
 
+        # Every trial crashed before producing a reward: that is an
+        # infrastructure failure, not a model miss. Return None so the
+        # runner counts the sample as unscorable instead of 0%.
+        if record.metadata.get("tau_error"):
+            return None, {
+                "score": reward,
+                "breakdown": info,
+                "notes": f"unscorable: {record.metadata['tau_error']}",
+            }
+
         is_correct = reward >= 0.5
 
         return is_correct, {

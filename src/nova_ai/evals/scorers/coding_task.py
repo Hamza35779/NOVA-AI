@@ -13,19 +13,37 @@ from typing import Any, Dict, Optional, Tuple
 from nova_ai.evals.core.scorer import Scorer
 from nova_ai.evals.core.types import EvalRecord
 
+logger = logging.getLogger(__name__)
+
 LOGGER = logging.getLogger(__name__)
 
 
 def _extract_code(answer: str) -> str:
-    """Extract Python code from model answer, handling markdown fences."""
-    # Try markdown code fence first
-    fence_match = re.search(
-        r"```(?:python)?\s*\n(.*?)```",
+    """Extract Python code from model answer, handling markdown fences.
+
+    Models frequently open with a small illustrative snippet in their
+    explanation before presenting the real implementation. Scoring the FIRST
+    fence therefore scores the wrong code. Heuristic: when multiple fenced
+    blocks exist, prefer the last one containing a ``def``/``class``
+    definition — implementations come after examples far more often than
+    before. Single-fence answers (the common case) behave exactly as before.
+    """
+    fence_matches = re.findall(
+        # Cover the language-tag variants models actually emit: bare fence,
+        # ``python``, ``py``, ``python3``.
+        r"```(?:py|python3|python)?\s*\n(.*?)```",
         answer,
         re.DOTALL,
     )
-    if fence_match:
-        return fence_match.group(1).strip()
+    if fence_matches:
+        if len(fence_matches) == 1:
+            return fence_matches[0].strip()
+        definitional = [
+            block
+            for block in fence_matches
+            if re.search(r"^\s*(def |class |async def )", block, re.MULTILINE)
+        ]
+        return (definitional or fence_matches)[-1].strip()
 
     # Look for function/class definitions
     lines = answer.strip().split("\n")
@@ -71,23 +89,15 @@ def _run_tests(code: str, test_cases: str) -> Tuple[int, int, str]:
         passed = total
         return passed, total, ""
     except AssertionError as exc:
-        # Count how many assertions were in the code
+        # Whole-block scoring: an AssertionError somewhere in the block means
+        # the block did NOT fully pass. Fine-grained line-by-line exec was
+        # tried here and mis-counts badly — many tests span multiple lines
+        # (setup/arrange lines without ``assert``, parenthesized assertions,
+        # try/except), so executing bare lines either raises NameError (setup
+        # never ran) or "succeeds" vacuously. The only trustworthy signal is
+        # the whole block, so: any AssertionError => 0 of N passed.
         total = sum(1 for line in test_lines if "assert " in line)
-        # Run line by line to count individual passes
-        passed = 0
-        for line in test_lines:
-            if "assert " not in line:
-                try:
-                    exec(line, namespace)  # noqa: S102
-                except Exception:
-                    pass
-                continue
-            try:
-                exec(line, namespace)  # noqa: S102
-                passed += 1
-            except (AssertionError, Exception):
-                pass
-        return passed, total, str(exc)
+        return 0, total, str(exc)
     except Exception as exc:
         total = sum(1 for line in test_lines if "assert " in line)
         return 0, max(total, 1), f"Test execution error: {exc}"
@@ -122,6 +132,19 @@ class CodingTaskScorer(Scorer):
         passed, total, error = _run_tests(code, test_cases)
 
         if total == 0:
+            # total=0 with an error means the code itself crashed on exec.
+            # That is a model failure (broken code), not "no assertions" —
+            # converting it to None excludes it from resolve-rate and
+            # inflates the score. Report it as False. (#515)
+            if error:
+                return False, {
+                    "reason": "code_execution_error",
+                    "error": error,
+                    "match_type": "test_execution",
+                    "tests_passed": 0,
+                    "tests_total": 0,
+                    "pass_rate": 0.0,
+                }
             return None, {"reason": "no_assertions_found"}
 
         pass_rate = passed / total

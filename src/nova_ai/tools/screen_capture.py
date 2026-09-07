@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import shutil
 import subprocess
 import sys
@@ -10,7 +11,10 @@ from typing import Any, Optional
 
 from nova_ai.core.registry import ToolRegistry
 from nova_ai.core.types import ToolResult
+from nova_ai.core.utils import soft_fail
 from nova_ai.tools._stubs import BaseTool, ToolSpec
+
+logger = logging.getLogger(__name__)
 
 
 def _get_active_window_rect() -> Optional[tuple[int, int, int, int]]:
@@ -56,8 +60,8 @@ def _get_active_window_rect() -> Optional[tuple[int, int, int, int]]:
                 width, height = int(fields["WIDTH"]), int(fields["HEIGHT"])
                 if width > 0 and height > 0:
                     return (left, top, width, height)
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional tool")
         # Fallback: wmctrl -lG lists windows; first line with active desktop hint is approximate.
         if shutil.which("wmctrl"):
             try:
@@ -76,8 +80,8 @@ def _get_active_window_rect() -> Optional[tuple[int, int, int, int]]:
                         )
                         if width > 0 and height > 0:
                             return (left, top, width, height)
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional tool")
         return None
 
     # macOS / other platforms: no reliable active-window source without extra deps.

@@ -13,6 +13,7 @@ from nova_ai.learning.proving.store import ProvingRunStore
 from nova_ai.learning.proving.watcher import (
     KNOWN_MODELS_FILENAME,
     detect_new_models,
+    forget_model,
     list_local_models,
     maybe_auto_prove,
 )
@@ -52,6 +53,20 @@ class TestDetectNewModels:
         state.write_text("{not json")
         new = detect_new_models(state_path=state, models=["a"])
         assert new == ["a"]
+
+
+class TestForgetModel:
+    def test_forget_makes_model_new_again(self, tmp_path: Path) -> None:
+        state = tmp_path / KNOWN_MODELS_FILENAME
+        detect_new_models(state_path=state, models=["a", "b"])
+        forget_model(state_path=state, model="b")
+        assert detect_new_models(state_path=state, models=["a", "b"]) == ["b"]
+
+    def test_forget_unknown_model_is_noop(self, tmp_path: Path) -> None:
+        state = tmp_path / KNOWN_MODELS_FILENAME
+        detect_new_models(state_path=state, models=["a"])
+        forget_model(state_path=state, model="nope")
+        assert detect_new_models(state_path=state, models=["a"]) == []
 
 
 class TestListLocalModels:
@@ -184,3 +199,30 @@ class TestMaybeAutoProve:
         assert result == [
             {"candidate": "bad-model", "status": "failed", "error": "gpu on fire"}
         ]
+
+    def test_failed_candidate_is_forgotten_for_retry(
+        self, tmp_path: Path, run_store: ProvingRunStore, monkeypatch
+    ) -> None:
+        """A crashed auto-prove must un-mark the candidate as known so the
+        next watcher tick retries it instead of silently skipping forever."""
+        monkeypatch.setattr(
+            watcher_mod, "list_local_models", lambda cfg: ["crashy-model"]
+        )
+
+        def boom(**kwargs):
+            raise RuntimeError("engine down")
+
+        monkeypatch.setattr(
+            "nova_ai.learning.proving.pipeline.run_proving", boom
+        )
+        maybe_auto_prove(
+            trace_store=object(),
+            config=ProvingConfig(enabled=True, auto_trigger=True),
+            run_store=run_store,
+            proving_root=tmp_path,
+        )
+        # Snapshot no longer knows the model — next tick will treat it as new.
+        state = json.loads(
+            (tmp_path / KNOWN_MODELS_FILENAME).read_text(encoding="utf-8")
+        )
+        assert "crashy-model" not in state["models"]

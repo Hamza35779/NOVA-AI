@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import io
+import logging
 import time
 import wave
 from typing import TYPE_CHECKING, Optional
+
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import numpy as np
@@ -18,6 +23,10 @@ if TYPE_CHECKING:
 _np: Optional[object] = None
 _sd: Optional[object] = None
 _deps_resolved = False
+# Whisper "tiny" is loaded once per process: reloading on every wake-word
+# listen costs several seconds of model load before the first chunk can
+# even be transcribed.
+_wake_model: Optional[object] = None
 
 
 def _audio_modules() -> bool:
@@ -169,19 +178,22 @@ def listen_for_wake_word(
 
     # Try to import a lightweight STT backend for wake detection.
     # We prefer a local Whisper implementation; fall back to energy-only.
+    global _wake_model
     stt_fn = None
     try:
         import whisper  # type: ignore
 
-        _model = whisper.load_model("tiny", device="cpu")
+        if _wake_model is None:
+            _wake_model = whisper.load_model("tiny", device="cpu")
+        _model = _wake_model
 
         def _whisper_transcribe(audio_np: np.ndarray) -> str:
             result = _model.transcribe(audio_np.astype(np.float32), fp16=False, language="en")
             return (result.get("text") or "").lower().strip()
 
         stt_fn = _whisper_transcribe
-    except (ImportError, Exception):
-        pass
+    except (ImportError, Exception) as exc:
+        soft_fail(logger, exc, "optional voice step")
 
     with sd.InputStream(samplerate=sample_rate, channels=1, dtype="int16") as stream:
         while True:
@@ -201,8 +213,8 @@ def listen_for_wake_word(
                     text = stt_fn(chunk.astype(np.float32) / 32768.0)
                     if keyword_lower in text:
                         return True
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional voice step")
             else:
                 # Fallback: treat sustained energy above 2× threshold as activation
                 if rms > energy_threshold * 2:

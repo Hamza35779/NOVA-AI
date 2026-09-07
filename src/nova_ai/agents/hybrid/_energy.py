@@ -29,10 +29,15 @@ Scope notes
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
 from typing import List, Optional
+
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 _NVML_WARNED = False
 
@@ -129,8 +134,8 @@ class EnergyCollector:
         if self._pynvml is not None:
             try:
                 self._pynvml.nvmlShutdown()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                soft_fail(logger, exc, "optional agent step")
 
     # ---- sampler thread
     def _sample_loop(self) -> None:

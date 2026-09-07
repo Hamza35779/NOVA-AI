@@ -56,5 +56,8 @@ def test_digest_collect_missing_connector():
     with patch.object(ConnectorRegistry, "contains", return_value=False):
         result = tool.execute(sources=["nonexistent"])
 
-    assert result.success is True  # Partial success
+    # Nothing was collected, so the result is NOT a success — downstream
+    # digest synthesis must not treat the error-only body as good data.
+    assert result.success is False
     assert "not available" in result.content
+    assert result.metadata["sources_ok"] == []

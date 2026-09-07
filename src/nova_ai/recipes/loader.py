@@ -19,7 +19,12 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib  # type: ignore[no-redef]
 
+import logging
+
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 # Built-in recipes directory (package data)
 _PROJECT_RECIPES_DIR = Path(__file__).resolve().parent / "data"
@@ -315,7 +320,8 @@ def discover_recipes(
                 recipe = load_recipe(toml_path)
                 if kind is None or recipe.kind == kind:
                     recipes[recipe.name] = recipe
-            except Exception:
+            except Exception as exc:
+                soft_fail(logger, exc, "optional recipe step")
                 continue
 
     return list(recipes.values())

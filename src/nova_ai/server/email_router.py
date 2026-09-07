@@ -1,6 +1,7 @@
 """Email integration REST API — IMAP triage + SMTP send + AI summaries."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -10,11 +11,16 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/email", tags=["email"])
 
 _CREDS_FILE = "email_credentials.json"
+
+# imaplib/smtplib have no default socket timeout — a dead mail host would
+# hang the endpoint (and, pre-to_thread, the whole event loop) indefinitely.
+_IMAP_TIMEOUT_SECONDS = 15
 
 
 def _creds_path() -> Path:
@@ -26,8 +32,8 @@ def _load_creds() -> dict:
     if p.exists():
         try:
             return json.loads(p.read_text())
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional server subsystem")
     return {}
 
 
@@ -87,12 +93,22 @@ class DraftRequest(BaseModel):
 @router.post("/connect")
 async def connect_email(body: EmailConnectRequest):
     """Save IMAP/SMTP credentials and verify connection."""
-    # Test IMAP connection
-    try:
+    # Test IMAP connection. imaplib is blocking (and has no default socket
+    # timeout, hence the wrapper below) — run it off the event loop.
+    def _verify_imap() -> None:
         import imaplib
-        imap = imaplib.IMAP4_SSL(body.imap_host)
-        imap.login(body.username, body.password)
-        imap.logout()
+
+        imap = imaplib.IMAP4_SSL(body.imap_host, timeout=_IMAP_TIMEOUT_SECONDS)
+        try:
+            imap.login(body.username, body.password)
+        finally:
+            try:
+                imap.logout()
+            except Exception as exc:  # noqa: BLE001 - best-effort cleanup
+                soft_fail(logger, exc, "optional server subsystem")
+
+    try:
+        await asyncio.to_thread(_verify_imap)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"IMAP connection failed: {exc}")
 
@@ -106,11 +122,23 @@ async def email_status():
     creds = _load_creds()
     if not creds:
         return {"configured": False}
-    try:
+
+    def _check() -> None:
         import imaplib
-        imap = imaplib.IMAP4_SSL(creds.get("imap_host", "imap.gmail.com"))
-        imap.login(creds["username"], creds["password"])
-        imap.logout()
+
+        imap = imaplib.IMAP4_SSL(
+            creds.get("imap_host", "imap.gmail.com"), timeout=_IMAP_TIMEOUT_SECONDS
+        )
+        try:
+            imap.login(creds["username"], creds["password"])
+        finally:
+            try:
+                imap.logout()
+            except Exception as exc:  # noqa: BLE001 - best-effort cleanup
+                soft_fail(logger, exc, "optional server subsystem")
+
+    try:
+        await asyncio.to_thread(_check)
         return {"configured": True, "email": creds["username"], "healthy": True}
     except Exception as exc:
         return {"configured": True, "email": creds.get("username"), "healthy": False, "error": str(exc)}
@@ -121,7 +149,7 @@ async def get_inbox(n: int = 20):
     """Fetch N most recent emails with urgency scores."""
     connector = _get_imap()
     try:
-        emails = connector.fetch_n(n)
+        emails = await asyncio.to_thread(connector.fetch_n, n)
         return {"emails": emails, "total": len(emails)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -132,7 +160,7 @@ async def email_summary(uid: str):
     """Generate an AI summary and action items for a single email."""
     connector = _get_imap()
     try:
-        emails = connector.fetch_n(50)
+        emails = await asyncio.to_thread(connector.fetch_n, 50)
         email = next((e for e in emails if str(e.get("uid")) == uid), None)
         if not email:
             raise HTTPException(status_code=404, detail="Email not found")
@@ -150,7 +178,7 @@ async def email_summary(uid: str):
     )
     try:
         from nova_ai.sdk import Nova
-        summary = Nova().ask(prompt)
+        summary = await asyncio.to_thread(Nova().ask, prompt)
     except Exception:
         summary = "AI summary unavailable."
 
@@ -168,7 +196,7 @@ async def draft_reply(body: DraftRequest):
     )
     try:
         from nova_ai.sdk import Nova
-        draft = Nova().ask(prompt)
+        draft = await asyncio.to_thread(Nova().ask, prompt)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"AI draft failed: {exc}")
     return {"draft": draft}
@@ -179,7 +207,8 @@ async def send_reply(body: EmailReplyRequest):
     """Send an email via SMTP."""
     sender = _get_smtp()
     try:
-        sender.send(
+        await asyncio.to_thread(
+            sender.send,
             to=body.to,
             subject=body.subject,
             body=body.body,

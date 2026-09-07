@@ -60,8 +60,11 @@ class WorkflowEngine:
                 {"workflow": graph.name},
             )
 
-        # State: outputs keyed by node_id
+        # State: outputs keyed by node_id; step results keyed by node_id
+        # (condition nodes evaluate against the *success* of prior steps,
+        # which plain output strings don't carry).
         outputs: Dict[str, str] = {"_input": initial_input}
+        step_results: Dict[str, WorkflowStepResult] = {}
         ctx = dict(context or {})
         all_steps: List[WorkflowStepResult] = []
         success = True
@@ -76,9 +79,11 @@ class WorkflowEngine:
                     ctx,
                     system,
                     graph,
+                    step_results,
                 )
                 all_steps.append(step)
                 outputs[stage[0]] = step.output
+                step_results[stage[0]] = step
                 if not step.success:
                     success = False
                     break
@@ -95,6 +100,7 @@ class WorkflowEngine:
                             dict(ctx),
                             system,
                             graph,
+                            step_results,
                         ): nid
                         for nid in stage
                     }
@@ -112,6 +118,7 @@ class WorkflowEngine:
                             )
                         all_steps.append(step)
                         outputs[nid] = step.output
+                        step_results[nid] = step
                         if not step.success:
                             success = False
 
@@ -143,6 +150,7 @@ class WorkflowEngine:
         ctx: Dict[str, Any],
         system: Any,
         graph: WorkflowGraph,
+        step_results: Optional[Dict[str, WorkflowStepResult]] = None,
     ) -> WorkflowStepResult:
         """Execute a single workflow node."""
         if self._bus:
@@ -158,7 +166,7 @@ class WorkflowEngine:
             elif node.node_type == NodeType.TOOL:
                 result = self._run_tool_node(node, outputs, system)
             elif node.node_type == NodeType.CONDITION:
-                result = self._run_condition_node(node, outputs)
+                result = self._run_condition_node(node, outputs, step_results or {})
             elif node.node_type == NodeType.TRANSFORM:
                 result = self._run_transform_node(node, outputs)
             elif node.node_type == NodeType.LOOP:
@@ -265,26 +273,59 @@ class WorkflowEngine:
         self,
         node: WorkflowNode,
         outputs: Dict[str, str],
+        steps: Dict[str, WorkflowStepResult],
     ) -> WorkflowStepResult:
-        """Evaluate a condition expression against outputs."""
-        expr = node.condition_expr
+        """Evaluate a condition expression against prior step results.
+
+        Supported syntax (matches :meth:`WorkflowBuilder.add_condition` docs):
+          "node_id.success"                 — "true" when that step succeeded
+          "node_id.output contains 'text'"  — substring test on that node's output
+          free-form expression over ``outputs`` (dict of node_id → output text)
+
+        The old implementation eval()'d the raw expression with only
+        ``outputs`` in scope, so the documented ``a.success`` form raised
+        NameError and *every* condition evaluated to "false". Unparseable
+        expressions still fail safe to "false" rather than raising.
+        """
+        expr = (node.condition_expr or "").strip()
         if not expr:
             return WorkflowStepResult(
                 node_id=node.id,
                 success=True,
                 output="true",
             )
-        # Simple expression evaluation — check if key exists and is truthy
-        # Supports: "node_id.success", "node_id.output contains 'text'"
-        try:
-            result = str(eval(expr, {"__builtins__": {}}, {"outputs": outputs}))  # noqa: S307
-        except Exception:
-            result = "false"
+        result = self._eval_condition(expr, outputs, steps)
         return WorkflowStepResult(
             node_id=node.id,
             success=True,
             output=result,
         )
+
+    @staticmethod
+    def _eval_condition(
+        expr: str,
+        outputs: Dict[str, str],
+        steps: Dict[str, WorkflowStepResult],
+    ) -> str:
+        """Evaluate one condition expression, returning "true"/"false"."""
+        import re
+
+        m = re.fullmatch(r"(\w+)\.output\s+contains\s+'([^']*)'", expr)
+        if m:
+            needle = m.group(2)
+            return "true" if needle in outputs.get(m.group(1), "") else "false"
+
+        m = re.fullmatch(r"(\w+)\.success", expr)
+        if m:
+            step = steps.get(m.group(1))
+            return "true" if step is not None and step.success else "false"
+
+        # Legacy free-form: eval over the outputs mapping, no builtins.
+        try:
+            value = str(eval(expr, {"__builtins__": {}}, {"outputs": outputs}))  # noqa: S307
+        except Exception:
+            return "false"
+        return "true" if value.lower() == "true" else "false"
 
     def _run_transform_node(
         self,

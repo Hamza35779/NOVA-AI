@@ -8,6 +8,7 @@ environment.  Uses httpx directly so no cloud SDK packages are required.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from typing import Any, Sequence
@@ -16,6 +17,9 @@ import httpx
 
 from nova_ai.core.paths import get_config_dir
 from nova_ai.core.types import Message
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Key / provider detection
@@ -179,8 +183,8 @@ async def _stream_openai(
                     delta = chunk["choices"][0]["delta"].get("content") or ""
                     if delta:
                         yield delta
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional server subsystem")
 
 
 async def _stream_anthropic(
@@ -227,8 +231,8 @@ async def _stream_anthropic(
                         text = event.get("delta", {}).get("text", "")
                         if text:
                             yield text
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional server subsystem")
 
 
 async def _stream_google(
@@ -274,8 +278,8 @@ async def _stream_google(
                         text = part.get("text", "")
                         if text:
                             yield text
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional server subsystem")
 
 
 # ---------------------------------------------------------------------------
@@ -320,8 +324,8 @@ async def stream_local(
                         yield token
                     if data.get("done"):
                         break
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional server subsystem")
 
 
 async def list_local_models() -> list[str]:

@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import re as _re
+import threading
+import time
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from nova_ai.agents.manager import AgentManager
+from nova_ai.core.types import Message, Role
+from nova_ai.core.types import ToolCall as MsgToolCall
+from nova_ai.core.utils import soft_fail
 
 try:
     from fastapi import APIRouter, HTTPException, Request
@@ -16,6 +24,10 @@ except ImportError:
     raise ImportError("fastapi and pydantic are required for server routes")
 
 logger = logging.getLogger("nova_ai.server.agent_manager")
+
+# Serializes first-request MCP discovery across concurrent requests; see
+# _get_mcp_tools.
+_mcp_discovery_lock = threading.Lock()
 
 
 class CreateAgentRequest(BaseModel):
@@ -152,11 +164,11 @@ def _make_lightweight_system(
                 plain_engine,
                 get_event_bus(),
             )
-        except Exception:
-            pass  # telemetry is optional
+        except Exception as exc:
+            soft_fail(logger, exc, "telemetry is optional")
         return _LightweightSystem(plain_engine, model, cfg)
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional server subsystem")
     return _LightweightSystem(engine, model, config)
 
 
@@ -208,20 +220,20 @@ def _ensure_registries_populated() -> None:
     # First, try a normal import (works if modules haven't been imported yet)
     try:
         import nova_ai.channels  # noqa: F401
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional server subsystem")
 
     try:
         import nova_ai.tools  # noqa: F401
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional server subsystem")
 
     # Also try to import browser tools (not included in nova_ai.tools.__init__)
     for _browser_mod in ("nova_ai.tools.browser", "nova_ai.tools.browser_axtree"):
         try:
             importlib.import_module(_browser_mod)
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional server subsystem")
 
     # If registries are still empty, reload individual submodules from sys.modules
     if not ChannelRegistry.keys():
@@ -231,8 +243,8 @@ def _ensure_registries_populated() -> None:
             ):
                 try:
                     importlib.reload(sys.modules[mod_name])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional server subsystem")
 
     if not ToolRegistry.keys():
         for mod_name in list(sys.modules):
@@ -243,8 +255,8 @@ def _ensure_registries_populated() -> None:
             ):
                 try:
                     importlib.reload(sys.modules[mod_name])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional server subsystem")
 
     # After reloading tools, also try browser tools if still not registered
     if not any(ToolRegistry.contains(n) for n in _BROWSER_SUB_TOOLS):
@@ -256,8 +268,8 @@ def _ensure_registries_populated() -> None:
             if mod is not None:
                 try:
                     importlib.reload(mod)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional server subsystem")
 
 
 def build_tools_list() -> List[Dict[str, Any]]:
@@ -317,8 +329,8 @@ def build_tools_list() -> List[Dict[str, Any]]:
                     "configured": True,
                 }
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional server subsystem")
 
     try:
         for name, _cls in ChannelRegistry.items():
@@ -340,8 +352,8 @@ def build_tools_list() -> List[Dict[str, Any]]:
                     ),
                 }
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional server subsystem")
 
     return items
 
@@ -538,6 +550,50 @@ def _replay_history_messages(
     return messages
 
 
+async def _execute_local_tool(
+    tool_name: str,
+    tool_args: str,
+    engine: Any,
+    model: str,
+    app_state: Any,
+    bus: Any,
+) -> Any:
+    """Execute a local (non-MCP) tool off the event loop via asyncio.to_thread.
+
+    Runs in a thread pool so slow tools (shell_exec, knowledge_search, …)
+    don't block every other SSE stream and HTTP request. (#514)
+    """
+    from nova_ai.core.registry import ToolRegistry
+    from nova_ai.tools._stubs import ToolCall as StubToolCall
+    from nova_ai.tools._stubs import ToolExecutor
+
+    tool_cls = ToolRegistry.get(tool_name)
+    if tool_cls is None:
+        raise ValueError(f"Tool {tool_name!r} not found in registry")
+
+    tool_instance = _instantiate_managed_tool(
+        tool_cls,
+        tool_name,
+        engine=engine,
+        model=model,
+        app_state=app_state,
+    )
+    executor = ToolExecutor(
+        tools=[tool_instance],
+        bus=bus,
+        interactive=True,
+        confirm_callback=lambda _prompt: True,
+    )
+    return await asyncio.to_thread(
+        executor.execute,
+        StubToolCall(
+            id="",
+            name=tool_name,
+            arguments=tool_args,
+        ),
+    )
+
+
 def _instantiate_managed_tool(
     tool_cls: Any,
     name: str,
@@ -657,11 +713,29 @@ def _get_mcp_tools(app_state: Any) -> Tuple[List[Dict[str, Any]], Dict[str, Any]
 
     Lazily discovers MCP tools from config and caches them on ``app_state``
     so that subsequent requests reuse the same connections.
+
+    Discovery involves subprocess/HTTP handshakes (seconds per server), so
+    the whole body runs under a module-level lock — without it two
+    concurrent first-requests both run the full discovery handshake for the
+    same servers and double-append clients to ``_mcp_clients``.
     """
     cached = getattr(app_state, "_mcp_tools_cache", None)
     if cached is not None:
         return cached
 
+    with _mcp_discovery_lock:
+        # Double-check: another thread may have populated the cache while we
+        # waited on the lock above.
+        cached = getattr(app_state, "_mcp_tools_cache", None)
+        if cached is not None:
+            return cached
+        return _discover_mcp_tools(app_state)
+
+
+def _discover_mcp_tools(
+    app_state: Any,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Run the actual MCP discovery (caller must hold _mcp_discovery_lock)."""
     import json as _json
 
     from nova_ai.core.config import load_config
@@ -799,9 +873,18 @@ def _tool_progress_label(tool_name: str, args: str) -> str:
             q = parsed.get("query") or parsed.get("question") or ""
             if q:
                 label += f' — "{q[:50]}"'
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional server subsystem")
     return label
+
+
+# Queue timeout for the DeepResearch SSE consumer (seconds): if no event
+# arrives within this window the worker is considered wedged and the stream
+# is terminated with a timeout notice.
+_DR_QUEUE_TIMEOUT_S = 600.0
+
+
+_DEFAULT_LOCAL_MODEL = "qwen3.5:9b"
 
 
 async def _stream_managed_agent(
@@ -820,11 +903,6 @@ async def _stream_managed_agent(
     LLM. Supports multi-turn tool-calling: when the model emits tool_calls,
     they are executed and the results fed back for the next turn.
     """
-    import json
-    import uuid
-
-    from nova_ai.core.types import Message, Role
-
     agent_id = agent_record["id"]
     config = agent_record.get("config", {})
     # Resolve the model: prefer the agent's own config, then the server's
@@ -892,17 +970,20 @@ async def _stream_managed_agent(
 
             async def generate_deep_research():
                 """Run DeepResearchAgent in thread, stream progress + result."""
-                import asyncio
                 import queue
                 import threading
-                import time as _dr_time
 
                 from nova_ai.agents.deep_research import DeepResearchAgent
 
                 progress_q: queue.Queue = queue.Queue()
+                # Set when the SSE consumer gives up on the worker (queue
+                # timeout or client disconnect). _run_agent checks it before
+                # storing the response so a dead stream doesn't get a late
+                # write, and the thread can wind down at its next checkpoint.
+                _dr_cancelled: Dict[str, bool] = {"stop": False}
 
                 # Log query start
-                _dr_start = _dr_time.time()
+                _dr_start = time.time()
                 try:
                     manager.add_learning_log(
                         agent_id,
@@ -953,9 +1034,9 @@ async def _stream_managed_agent(
                             "full_args": full_args,
                         }
                     )
-                    _tool_start = _dr_time.monotonic()
+                    _tool_start = time.monotonic()
                     result = original_execute(tc)
-                    _tool_latency_ms = (_dr_time.monotonic() - _tool_start) * 1000
+                    _tool_latency_ms = (time.monotonic() - _tool_start) * 1000
 
                     # Log tool result
                     try:
@@ -997,7 +1078,19 @@ async def _stream_managed_agent(
                     except Exception as exc:
                         content = f"Error: {exc}"
 
-                    elapsed = _dr_time.time() - _dr_start
+                    elapsed = time.time() - _dr_start
+
+                    if _dr_cancelled["stop"]:
+                        # The SSE consumer timed out or disconnected; the
+                        # stream that would receive this response is gone.
+                        # Skip the late store/log so we don't resurrect a
+                        # truncated conversation as complete.
+                        logger.info(
+                            "Deep-research worker finished after consumer "
+                            "stopped for agent %s; discarding result",
+                            agent_id,
+                        )
+                        return
 
                     # Log BEFORE queue put (put triggers SSE end)
                     try:
@@ -1036,122 +1129,141 @@ async def _stream_managed_agent(
                 dr_tool_calls: List[Dict[str, Any]] = []
                 _pending_dr_starts: Dict[str, str] = {}
 
-                # Stream progress events and final content
-                while True:
-                    try:
-                        event = await asyncio.to_thread(progress_q.get, timeout=600)
-                    except Exception:
-                        # Timeout
-                        yield _sse_chunk(chunk_id, model, "Agent timed out.")
-                        break
+                try:
+                    # Stream progress events and final content
+                    while True:
+                        try:
+                            event = await asyncio.to_thread(
+                                progress_q.get, timeout=_DR_QUEUE_TIMEOUT_S
+                            )
+                        except Exception:
+                            # Queue timeout — the worker is wedged. Tell the
+                            # client, then STOP the thread from piling more
+                            # work onto a dead SSE stream: mark it so
+                            # _run_agent's late store_agent_response is a
+                            # no-op and the process can be reaped (#517).
+                            _dr_cancelled["stop"] = True
+                            yield _sse_chunk(chunk_id, model, "Agent timed out.")
+                            break
 
-                    if event["type"] == "tool_start":
-                        tool = event["tool"]
-                        args = event.get("args", "")
-                        full_args = event.get("full_args", "")
-                        _pending_dr_starts[tool] = full_args
-                        # Structured event so the UI can render a tool_call
-                        # message card (same shape as the non-DR path).
-                        _start_payload = json.dumps(
-                            {"tool": tool, "arguments": full_args}
-                        )
-                        yield f"event: tool_call_start\ndata: {_start_payload}\n\n"
-                        # Keep the human-readable progress label for the
-                        # thinking-bubble fallback.
-                        label = _tool_progress_label(tool, args)
-                        progress_data = {
-                            "id": chunk_id,
-                            "object": "chat.completion.chunk",
-                            "model": model,
-                            "choices": [
-                                {
-                                    "index": 0,
-                                    "delta": {},
-                                    "finish_reason": None,
-                                    "tool_progress": label,
-                                }
-                            ],
-                        }
-                        yield f"data: {json.dumps(progress_data)}\n\n"
-
-                    elif event["type"] == "tool_end":
-                        tool = event["tool"]
-                        dr_tool_calls.append(
-                            {
-                                "tool": tool,
-                                "arguments": event.get(
-                                    "arguments", _pending_dr_starts.get(tool, "")
-                                ),
-                                "result": event.get("result", ""),
-                                "success": bool(event.get("success", False)),
-                                "latency": float(event.get("latency", 0.0)),
+                        if event["type"] == "tool_start":
+                            tool = event["tool"]
+                            args = event.get("args", "")
+                            full_args = event.get("full_args", "")
+                            _pending_dr_starts[tool] = full_args
+                            # Structured event so the UI can render a tool_call
+                            # message card (same shape as the non-DR path).
+                            _start_payload = json.dumps(
+                                {"tool": tool, "arguments": full_args}
+                            )
+                            yield f"event: tool_call_start\ndata: {_start_payload}\n\n"
+                            # Keep the human-readable progress label for the
+                            # thinking-bubble fallback.
+                            label = _tool_progress_label(tool, args)
+                            progress_data = {
+                                "id": chunk_id,
+                                "object": "chat.completion.chunk",
+                                "model": model,
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "delta": {},
+                                        "finish_reason": None,
+                                        "tool_progress": label,
+                                    }
+                                ],
                             }
-                        )
-                        _pending_dr_starts.pop(tool, None)
-                        _end_payload = json.dumps(
-                            {
-                                "tool": tool,
-                                "success": bool(event.get("success", False)),
-                                "latency": float(event.get("latency", 0.0)),
-                                "result": event.get("result", ""),
-                            }
-                        )
-                        yield f"event: tool_call_end\ndata: {_end_payload}\n\n"
+                            yield f"data: {json.dumps(progress_data)}\n\n"
 
-                    elif event["type"] in ("done", "error"):
-                        content = event["content"]
-                        meta = event.get("metadata", {})
-                        elapsed_s = event.get("elapsed", 0)
-
-                        # Stream content word-by-word
-                        words = content.split(" ")
-                        for i, word in enumerate(words):
-                            token = word if i == 0 else " " + word
-                            yield _sse_chunk(chunk_id, model, token)
-
-                        # Build usage + telemetry
-                        prompt_tok = meta.get("prompt_tokens", 0)
-                        comp_tok = meta.get("completion_tokens", 0)
-                        total_tok = meta.get("total_tokens", 0)
-                        word_count = len(words)
-                        speed = round(word_count / elapsed_s) if elapsed_s > 0 else 0
-
-                        # Final chunk with usage + telemetry
-                        finish_data = {
-                            "id": chunk_id,
-                            "object": "chat.completion.chunk",
-                            "model": model,
-                            "choices": [
+                        elif event["type"] == "tool_end":
+                            tool = event["tool"]
+                            dr_tool_calls.append(
                                 {
-                                    "index": 0,
-                                    "delta": {},
-                                    "finish_reason": "stop",
+                                    "tool": tool,
+                                    "arguments": event.get(
+                                        "arguments", _pending_dr_starts.get(tool, "")
+                                    ),
+                                    "result": event.get("result", ""),
+                                    "success": bool(event.get("success", False)),
+                                    "latency": float(event.get("latency", 0.0)),
                                 }
-                            ],
-                            "usage": {
-                                "prompt_tokens": prompt_tok,
-                                "completion_tokens": comp_tok,
-                                "total_tokens": total_tok or (prompt_tok + comp_tok),
-                            },
-                            "telemetry": {
-                                "engine": "ollama",
-                                "model_id": model,
-                                "total_ms": round(elapsed_s * 1000),
-                                "tokens_per_sec": speed,
-                                "tool_calls": len(meta.get("sources", [])),
-                            },
-                        }
-                        yield f"data: {json.dumps(finish_data)}\n\n"
-                        yield "data: [DONE]\n\n"
+                            )
+                            _pending_dr_starts.pop(tool, None)
+                            _end_payload = json.dumps(
+                                {
+                                    "tool": tool,
+                                    "success": bool(event.get("success", False)),
+                                    "latency": float(event.get("latency", 0.0)),
+                                    "result": event.get("result", ""),
+                                }
+                            )
+                            yield f"event: tool_call_end\ndata: {_end_payload}\n\n"
 
-                        # Persist (with the tool calls captured during
-                        # the deep-research turn so they survive reload).
-                        manager.store_agent_response(
-                            agent_id,
-                            content,
-                            tool_calls=dr_tool_calls or None,
-                        )
-                        break
+                        elif event["type"] in ("done", "error"):
+                            content = event["content"]
+                            meta = event.get("metadata", {})
+                            elapsed_s = event.get("elapsed", 0)
+
+                            # Stream content word-by-word
+                            words = content.split(" ")
+                            for i, word in enumerate(words):
+                                token = word if i == 0 else " " + word
+                                yield _sse_chunk(chunk_id, model, token)
+
+                            # Build usage + telemetry
+                            prompt_tok = meta.get("prompt_tokens", 0)
+                            comp_tok = meta.get("completion_tokens", 0)
+                            total_tok = meta.get("total_tokens", 0)
+                            word_count = len(words)
+                            speed = (
+                                round(word_count / elapsed_s) if elapsed_s > 0 else 0
+                            )
+
+                            # Final chunk with usage + telemetry
+                            finish_data = {
+                                "id": chunk_id,
+                                "object": "chat.completion.chunk",
+                                "model": model,
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "delta": {},
+                                        "finish_reason": "stop",
+                                    }
+                                ],
+                                "usage": {
+                                    "prompt_tokens": prompt_tok,
+                                    "completion_tokens": comp_tok,
+                                    "total_tokens": total_tok
+                                    or (prompt_tok + comp_tok),
+                                },
+                                "telemetry": {
+                                    "engine": "ollama",
+                                    "model_id": model,
+                                    "total_ms": round(elapsed_s * 1000),
+                                    "tokens_per_sec": speed,
+                                    "tool_calls": len(meta.get("sources", [])),
+                                },
+                            }
+                            yield f"data: {json.dumps(finish_data)}\n\n"
+                            yield "data: [DONE]\n\n"
+
+                            # Persist (with the tool calls captured during
+                            # the deep-research turn so they survive reload).
+                            manager.store_agent_response(
+                                agent_id,
+                                content,
+                                tool_calls=dr_tool_calls or None,
+                            )
+                            break
+                finally:
+                    # If the client disconnects (GeneratorExit) or the queue
+                    # timeout above fired, the daemon worker would otherwise
+                    # keep calling the model forever and try to store a
+                    # response into a dead stream. Flag it so the late
+                    # store_agent_response no-ops (#517). A daemon thread
+                    # cannot be force-killed; the flag is the clean lever.
+                    _dr_cancelled["stop"] = True
 
             return StreamingResponse(
                 generate_deep_research(),
@@ -1241,9 +1353,7 @@ async def _stream_managed_agent(
         messages_for_llm = list(llm_messages)
         turns = 0
 
-        import time as _lgtime
-
-        _query_start_ts = _lgtime.time()
+        _query_start_ts = time.time()
         try:
             manager.add_learning_log(
                 agent_id,
@@ -1324,8 +1434,6 @@ async def _stream_managed_agent(
                 ]
 
                 # Add assistant message with tool_calls to conversation
-                from nova_ai.core.types import ToolCall as MsgToolCall
-
                 assistant_msg = Message(
                     role=Role.ASSISTANT,
                     content=turn_content or None,
@@ -1344,8 +1452,6 @@ async def _stream_managed_agent(
                 # tool_call_start/tool_call_end around each call so the UI
                 # can render them live (same event names as the main chat
                 # in stream_bridge.py).
-                import time as _time
-
                 for tc in sorted_tcs:
                     tool_name = tc["function"]["name"]
                     tool_args = tc["function"]["arguments"]
@@ -1365,7 +1471,7 @@ async def _stream_managed_agent(
                         )
                     except Exception as _tc_exc:
                         logger.warning("Log tool_call failed: %s", _tc_exc)
-                    tool_start_ms = _time.monotonic() * 1000
+                    tool_start_ms = time.monotonic() * 1000
 
                     try:
                         # Try MCP adapter first (external tools)
@@ -1375,58 +1481,22 @@ async def _stream_managed_agent(
                                 parsed_args = json.loads(tool_args) if tool_args else {}
                             except (json.JSONDecodeError, TypeError):
                                 parsed_args = {}
-                            result = mcp_adapter.execute(**parsed_args)
-                            tool_result_content = result.content
-                        else:
-                            # Try to use ToolExecutor if tools are configured
-                            from nova_ai.core.registry import ToolRegistry
-                            from nova_ai.tools._stubs import (
-                                ToolCall as StubToolCall,
+                            # Run tool execution off the event loop so a slow
+                            # tool (shell_exec, knowledge_search, …) doesn't
+                            # block every other SSE stream and HTTP request.
+                            # (#514)
+                            result = await asyncio.to_thread(
+                                mcp_adapter.execute, **parsed_args
                             )
-                            from nova_ai.tools._stubs import (
-                                ToolExecutor,
+                        else:
+                            from nova_ai.server.agent_manager_routes import (
+                                _execute_local_tool,
                             )
 
-                            tool_cls = ToolRegistry.get(tool_name)
-                            if tool_cls is not None:
-                                # Inject backend / channel / engine the same
-                                # way cli/ask.py does, else memory_* / channel_*
-                                # / llm tools fail with "No backend configured"
-                                # on every call (#395).
-                                tool_instance = _instantiate_managed_tool(
-                                    tool_cls,
-                                    tool_name,
-                                    engine=engine,
-                                    model=model,
-                                    app_state=app_state,
-                                )
-                                # Tools the user explicitly added to this
-                                # agent's toolkit are considered pre-approved —
-                                # selecting them in the wizard is the
-                                # confirmation. Without this, tools that have
-                                # `requires_confirmation=True` (shell_exec,
-                                # apply_patch) would fail with "requires
-                                # confirmation but no callback available" on
-                                # every call.
-                                executor = ToolExecutor(
-                                    tools=[tool_instance],
-                                    bus=bus,
-                                    interactive=True,
-                                    confirm_callback=lambda _prompt: True,
-                                )
-                                result = executor.execute(
-                                    StubToolCall(
-                                        id=tc["id"],
-                                        name=tool_name,
-                                        arguments=tool_args,
-                                    ),
-                                )
-                                tool_result_content = result.content
-                            else:
-                                logger.warning(
-                                    "Tool '%s' not found in registry or MCP adapters",
-                                    tool_name,
-                                )
+                            result = await _execute_local_tool(
+                                tool_name, tool_args, engine, model, app_state, bus
+                            )
+                        tool_result_content = result.content
                         tool_succeeded = True
                     except Exception as tool_exc:
                         logger.error(
@@ -1437,7 +1507,7 @@ async def _stream_managed_agent(
                         )
                         tool_result_content = f"Error executing {tool_name}: {tool_exc}"
 
-                    tool_latency_ms = (_time.monotonic() * 1000) - tool_start_ms
+                    tool_latency_ms = (time.monotonic() * 1000) - tool_start_ms
                     collected_tool_calls.append(
                         {
                             "tool": tool_name,
@@ -1659,8 +1729,8 @@ def create_agent_manager_router(
                 )
                 try:
                     manager.end_tick(agent_id)
-                except Exception:
-                    pass
+                except Exception as sub_exc:
+                    soft_fail(logger, sub_exc, "optional server subsystem")
                 manager.update_agent(agent_id, status="error")
                 manager.update_summary_memory(
                     agent_id,
@@ -1893,9 +1963,9 @@ def create_agent_manager_router(
                                 None,
                             ),
                             "_model",
-                            "qwen3.5:9b",
+                            _DEFAULT_LOCAL_MODEL,
                         )
-                        or "qwen3.5:9b"
+                        or _DEFAULT_LOCAL_MODEL
                     )
                     pid = start_slack_daemon(
                         bot_token=bot_token,
@@ -1936,8 +2006,8 @@ def create_agent_manager_router(
                     )
 
                     stop_slack_daemon()
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional server subsystem")
         manager.unbind_channel(binding_id)
         return {"status": "unbound"}
 
@@ -1971,7 +2041,6 @@ def create_agent_manager_router(
             # agent processes the message, then return the stored msg.
             # Re-use the server's existing system (correct model/engine).
             import threading
-            import time as _time
 
             from nova_ai.agents.executor import AgentExecutor
             from nova_ai.core.events import get_event_bus
@@ -1981,7 +2050,7 @@ def create_agent_manager_router(
             _srv_config = getattr(request.app.state, "config", None)
 
             def _immediate_tick():
-                _start = _time.time()
+                _start = time.time()
                 logger.info(
                     "Immediate tick starting for agent %s (model=%s)",
                     agent_id,
@@ -2003,14 +2072,14 @@ def create_agent_manager_router(
                     logger.info(
                         "Immediate tick: system ready in %.1fs, "
                         "executing tick for agent %s",
-                        _time.time() - _start,
+                        time.time() - _start,
                         agent_id,
                     )
                     executor.execute_tick(agent_id)
                     logger.info(
                         "Immediate tick completed for agent %s in %.1fs",
                         agent_id,
-                        _time.time() - _start,
+                        time.time() - _start,
                     )
                 except Exception as exc:
                     logger.error(
@@ -2021,8 +2090,8 @@ def create_agent_manager_router(
                     )
                     try:
                         manager.end_tick(agent_id)
-                    except Exception:
-                        pass
+                    except Exception as sub_exc:
+                        soft_fail(logger, sub_exc, "optional server subsystem")
                     manager.update_agent(agent_id, status="error")
                     manager.update_summary_memory(
                         agent_id,
@@ -2099,10 +2168,13 @@ def create_agent_manager_router(
             from nova_ai.traces.store import TraceStore
 
             config = load_config()
-            store = TraceStore(
+            # TraceStore opens a SQLite connection per instance; close it so
+            # concurrent request handlers don't pile up readers (WAL can hit
+            # SQLITE_BUSY under many open connections).
+            with TraceStore(
                 config.traces.db_path or str(get_config_dir() / "traces.db")
-            )
-            traces = store.list_traces(agent=agent_id, limit=limit)
+            ) as store:
+                traces = store.list_traces(agent=agent_id, limit=limit)
             return {
                 "traces": [
                     {
@@ -2127,10 +2199,10 @@ def create_agent_manager_router(
             from nova_ai.traces.store import TraceStore
 
             config = load_config()
-            store = TraceStore(
+            with TraceStore(
                 config.traces.db_path or str(get_config_dir() / "traces.db")
-            )
-            trace = store.get(trace_id)
+            ) as store:
+                trace = store.get(trace_id)
             if trace is None:
                 raise HTTPException(status_code=404, detail="Trace not found")
             return {
@@ -2223,8 +2295,8 @@ def create_agent_manager_router(
                         "configured": True,
                     }
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional server subsystem")
         return {"tools": items}
 
     @tools_router.post("/{tool_name}/credentials")

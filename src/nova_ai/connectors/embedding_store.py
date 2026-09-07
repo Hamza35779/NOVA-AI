@@ -17,6 +17,8 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from nova_ai.core.utils import soft_fail
+
 if TYPE_CHECKING:
     import torch  # type: ignore[import]
 
@@ -172,8 +174,8 @@ class EmbeddingStore:
         """Close the underlying SQLite connection."""
         try:
             self._conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional connector")
 
 
 __all__ = ["EmbeddingStore"]

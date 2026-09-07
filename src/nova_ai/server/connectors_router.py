@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from nova_ai.core.utils import soft_fail
+
 # ``Request`` must be importable at *module* scope so that FastAPI can resolve
 # the stringized ``request: Request`` annotations on the OAuth endpoints below.
 # Because this module uses ``from __future__ import annotations``, every
@@ -42,8 +44,8 @@ def _ensure_connectors_registered() -> None:
     # First, try a normal import (works if modules haven't been imported yet).
     try:
         import nova_ai.connectors  # noqa: F401
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional server subsystem")
 
     # If the registry is still empty, reload individual connector submodules
     # that are already present in sys.modules.
@@ -61,8 +63,8 @@ def _ensure_connectors_registered() -> None:
             ):
                 try:
                     importlib.reload(sys.modules[mod_name])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional server subsystem")
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +132,8 @@ def create_connectors_router():
                     (connector_id,),
                 ).fetchone()
                 chunks = rows[0] if rows else 0
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional server subsystem")
 
         return {
             "connector_id": connector_id,
@@ -333,15 +335,15 @@ def create_connectors_router():
         auth_url: Optional[str] = None
         try:
             auth_url = instance.auth_url()
-        except (NotImplementedError, Exception):
-            pass
+        except (NotImplementedError, Exception) as exc:
+            soft_fail(logger, exc, "optional server subsystem")
 
         # Serialise MCP tool names only (ToolSpec objects are not JSON-safe).
         mcp_tools = []
         try:
             mcp_tools = [t.name for t in instance.mcp_tools()]
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional server subsystem")
 
         # Include OAuth provider setup info if applicable
         oauth_setup = None
@@ -360,8 +362,8 @@ def create_connectors_router():
                     "setup_hint": provider.setup_hint,
                     "has_credentials": has_creds,
                 }
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional server subsystem")
 
         return {
             "connector_id": connector_id,

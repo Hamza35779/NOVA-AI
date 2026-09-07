@@ -12,6 +12,7 @@ from nova_ai.cli._banner import print_banner
 from nova_ai.core.config import load_config
 from nova_ai.core.events import EventBus
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
 from nova_ai.engine import (
     discover_engines,
     discover_models,
@@ -536,8 +537,8 @@ def serve(
                     from nova_ai.traces.store import TraceStore
 
                     _trace_store = TraceStore(db_path=config.traces.db_path)
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional CLI step")
 
             executor = AgentExecutor(
                 manager=agent_manager,

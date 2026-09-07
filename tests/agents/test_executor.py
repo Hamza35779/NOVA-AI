@@ -163,3 +163,76 @@ def test_finalize_tick_reads_agent_result_metadata(tmp_path):
     assert updated["total_cost"] == 0.05
     assert updated["stall_retries"] == 0
     mgr.close()
+
+
+class TestPendingMessageDelivery:
+    """Pending messages must survive a failed tick and be delivered on success.
+
+    The delivery block used to run BEFORE agent.run(): a crashed tick marked
+    the user's messages delivered without the agent ever seeing them.
+    """
+
+    def _make(self, tmp_path):
+        from nova_ai.agents.executor import AgentExecutor
+        from nova_ai.agents.manager import AgentManager
+
+        mgr = AgentManager(str(tmp_path / "test.db"))
+        executor = AgentExecutor(mgr, EventBus())
+        agent = mgr.create_agent(name="msg-test", agent_type="monitor_operative")
+        return mgr, executor, agent
+
+    def test_failed_tick_keeps_messages_pending(self, tmp_path):
+        mgr, executor, agent = self._make(tmp_path)
+        mgr.send_message(agent["id"], "hello there")
+        mgr.send_message(agent["id"], "second msg")
+
+        with patch.object(
+            executor,
+            "_invoke_agent",
+            side_effect=FatalError("api key not found"),
+        ):
+            executor.execute_tick(agent["id"])
+
+        pending = mgr.get_pending_messages(agent["id"])
+        assert [m["content"] for m in pending] == ["hello there", "second msg"]
+        mgr.close()
+
+    def test_successful_tick_marks_messages_delivered(self, tmp_path):
+        from nova_ai.agents.executor import AgentExecutor
+        from nova_ai.agents.manager import AgentManager
+
+        # Delivery happens inside the real _invoke_agent, so drive it via the
+        # registry path rather than patching _invoke_agent out.
+        mgr = AgentManager(str(tmp_path / "test.db"))
+        executor = AgentExecutor(mgr, EventBus())
+
+        class FakeAgentCls:
+            accepts_tools = False
+
+            def __init__(self, engine, model, **kwargs):
+                pass
+
+            def run(self, text, context=None):
+                return AgentResult(content="done", turns=1)
+
+        agent = mgr.create_agent(name="msg-test", agent_type="monitor_operative")
+        m1 = mgr.send_message(agent["id"], "hello there")
+        m2 = mgr.send_message(agent["id"], "second msg")
+
+        executor._system = MagicMock()
+        executor._system.engine = MagicMock()
+        executor._system.model = "test-model"
+        executor._system.memory_backend = None
+        executor._system.config = None
+
+        import nova_ai.agents as agents_pkg
+
+        with patch.object(agents_pkg, "AgentRegistry") as mock_reg:
+            mock_reg.get.return_value = FakeAgentCls
+            executor.execute_tick(agent["id"])
+
+        assert mgr.get_pending_messages(agent["id"]) == []
+        statuses = {m["id"]: m["status"] for m in mgr.list_messages(agent["id"])}
+        assert statuses[m1["id"]] == "delivered"
+        assert statuses[m2["id"]] == "delivered"
+        mgr.close()

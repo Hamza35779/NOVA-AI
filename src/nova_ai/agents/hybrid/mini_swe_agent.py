@@ -35,6 +35,7 @@ Differences vs. the upstream
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -60,6 +61,9 @@ from nova_ai.agents.hybrid._prices import (
     supports_temperature,
 )
 from nova_ai.core.registry import AgentRegistry
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 # Gemini's FunctionDeclaration.parameters expects a Schema-shaped dict (or
 # Schema object) with capitalized type strings ("OBJECT", "STRING"). The
@@ -981,8 +985,8 @@ def _loop_cloud_gemini(
         finish_reason = None
         try:
             finish_reason = str(resp.candidates[0].finish_reason)
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional agent step")
 
         _record_event(
             {

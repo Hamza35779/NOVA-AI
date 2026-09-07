@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import List
 
@@ -12,7 +13,10 @@ from rich.table import Table
 from nova_ai.core.config import load_config
 from nova_ai.core.events import EventBus
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
 from nova_ai.skills.manager import SkillManager
+
+logger = logging.getLogger(__name__)
 
 
 def _get_trace_store():
@@ -137,6 +141,9 @@ def run(skill_name: str, arg: tuple):
         console.print("[red]Failed[/red]")
         if result.step_results:
             console.print(result.step_results[-1].content)
+        # A failed execution must fail the command: automation chaining
+        # skill runs needs a non-zero exit to detect the failure.
+        raise SystemExit(1)
 
 
 def _parse_source_query(query: str) -> tuple[str, str]:
@@ -689,8 +696,8 @@ def import_local(
             if parsed.manifest and parsed.manifest.description:
                 desc = parsed.manifest.description
                 skill_name = parsed.manifest.name or skill_name
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional CLI step")
 
         resolved = ResolvedSkill(
             name=skill_name,

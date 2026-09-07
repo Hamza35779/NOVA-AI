@@ -19,6 +19,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional
 
 from nova_ai.connectors.store import KnowledgeStore
+from nova_ai.core.utils import soft_fail
 from nova_ai.tools.storage._stubs import RetrievalResult
 
 if TYPE_CHECKING:
@@ -111,8 +112,8 @@ class ColBERTReranker(Reranker):
 
                 if torch.cuda.is_available():
                     gpus = 1
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional connector")
 
             os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
             config = ColBERTConfig(gpus=gpus)

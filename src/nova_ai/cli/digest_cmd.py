@@ -96,11 +96,20 @@ def _create_scheduler_task(cron: str) -> Optional[str]:
             if task.agent == "morning_digest":
                 scheduler.cancel_task(task.id)
 
+        # Record the configured timezone so the scheduler evaluates the cron
+        # wall-clock fields locally instead of assuming UTC.
+        timezone = ""
+        try:
+            timezone = load_config().digest.timezone
+        except Exception:
+            pass
+
         task = scheduler.create_task(
             prompt="Generate my morning digest",
             schedule_type="cron",
             schedule_value=cron,
             agent="morning_digest",
+            metadata={"timezone": timezone} if timezone else None,
         )
         store.close()
         return task.id

@@ -84,7 +84,13 @@ class CalDavConnector:
             return False
 
     def fetch_events(self, days_ahead: int = 7) -> List[Dict[str, Any]]:
-        """Fetch events for the next N days via HTTP REPORT or GET."""
+        """Fetch events for the next N days via HTTP REPORT or GET.
+
+        Returns an empty list when the server is unreachable or
+        unconfigured — the old fallback served fabricated "Team Sync &
+        Standup" events as real, so an unconfigured user's agenda and AI
+        briefing were built from invented meetings.
+        """
         try:
             # First try calendar collection URL
             resp = httpx.get(
@@ -95,30 +101,9 @@ class CalDavConnector:
             if resp.status_code == 200 and "BEGIN:VCALENDAR" in resp.text:
                 return _parse_ical_simple(resp.text)
         except Exception as exc:
-            logger.debug("Direct CalDAV GET failed: %s", exc)
+            logger.warning("CalDAV fetch_events failed (%s): %s", self.url, exc)
 
-        # Return mock / standard events if live server is unavailable
-        now = datetime.now()
-        return [
-            {
-                "uid": str(uuid.uuid4())[:8],
-                "summary": "Team Sync & Standup",
-                "description": "Weekly engineering check-in and task review",
-                "start": (now + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M"),
-                "end": (now + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M"),
-                "location": "Google Meet",
-                "attendees": ["alex@company.com", "sarah@company.com"],
-            },
-            {
-                "uid": str(uuid.uuid4())[:8],
-                "summary": "Product Roadmap Review",
-                "description": "Quarterly planning and feature prioritization",
-                "start": (now + timedelta(days=1, hours=4)).strftime("%Y-%m-%d %H:%M"),
-                "end": (now + timedelta(days=1, hours=5)).strftime("%Y-%m-%d %H:%M"),
-                "location": "Main Conference Room",
-                "attendees": ["pm@company.com", "lead@company.com"],
-            },
-        ]
+        return []
 
     def create_event(
         self,

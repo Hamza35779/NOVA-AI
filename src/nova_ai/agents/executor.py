@@ -15,6 +15,7 @@ from nova_ai.agents.errors import (
     retry_delay,
 )
 from nova_ai.core.events import EventBus, EventType
+from nova_ai.core.utils import soft_fail
 
 if TYPE_CHECKING:
     from nova_ai.agents.manager import AgentManager
@@ -60,8 +61,8 @@ class AgentExecutor:
         """Update the agent's current_activity for progress visibility."""
         try:
             self._manager.update_agent(agent_id, current_activity=activity)
-        except Exception:
-            pass  # Non-critical
+        except Exception as exc:
+            soft_fail(logger, exc, "Non-critical")
 
     def _inject_tool_deps(self, tool: Any) -> None:
         """Inject runtime dependencies into a tool instance.
@@ -130,6 +131,13 @@ class AgentExecutor:
         agent = self._manager.get_agent(agent_id)
         if agent is None:
             logger.error("Agent %s not found", agent_id)
+            # start_tick() already flipped status to 'running' — release it
+            # or the agent is wedged until the stale-lock window elapses.
+            if not lock_already_held:
+                try:
+                    self._manager.end_tick(agent_id)
+                except Exception:
+                    logger.exception("Failed to release tick lock for %s", agent_id)
             return
 
         self._bus.publish(
@@ -158,7 +166,12 @@ class AgentExecutor:
                         "type": "tool_call",
                         "input": {
                             "tool": event.data.get("tool"),
-                            "args": event.data.get("args"),
+                            # ToolExecutor publishes the payload under
+                            # "arguments" (tools/_stubs.py); reading "args"
+                            # left every trace tool step with input.args=None.
+                            "args": event.data.get(
+                                "arguments", event.data.get("args")
+                            ),
                         },
                         "start_time": event.timestamp,
                     }
@@ -297,8 +310,8 @@ class AgentExecutor:
                 selected = policy.select_model(ctx)
                 if selected:
                     model = selected
-            except Exception:
-                pass  # Fall back to configured model
+            except Exception as exc:
+                soft_fail(logger, exc, "Fall back to configured model")
 
         # Resolve tools from config via ToolRegistry
         tool_names = config.get("tools", [])
@@ -416,10 +429,19 @@ class AgentExecutor:
 
         try:
             agent_instance = agent_cls(engine, model, **agent_kwargs, **state_kwargs)
-        except TypeError:
+        except TypeError as first_err:
+            # The fallbacks must keep the kwargs that succeeded — the old
+            # chain dropped everything (tools/bus/state), silently
+            # degrading SelfHealingReActAgent et al. to bare construction.
             try:
                 agent_instance = agent_cls(engine, model, **agent_kwargs)
             except TypeError:
+                logger.warning(
+                    "Agent %s: constructor rejected extra kwargs (%s); "
+                    "falling back to bare construction",
+                    agent["name"],
+                    first_err,
+                )
                 agent_instance = agent_cls(engine, model)
 
         # Inject the managed-agent UUID into the agent's ToolExecutor so
@@ -476,8 +498,6 @@ class AgentExecutor:
         if pending:
             user_msgs = "\n".join(f"User: {m['content']}" for m in pending)
             input_text = f"{input_text}\n\nNew instructions:\n{user_msgs}"
-            for m in pending:
-                self._manager.mark_message_delivered(m["id"])
             logger.info(
                 "Agent %s: delivering %d pending message(s)",
                 agent["name"],
@@ -540,8 +560,8 @@ class AgentExecutor:
                             f"Retrieved context from knowledge base:\n"
                             f"{retrieved}\n\n{input_text}"
                         )
-            except Exception:
-                pass  # Don't break agent tick if memory retrieval fails
+            except Exception as exc:
+                soft_fail(logger, exc, "Don't break agent tick if memory retrieval fails")
 
         agent_ctx.memory_results = memory_results
         self._set_activity(agent["id"], "Generating response...")
@@ -565,6 +585,20 @@ class AgentExecutor:
                 agent["name"],
             )
             result = agent_instance.run(input_text, context=agent_ctx)
+
+        # Mark pending messages delivered only AFTER the run that consumed
+        # them succeeded — marking up front meant a crashed/failed tick
+        # permanently lost the user's messages (get_pending_messages()
+        # filters on status='pending').
+        if pending:
+            try:
+                for m in pending:
+                    self._manager.mark_message_delivered(m["id"])
+            except Exception:
+                logger.exception(
+                    "Agent %s: failed to mark pending messages delivered",
+                    agent["name"],
+                )
 
         _elapsed = time.time() - _t0
         logger.info(

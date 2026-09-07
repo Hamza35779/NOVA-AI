@@ -165,58 +165,90 @@ class SlackChannel(BaseChannel):
     # -- internal helpers -------------------------------------------------------
 
     def _socket_mode_loop(self) -> None:
-        """Run Slack Socket Mode client in a background thread."""
-        try:
-            from slack_sdk.socket_mode import SocketModeClient
-            from slack_sdk.socket_mode.request import SocketModeRequest
-            from slack_sdk.socket_mode.response import SocketModeResponse
-            from slack_sdk.web import WebClient
+        """Run Slack Socket Mode client in a background thread.
 
-            client = SocketModeClient(
-                app_token=self._app_token,
-                web_client=WebClient(token=self._token),
-            )
+        Retries through transient failures with capped backoff instead of
+        dying on the first exception; exits promptly when the stop event is
+        set (including during a backoff sleep or a reconnect).
+        """
+        backoff = 1.0
+        client = None
+        while not self._stop_event.is_set():
+            try:
+                from slack_sdk.socket_mode import SocketModeClient
+                from slack_sdk.socket_mode.request import SocketModeRequest
+                from slack_sdk.socket_mode.response import SocketModeResponse
+                from slack_sdk.web import WebClient
 
-            def _handle_event(client_obj, req: SocketModeRequest):
-                if req.type == "events_api":
-                    event = req.payload.get("event", {})
-                    if event.get("type") == "message" and "subtype" not in event:
-                        cm = ChannelMessage(
-                            channel="slack",
-                            sender=event.get("user", ""),
-                            content=event.get("text", ""),
-                            message_id=event.get("ts", ""),
-                            conversation_id=event.get("channel", ""),
-                        )
-                        for handler in self._handlers:
-                            try:
-                                handler(cm)
-                            except Exception:
-                                logger.exception("Slack handler error")
-                        if self._bus is not None:
-                            self._bus.publish(
-                                EventType.CHANNEL_MESSAGE_RECEIVED,
-                                {
-                                    "channel": cm.channel,
-                                    "sender": cm.sender,
-                                    "content": cm.content,
-                                    "message_id": cm.message_id,
-                                },
+                client = SocketModeClient(
+                    app_token=self._app_token,
+                    web_client=WebClient(token=self._token),
+                )
+
+                def _handle_event(client_obj, req: SocketModeRequest):
+                    if req.type == "events_api":
+                        event = req.payload.get("event", {})
+                        if event.get("type") == "message" and "subtype" not in event:
+                            cm = ChannelMessage(
+                                channel="slack",
+                                sender=event.get("user", ""),
+                                content=event.get("text", ""),
+                                message_id=event.get("ts", ""),
+                                conversation_id=event.get("channel", ""),
                             )
-                    client_obj.send_socket_mode_response(
-                        SocketModeResponse(envelope_id=req.envelope_id),
-                    )
+                            for handler in self._handlers:
+                                try:
+                                    handler(cm)
+                                except Exception:
+                                    logger.exception("Slack handler error")
+                            if self._bus is not None:
+                                self._bus.publish(
+                                    EventType.CHANNEL_MESSAGE_RECEIVED,
+                                    {
+                                        "channel": cm.channel,
+                                        "sender": cm.sender,
+                                        "content": cm.content,
+                                        "message_id": cm.message_id,
+                                    },
+                                )
+                        client_obj.send_socket_mode_response(
+                            SocketModeResponse(envelope_id=req.envelope_id),
+                        )
 
-            client.socket_mode_request_listeners.append(_handle_event)
-            client.connect()
+                client.socket_mode_request_listeners.append(_handle_event)
+                client.connect()
+                backoff = 1.0  # connected — reset the retry backoff
 
-            while not self._stop_event.is_set():
-                self._stop_event.wait(1.0)
-
-            client.disconnect()
-        except Exception:
-            logger.debug("Slack Socket Mode loop error", exc_info=True)
-            self._status = ChannelStatus.ERROR
+                # Sit in the loop until disconnect() asks us to stop. The
+                # small wait slices keep this responsive to the stop event.
+                while not self._stop_event.is_set():
+                    self._stop_event.wait(1.0)
+            except Exception as exc:
+                if self._stop_event.is_set():
+                    break
+                logger.warning(
+                    "Slack Socket Mode loop error (retrying in %.0fs): %s",
+                    backoff,
+                    exc,
+                )
+                self._status = ChannelStatus.ERROR
+                for _ in range(int(backoff * 4)):
+                    if self._stop_event.is_set():
+                        break
+                    self._stop_event.wait(0.25)
+                backoff = min(backoff * 2, 60.0)
+            finally:
+                if client is not None:
+                    try:
+                        client.disconnect()
+                    except Exception:
+                        logger.debug("Slack client disconnect failed", exc_info=True)
+                    client = None
+        self._status = (
+            ChannelStatus.DISCONNECTED
+            if self._stop_event.is_set()
+            else self._status
+        )
 
     def _publish_sent(self, channel: str, content: str, conversation_id: str) -> None:
         """Publish a CHANNEL_MESSAGE_SENT event on the bus."""

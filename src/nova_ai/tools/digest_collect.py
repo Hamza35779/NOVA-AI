@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
@@ -11,7 +12,10 @@ from typing import Any, Dict, List
 from nova_ai.connectors._stubs import Document
 from nova_ai.core.registry import ConnectorRegistry, ToolRegistry
 from nova_ai.core.types import ToolResult
+from nova_ai.core.utils import soft_fail
 from nova_ai.tools._stubs import BaseTool, ToolSpec
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Section definitions: ordered list of (section_name, connector_ids)
@@ -362,8 +366,8 @@ def _format_doc(source: str, doc: Document) -> str:
     if formatter:
         try:
             return formatter(doc)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            soft_fail(logger, exc, "optional tool")
     # Fallback: connector name + title
     return f"[{source}] {doc.title}"
 
@@ -570,10 +574,14 @@ class DigestCollectTool(BaseTool):
             summary_parts.append("=== ERRORS ===")
             summary_parts.extend(errors)
 
+        # success reflects whether anything was actually collected: when
+        # every source failed (or none was reachable), downstream digest
+        # synthesis would otherwise treat the error-only body as good data.
+        success = bool(collected_docs)
         return ToolResult(
             tool_name="digest_collect",
             content="\n".join(summary_parts),
-            success=True,
+            success=success,
             metadata={
                 "sources_queried": sources,
                 "sources_ok": list(collected_docs.keys()),

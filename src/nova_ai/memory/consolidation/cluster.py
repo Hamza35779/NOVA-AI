@@ -62,8 +62,8 @@ class SessionMiner:
         """Return clusters: ``{topic_hint, messages, trace_ids}``.
 
         ``messages`` is a list of ``{"role", "content", "feedback"}`` dicts
-        (one per trace: the query plus the assistant's answer), and
-        ``trace_ids`` preserves the source-trace provenance.
+        (one user/assistant pair per trace, interleaved in trace order),
+        and ``trace_ids`` preserves the source-trace provenance.
         """
         traces = self._store.list_traces(since=since, limit=500)
         if not traces:
@@ -91,22 +91,17 @@ class SessionMiner:
         self, topic_hint: str, traces: Iterable[Any]
     ) -> dict[str, Any]:
         traces = list(traces)
-        messages = [
-            {
-                "role": "user",
-                "content": t.query or "",
-                "feedback": t.feedback,
-            }
-            for t in traces
-        ]
-        messages += [
-            {
-                "role": "assistant",
-                "content": t.result or "",
-                "feedback": t.feedback,
-            }
-            for t in traces
-        ]
+        # One user/assistant pair per trace, in trace order — the extraction
+        # LLM must see each exchange as it happened, not every user message
+        # followed by every answer.
+        messages: list[dict[str, Any]] = []
+        for t in traces:
+            messages.append(
+                {"role": "user", "content": t.query or "", "feedback": t.feedback}
+            )
+            messages.append(
+                {"role": "assistant", "content": t.result or "", "feedback": t.feedback}
+            )
         return {
             "topic_hint": topic_hint,
             "messages": messages,

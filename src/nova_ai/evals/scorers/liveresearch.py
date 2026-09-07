@@ -16,8 +16,11 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.evals.core.scorer import LLMJudgeScorer
 from nova_ai.evals.core.types import EvalRecord
+
+logger = logging.getLogger(__name__)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -176,8 +179,8 @@ def _safe_json_loads(text: str) -> Any:
     if _json5 is not None:
         try:
             return _json5.loads(text)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            soft_fail(logger, exc, "optional eval step")
     return json.loads(_escape_newlines_inside_strings(text))
 
 

@@ -22,6 +22,10 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, Callable, Dict, List, MutableMapping, Optional, Tuple, Type
 
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
+
 LOGGER = logging.getLogger(__name__)
 
 _MAX_OBS_CHARS = 16_000
@@ -77,6 +81,11 @@ class WebChoreArenaTaskEnv:
         self._agent_answer = ""
         self._step_count = 0
         self._task_config: Dict[str, Any] = metadata.get("task_config", {})
+        # AgenticRunner reads these after run_agent_loop: responses become
+        # the trace text and wall-clock turns count as model contact in the
+        # zero-model-requests sanity check (same contract as WorkArena).
+        self.all_responses: List[str] = []
+        self.turn_wall_clocks: List[float] = []
 
     def __enter__(self) -> WebChoreArenaTaskEnv:
         from playwright.sync_api import sync_playwright
@@ -129,26 +138,26 @@ class WebChoreArenaTaskEnv:
         if self._cdp_session is not None:
             try:
                 self._cdp_session.detach()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
             self._cdp_session = None
         if self._context is not None:
             try:
                 self._context.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
             self._context = None
         if self._browser is not None:
             try:
                 self._browser.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
             self._browser = None
         if self._playwright is not None:
             try:
                 self._playwright.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
             self._playwright = None
 
     # ------------------------------------------------------------------
@@ -170,7 +179,11 @@ class WebChoreArenaTaskEnv:
         if max_steps is None:
             max_steps = _MAX_STEPS_DEFAULT
 
+        import time as _time
+
         responses: List[str] = []
+        self.all_responses = []
+        self.turn_wall_clocks = []
         intent = self._task_config.get(
             "intent",
             self._task_config.get("intent_template", ""),
@@ -181,8 +194,11 @@ class WebChoreArenaTaskEnv:
                 break
 
             prompt = self._build_step_prompt(intent, step_idx, max_steps)
+            t0 = _time.monotonic()
             response = generate_fn(prompt)
+            self.turn_wall_clocks.append(_time.monotonic() - t0)
             responses.append(response)
+            self.all_responses.append(response)
 
             action = response.strip()
             self._execute_action(action)
@@ -418,8 +434,8 @@ class WebChoreArenaTaskEnv:
             for prep_action in prep_actions:
                 try:
                     self._page.evaluate(f"() => {prep_action}")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional eval step")
             try:
                 result = self._page.evaluate(f"() => {locator}")
                 selected_element = str(result) if result else ""

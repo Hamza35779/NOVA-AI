@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, Optional, Tuple
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.evals.core.scorer import LLMJudgeScorer
 from nova_ai.evals.core.types import EvalRecord
+
+logger = logging.getLogger(__name__)
 
 _JUDGE_PROMPT = """You are evaluating a scientific question answer.
 
@@ -121,8 +125,8 @@ class PaperArenaScorer(LLMJudgeScorer):
             m = re.search(r"([A-D])", letter)
             if m:
                 return m.group(1)
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional eval step")
         return None
 
     def _score_open(
@@ -153,7 +157,9 @@ class PaperArenaScorer(LLMJudgeScorer):
                 "question_type": record.metadata.get("question_type", "OA"),
             }
         except Exception as exc:
-            return False, {
+            # Judge unreachable is NOT the model's fault: return None so the
+            # sample is counted as unscorable instead of a model miss.
+            return None, {
                 "match_type": "llm_judge_error",
                 "error": str(exc),
             }

@@ -228,12 +228,16 @@ class ToolExecutor:
         # Emit start event. ``agent`` carries the managed-agent UUID so the
         # AgentExecutor's trace subscriber (which filters by agent_id) can
         # actually match this event — without it, every tool call is silently
-        # dropped from traces.
+        # dropped from traces. ``call_id`` carries the LLM-side unique tool
+        # call id so concurrent invocations of the SAME tool name can be
+        # paired START↔END correctly (name alone collides and produces
+        # garbage latencies — see _build_turn_traces).
         if self._bus:
             self._bus.publish(
                 EventType.TOOL_CALL_START,
                 {
                     "tool": tool_call.name,
+                    "call_id": getattr(tool_call, "id", "") or "",
                     "arguments": params,
                     "agent": self._agent_id,
                 },
@@ -292,6 +296,7 @@ class ToolExecutor:
                 EventType.TOOL_CALL_END,
                 {
                     "tool": tool_call.name,
+                    "call_id": getattr(tool_call, "id", "") or "",
                     "success": result.success,
                     "latency": latency,
                     "result": result_text,

@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from nova_ai.core.utils import soft_fail
+
 logger = logging.getLogger(__name__)
 
 # ---- Request/Response models ----
@@ -260,10 +262,8 @@ async def memory_config(request: Request):
             except MemoryBackendUnavailable as exc:
                 available = False
                 detail = str(exc)
-            except Exception:
-                # Benign: cannot construct a probe backend here, but the
-                # configured default is still what would be used.
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional server subsystem")
         return {
             "backend_type": (
                 backend.backend_id
@@ -601,17 +601,27 @@ async def prometheus_metrics(request: Request):
 
         agg = TelemetryAggregator(db_path)
         stats = agg.summary()
+        # AggregatedStats is a slots dataclass — .get() raised AttributeError,
+        # the blanket except swallowed it, and the endpoint always answered
+        # "# No metrics available".
+        total_requests = getattr(stats, "total_calls", 0)
+        total_tokens = getattr(stats, "total_tokens", 0)
+        avg_latency_ms = (
+            (stats.total_latency / total_requests * 1000.0)
+            if total_requests
+            else 0.0
+        )
 
         lines = [
             "# HELP nova_ai_requests_total Total requests processed",
             "# TYPE nova_ai_requests_total counter",
-            f"nova_ai_requests_total {stats.get('total_requests', 0)}",
+            f"nova_ai_requests_total {total_requests}",
             "# HELP nova_ai_tokens_total Total tokens generated",
             "# TYPE nova_ai_tokens_total counter",
-            f"nova_ai_tokens_total {stats.get('total_tokens', 0)}",
+            f"nova_ai_tokens_total {total_tokens}",
             "# HELP nova_ai_latency_avg_ms Average latency in milliseconds",
             "# TYPE nova_ai_latency_avg_ms gauge",
-            f"nova_ai_latency_avg_ms {stats.get('avg_latency_ms', 0)}",
+            f"nova_ai_latency_avg_ms {avg_latency_ms}",
         ]
         from starlette.responses import PlainTextResponse
 
@@ -731,9 +741,18 @@ async def websocket_chat_stream(websocket: WebSocket):
                                     {"type": "chunk", "content": token},
                                 )
                         else:
-                            # Sync generator — iterate in a thread to avoid
-                            # blocking the event loop
-                            for token in gen:
+                            # Sync generator — the comment below used to claim
+                            # it iterated "in a thread" but the for-loop ran
+                            # directly on the event loop, stalling all other
+                            # requests (and the WS ping) while the model
+                            # produced tokens. Push the blocking iteration
+                            # into a worker thread.
+                            def _drain_sync_gen() -> list[str]:
+                                return list(gen)
+
+                            import asyncio as _asyncio
+
+                            for token in await _asyncio.to_thread(_drain_sync_gen):
                                 full_content += token
                                 await websocket.send_json(
                                     {"type": "chunk", "content": token},

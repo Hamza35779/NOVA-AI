@@ -13,7 +13,10 @@ import logging
 from types import TracebackType
 from typing import Any, Optional, Type
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.evals.core.types import EvalRecord
+
+logger = logging.getLogger(__name__)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -305,6 +308,7 @@ class TauBenchTaskEnv:
         best_reward = 0.0
         best_info: dict = {}
         best_n_messages = 0
+        failed_trials = 0
 
         # Run multiple trials, keep best result (pass^k)
         for trial in range(self._num_trials):
@@ -379,6 +383,7 @@ class TauBenchTaskEnv:
                     break
 
             except Exception as exc:
+                failed_trials += 1
                 LOGGER.error(
                     "TauBench simulation failed for %s/%s: %s",
                     domain,
@@ -390,6 +395,14 @@ class TauBenchTaskEnv:
         self._record.metadata["tau_info"] = best_info
         self._record.metadata["tau_n_messages"] = best_n_messages
         self._record.metadata["tau_num_trials"] = self._num_trials
+        self._record.metadata["tau_failed_trials"] = failed_trials
+        if failed_trials == self._num_trials:
+            # Every trial crashed: 0.0 is an INFRASTRUCTURE failure, not a
+            # model failure. Mark it so the scorer can treat the sample as
+            # unscorable instead of counting it as a model miss.
+            self._record.metadata["tau_error"] = (
+                "all trials failed (infrastructure error, not a model miss)"
+            )
         self._record.metadata["is_resolved"] = best_reward >= 0.5
 
     def __exit__(
@@ -401,8 +414,8 @@ class TauBenchTaskEnv:
         if self._system:
             try:
                 self._system.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
             self._system = None
 
 

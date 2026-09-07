@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 
 import click
 from rich.console import Console
 from rich.table import Table
+
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 
 def _builtin_operators_dir() -> Path:
@@ -49,8 +54,8 @@ def list_operators() -> None:
                 try:
                     m = load_operator(toml_path)
                     found.append(m)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional CLI step")
 
         if not found:
             console.print("[dim]No operators discovered.[/dim]")
@@ -76,6 +81,9 @@ def list_operators() -> None:
         console.print(table)
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        # A swallowed error still has to fail the command: scripts key off
+        # the exit code, and exit 0 on a crashed command reads as success.
+        raise SystemExit(1)
 
 
 @operators.command("status")
@@ -131,6 +139,7 @@ def status_operators() -> None:
                 console.print(f"  {r['id']}: {r['last_error'][:120]}")
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @operators.command()
@@ -142,7 +151,7 @@ def info(operator_id: str) -> None:
         manifest = _find_manifest(operator_id)
         if manifest is None:
             console.print(f"[red]Operator not found: {operator_id}[/red]")
-            return
+            raise SystemExit(1)
 
         console.print(f"[bold cyan]{manifest.name}[/bold cyan] ({manifest.id})")
         console.print(f"  Version: {manifest.version}")
@@ -171,6 +180,7 @@ def info(operator_id: str) -> None:
             console.print(f"  System prompt: {preview}...")
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @operators.command()
@@ -185,6 +195,7 @@ def activate(operator_id: str) -> None:
         console.print(f"[green]{msg}[/green]")
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @operators.command()
@@ -198,6 +209,7 @@ def deactivate(operator_id: str) -> None:
         console.print(f"[yellow]Deactivated operator {operator_id}[/yellow]")
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @operators.command()
@@ -211,6 +223,7 @@ def pause(operator_id: str) -> None:
         console.print(f"[yellow]Paused operator {operator_id}[/yellow]")
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @operators.command()
@@ -224,6 +237,7 @@ def resume(operator_id: str) -> None:
         console.print(f"[green]Resumed operator {operator_id}[/green]")
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @operators.command("run")
@@ -238,6 +252,7 @@ def run_once(operator_id: str) -> None:
         console.print(f"\n[bold]Result:[/bold]\n{result}")
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @operators.command()
@@ -283,6 +298,7 @@ def logs(operator_id: str, lines: int) -> None:
         console.print(table)
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @operators.command()
@@ -296,7 +312,7 @@ def install(path: str) -> None:
         src = Path(path)
         if not src.exists():
             console.print(f"[red]File not found: {path}[/red]")
-            return
+            raise SystemExit(1)
 
         dest_dir = DEFAULT_CONFIG_DIR / "operators"
         dest_dir.mkdir(parents=True, exist_ok=True)
@@ -305,6 +321,7 @@ def install(path: str) -> None:
         console.print(f"[green]Installed operator to {dest}[/green]")
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 # -- Helpers -----------------------------------------------------------------
@@ -331,8 +348,8 @@ def _find_manifest(operator_id: str):
                 m = load_operator(toml_path)
                 if m.id == operator_id:
                     return m
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional CLI step")
     return None
 
 

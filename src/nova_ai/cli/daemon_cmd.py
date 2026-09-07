@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import subprocess
@@ -12,6 +13,9 @@ import click
 from rich.console import Console
 
 from nova_ai.core.config import DEFAULT_CONFIG_DIR, load_config
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 _PID_FILE = DEFAULT_CONFIG_DIR / "server.pid"
 _LOG_FILE = DEFAULT_CONFIG_DIR / "server.log"
@@ -108,23 +112,51 @@ def stop() -> None:
         console.print("[yellow]No running server found.[/yellow]")
         sys.exit(1)
 
+    # The old version swallowed both the kill failure and the SIGKILL
+    # fallback (`except OSError: pass`), then unlinked the PID file and
+    # printed "Server stopped" unconditionally — a failed terminate left
+    # the server live with no pidfile and exit code 0. Gate everything on
+    # confirmed death so callers see the real outcome.
+    stopped = False
     try:
         os.kill(pid, signal.SIGTERM)
-        # Wait up to 10 seconds for graceful shutdown
-        for _ in range(20):
+    except OSError as exc:
+        console.print(f"[red]Failed to signal PID {pid}: {exc}[/red]")
+        sys.exit(1)
+
+    # Wait up to 10 seconds for graceful shutdown
+    for _ in range(20):
+        time.sleep(0.5)
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            stopped = True
+            break
+
+    if not stopped:
+        # Force kill if still running. SIGKILL doesn't exist on Windows —
+        # fall back to SIGTERM (already sent) or the strongest available
+        # signal so the failure path below can actually be reached.
+        force = getattr(signal, "SIGKILL", signal.SIGTERM)
+        try:
+            os.kill(pid, force)
+        except OSError:
+            pass
+        # Give the force-kill a moment to take effect
+        for _ in range(6):
             time.sleep(0.5)
             try:
                 os.kill(pid, 0)
             except OSError:
+                stopped = True
                 break
-        else:
-            # Force kill if still running
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except OSError:
-                pass
-    except OSError:
-        pass
+
+    if not stopped:
+        console.print(
+            f"[red]Failed to stop server (PID {pid} still alive). "
+            "PID file left in place.[/red]"
+        )
+        sys.exit(1)
 
     _PID_FILE.unlink(missing_ok=True)
     console.print(f"[green]Server stopped[/green] (PID {pid}).")
@@ -161,8 +193,8 @@ def status() -> None:
         hours, remainder = divmod(int(uptime), 3600)
         minutes, seconds = divmod(remainder, 60)
         uptime_info = f"\n  Uptime: {hours}h {minutes}m {seconds}s"
-    except (ImportError, Exception):
-        pass
+    except (ImportError, Exception) as exc:
+        soft_fail(logger, exc, "optional CLI step")
 
     config = load_config()
     console.print(

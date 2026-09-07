@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import Any, Dict, List
 
 from nova_ai.core.types import Message
+from nova_ai.core.utils import soft_fail
 from nova_ai.engine._base import InferenceEngine
 from nova_ai.engine._stubs import StreamChunk
 
@@ -118,13 +119,18 @@ class MultiEngine(InferenceEngine):
     # -- complexity-driven auto routing (model="auto") ------------------------
 
     def _auto_local_model(self) -> str:
-        """First model offered by the first non-cloud engine."""
+        """First model offered by the first non-cloud engine.
+
+        Returns "" only when no local engine offers any model — callers
+        raise a clear error instead of dispatching an empty model name.
+        """
         for _key, engine in self._engines:
             if getattr(engine, "is_cloud", False):
                 continue
             try:
                 models = engine.list_models()
-            except Exception:
+            except Exception as exc:
+                soft_fail(logger, exc, "optional engine capability")
                 continue
             if models:
                 return models[0]
@@ -151,7 +157,7 @@ class MultiEngine(InferenceEngine):
         if not last_user:
             chosen = self._auto_local_model()
             decision.update(route="local", reason="no_user_text", model=chosen)
-            return chosen, decision
+            return self._require_local(chosen, decision), decision
 
         result = score_complexity(last_user)
         decision["complexity_score"] = result.score
@@ -160,7 +166,7 @@ class MultiEngine(InferenceEngine):
         if result.score < self._auto_route_threshold:
             chosen = self._auto_local_model()
             decision.update(route="local", reason="below_threshold", model=chosen)
-            return chosen, decision
+            return self._require_local(chosen, decision), decision
 
         available = set(self.list_models())
         for candidate in self._cloud_model_preference:
@@ -175,7 +181,22 @@ class MultiEngine(InferenceEngine):
         # Complex query but no preferred cloud model is configured/available.
         chosen = self._auto_local_model()
         decision.update(route="local", reason="cloud_unavailable", model=chosen)
-        return chosen, decision
+        return self._require_local(chosen, decision), decision
+
+    def _require_local(self, model: str, decision: Dict[str, Any]) -> str:
+        """Fail with an actionable error when auto routing found no local model.
+
+        Returning "" used to surface downstream as the cryptic
+        ``Model '' not found in any engine`` ValueError.
+        """
+        if model:
+            return model
+        decision.update(route="none", reason="no_local_model", model="")
+        raise ValueError(
+            "No local model available for model='auto' routing: no non-cloud "
+            "engine offers any model. Start Ollama/vLLM or set an explicit "
+            "model name."
+        )
 
     def _maybe_resolve_auto(
         self, messages: Sequence[Message], model: str

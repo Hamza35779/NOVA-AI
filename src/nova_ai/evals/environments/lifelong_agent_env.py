@@ -18,6 +18,7 @@ import subprocess
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.evals.core.types import EvalRecord
 from nova_ai.evals.environments.base import TaskEnvironment
 from nova_ai.evals.scorers.lifelong_agent_scorer import (
@@ -531,7 +532,8 @@ class DBEnvironment(TaskEnvironment):
                 )
                 conn.close()
                 break
-            except Exception:
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
                 continue
         else:
             raise RuntimeError("MySQL container did not become ready in 30s")
@@ -540,14 +542,14 @@ class DBEnvironment(TaskEnvironment):
         if self._conn is not None:
             try:
                 self._conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
             self._conn = None
         if self._mysql_conn is not None:
             try:
                 self._mysql_conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
             self._mysql_conn = None
         if self._mysql_container:
             try:
@@ -556,8 +558,8 @@ class DBEnvironment(TaskEnvironment):
                     capture_output=True,
                     timeout=30,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
             self._mysql_container = None
 
 
@@ -883,7 +885,8 @@ class OSEnvironment(TaskEnvironment):
                     if result.returncode == 0:
                         image = candidate
                         break
-                except Exception:
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional eval step")
                     continue
             if not image:
                 image = "ubuntu:22.04"
@@ -1041,8 +1044,8 @@ class OSEnvironment(TaskEnvironment):
                     capture_output=True,
                     timeout=30,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional eval step")
             self._container_name = None
 
 

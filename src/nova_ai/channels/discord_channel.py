@@ -45,6 +45,9 @@ class DiscordChannel(BaseChannel):
         self._status = ChannelStatus.DISCONNECTED
         self._listener_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        # Event loop the gateway thread is blocked in; disconnect() stops it
+        # from another thread to break out of run_until_complete.
+        self._app_loop: Optional[Any] = None
 
     # -- connection lifecycle ---------------------------------------------------
 
@@ -73,11 +76,24 @@ class DiscordChannel(BaseChannel):
             self._status = ChannelStatus.CONNECTED
 
     def disconnect(self) -> None:
-        """Stop the listener thread."""
+        """Stop the listener thread.
+
+        The gateway thread spends its life inside discord.py's
+        ``client.start()`` on a private event loop — the stop event alone
+        never reaches it. Stopping that loop (thread-safely, when running)
+        unblocks the thread.
+        """
         self._stop_event.set()
+        loop = self._app_loop
+        if loop is not None and loop.is_running():
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except RuntimeError:
+                pass  # loop already closed — nothing to stop
         if self._listener_thread is not None:
-            self._listener_thread.join(timeout=5.0)
+            self._listener_thread.join(timeout=10.0)
             self._listener_thread = None
+        self._app_loop = None
         self._status = ChannelStatus.DISCONNECTED
 
     # -- send / receive --------------------------------------------------------
@@ -151,49 +167,87 @@ class DiscordChannel(BaseChannel):
     # -- internal helpers -------------------------------------------------------
 
     def _gateway_loop(self) -> None:
-        """Run the discord.py client in a background thread."""
-        try:
-            import asyncio
+        """Run the discord.py client in a background thread.
 
-            import discord
+        Retries through transient failures with capped backoff instead of
+        dying on the first exception; exits promptly when disconnect() stops
+        the loop.
+        """
+        backoff = 1.0
+        while not self._stop_event.is_set():
+            loop = None
+            try:
+                import asyncio
 
-            intents = discord.Intents.default()
-            intents.message_content = True
-            client = discord.Client(intents=intents)
+                import discord
 
-            @client.event
-            async def on_message(message):
-                if message.author == client.user:
-                    return
-                cm = ChannelMessage(
-                    channel="discord",
-                    sender=str(message.author.id),
-                    content=message.content,
-                    message_id=str(message.id),
-                    conversation_id=str(message.channel.id),
-                )
-                for handler in self._handlers:
-                    try:
-                        handler(cm)
-                    except Exception:
-                        logger.exception("Discord handler error")
-                if self._bus is not None:
-                    self._bus.publish(
-                        EventType.CHANNEL_MESSAGE_RECEIVED,
-                        {
-                            "channel": cm.channel,
-                            "sender": cm.sender,
-                            "content": cm.content,
-                            "message_id": cm.message_id,
-                        },
+                intents = discord.Intents.default()
+                intents.message_content = True
+                client = discord.Client(intents=intents)
+
+                @client.event
+                async def on_message(message):
+                    if message.author == client.user:
+                        return
+                    cm = ChannelMessage(
+                        channel="discord",
+                        sender=str(message.author.id),
+                        content=message.content,
+                        message_id=str(message.id),
+                        conversation_id=str(message.channel.id),
                     )
+                    for handler in self._handlers:
+                        try:
+                            handler(cm)
+                        except Exception:
+                            logger.exception("Discord handler error")
+                    if self._bus is not None:
+                        self._bus.publish(
+                            EventType.CHANNEL_MESSAGE_RECEIVED,
+                            {
+                                "channel": cm.channel,
+                                "sender": cm.sender,
+                                "content": cm.content,
+                                "message_id": cm.message_id,
+                            },
+                        )
 
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(client.start(self._token))
-        except Exception:
-            logger.debug("Discord gateway loop error", exc_info=True)
-            self._status = ChannelStatus.ERROR
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                self._app_loop = loop
+                loop.run_until_complete(client.start(self._token))
+                # client.start() returns only when the gateway connection
+                # closes — if we weren't asked to stop, that's a drop.
+                if self._stop_event.is_set():
+                    break
+                logger.warning(
+                    "Discord gateway disconnected; reconnecting in %.0fs",
+                    backoff,
+                )
+                self._status = ChannelStatus.ERROR
+            except Exception as exc:
+                if self._stop_event.is_set():
+                    break
+                logger.warning(
+                    "Discord gateway loop error (retrying in %.0fs): %s",
+                    backoff,
+                    exc,
+                )
+                self._status = ChannelStatus.ERROR
+            finally:
+                if loop is not None:
+                    try:
+                        loop.close()
+                    except Exception:
+                        logger.debug("Discord loop close failed", exc_info=True)
+                    if self._app_loop is loop:
+                        self._app_loop = None
+            # Sleep in small slices so disconnect() can interrupt the backoff.
+            for _ in range(int(backoff * 4)):
+                if self._stop_event.is_set():
+                    break
+                self._stop_event.wait(0.25)
+            backoff = min(backoff * 2, 60.0)
 
     def _publish_sent(self, channel: str, content: str, conversation_id: str) -> None:
         """Publish a CHANNEL_MESSAGE_SENT event on the bus."""

@@ -37,6 +37,7 @@ kwargs (``local_model``, ``local_endpoint``, ``cloud_endpoint``, …) follow.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -55,7 +56,10 @@ from nova_ai.agents.hybrid._prices import (
 from nova_ai.agents.hybrid._prices import (
     cost as estimate_cost,
 )
+from nova_ai.core.utils import soft_fail
 from nova_ai.engine._stubs import InferenceEngine
+
+logger = logging.getLogger(__name__)
 
 # Install OpenAI SDK retry + per-org concurrency cap at import time so
 # every paradigm (advisors, conductor, minions, mini_swe_agent's cloud
@@ -368,8 +372,8 @@ def _jsonable(v: Any) -> Any:
     if hasattr(v, "model_dump"):
         try:
             return v.model_dump()
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional agent step")
     if isinstance(v, (list, tuple)):
         return [_jsonable(x) for x in v]
     if isinstance(v, dict):
@@ -754,8 +758,8 @@ class LocalCloudAgent(BaseAgent):
         finish_reason = None
         try:
             finish_reason = str(resp.candidates[0].finish_reason)
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional agent step")
         _record_event(
             {
                 "kind": "gemini",
@@ -1172,8 +1176,8 @@ class LocalCloudAgent(BaseAgent):
                 queries = getattr(gm, "web_search_queries", None) or []
                 web_search_queries = [str(q) for q in queries]
                 n_searches = len(web_search_queries)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            soft_fail(logger, exc, "optional agent step")
         _record_event(
             {
                 "kind": "gemini_agent",
@@ -1383,9 +1387,8 @@ class LocalCloudAgent(BaseAgent):
             (out_dir / f"{task_id}.json").write_text(
                 json.dumps(blob, indent=2, default=str)
             )
-        except Exception:
-            # Logging must never break a run.
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional agent step")
 
     @abstractmethod
     def _run_paradigm(

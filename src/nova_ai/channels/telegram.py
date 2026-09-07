@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import textwrap
@@ -54,6 +55,10 @@ class TelegramChannel(BaseChannel):
         self._status = ChannelStatus.DISCONNECTED
         self._listener_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        # Set once the poll thread is inside python-telegram-bot's run loop;
+        # disconnect() uses it to break out of run_polling (see below).
+        self._app: Any = None
+        self._app_loop: Optional[asyncio.AbstractEventLoop] = None
 
     # -- connection lifecycle ---------------------------------------------------
 
@@ -85,11 +90,27 @@ class TelegramChannel(BaseChannel):
             self._status = ChannelStatus.CONNECTED
 
     def disconnect(self) -> None:
-        """Stop the listener thread."""
+        """Stop the listener thread.
+
+        The poll thread spends most of its life inside python-telegram-bot's
+        ``run_polling()``, which runs its own event loop via
+        ``loop.run_forever()`` — setting the stop event alone never reaches
+        it. Stopping that loop (thread-safely, when running) makes
+        ``run_polling`` run its graceful shutdown and return.
+        """
         self._stop_event.set()
+        app = self._app
+        loop = self._app_loop
+        if app is not None and getattr(app, "running", False) and loop is not None:
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except RuntimeError:
+                pass  # loop already closed — nothing to stop
         if self._listener_thread is not None:
-            self._listener_thread.join(timeout=5.0)
+            self._listener_thread.join(timeout=10.0)
             self._listener_thread = None
+        self._app = None
+        self._app_loop = None
         self._status = ChannelStatus.DISCONNECTED
 
     # -- send / receive --------------------------------------------------------
@@ -166,57 +187,93 @@ class TelegramChannel(BaseChannel):
     # -- internal helpers -------------------------------------------------------
 
     def _poll_loop(self) -> None:
-        """Long-poll for updates using python-telegram-bot."""
-        try:
-            from telegram.ext import ApplicationBuilder, MessageHandler, filters
+        """Long-poll for updates using python-telegram-bot.
 
-            app = ApplicationBuilder().token(self._token).build()
+        Survives transient failures: python-telegram-bot's internal network
+        retry loop already backs off on Telegram errors, but anything that
+        escapes it (bad token, DNS down at startup, …) previously killed the
+        thread for good. We now retry with capped backoff until
+        ``disconnect()`` sets the stop event.
+        """
+        backoff = 1.0
+        while not self._stop_event.is_set():
+            try:
+                from telegram.ext import ApplicationBuilder, MessageHandler, filters
 
-            def _handle_msg(update, context):
-                msg = update.message
-                if msg is None:
-                    return
-                cm = ChannelMessage(
-                    channel="telegram",
-                    sender=str(msg.from_user.id) if msg.from_user else "",
-                    content=msg.text or "",
-                    message_id=str(msg.message_id),
-                    conversation_id=str(msg.chat.id),
-                )
-                # Enforce allow-list when configured
-                if self._allowed_chat_ids:
-                    _allowed = {
-                        cid.strip()
-                        for cid in self._allowed_chat_ids.split(",")
-                        if cid.strip()
-                    }
-                    if cm.conversation_id not in _allowed:
-                        logger.debug(
-                            "Ignoring message from unlisted chat %s",
-                            cm.conversation_id,
-                        )
+                app = ApplicationBuilder().token(self._token).build()
+                self._app = app
+
+                def _handle_msg(update, context):
+                    msg = update.message
+                    if msg is None:
                         return
-                for handler in self._handlers:
-                    try:
-                        handler(cm)
-                    except Exception:
-                        logger.exception("Telegram handler error")
-                if self._bus is not None:
-                    self._bus.publish(
-                        EventType.CHANNEL_MESSAGE_RECEIVED,
-                        {
-                            "channel": cm.channel,
-                            "sender": cm.sender,
-                            "content": cm.content,
-                            "message_id": cm.message_id,
-                        },
+                    cm = ChannelMessage(
+                        channel="telegram",
+                        sender=str(msg.from_user.id) if msg.from_user else "",
+                        content=msg.text or "",
+                        message_id=str(msg.message_id),
+                        conversation_id=str(msg.chat.id),
                     )
+                    # Enforce allow-list when configured
+                    if self._allowed_chat_ids:
+                        _allowed = {
+                            cid.strip()
+                            for cid in self._allowed_chat_ids.split(",")
+                            if cid.strip()
+                        }
+                        if cm.conversation_id not in _allowed:
+                            logger.debug(
+                                "Ignoring message from unlisted chat %s",
+                                cm.conversation_id,
+                            )
+                            return
+                    for handler in self._handlers:
+                        try:
+                            handler(cm)
+                        except Exception:
+                            logger.exception("Telegram handler error")
+                    if self._bus is not None:
+                        self._bus.publish(
+                            EventType.CHANNEL_MESSAGE_RECEIVED,
+                            {
+                                "channel": cm.channel,
+                                "sender": cm.sender,
+                                "content": cm.content,
+                                "message_id": cm.message_id,
+                            },
+                        )
 
-            app.add_handler(MessageHandler(filters.TEXT, _handle_msg))
-            app.run_polling(stop_signals=None, drop_pending_updates=True)
-        except Exception:
-            logger.debug("Telegram poll loop error", exc_info=True)
+                app.add_handler(MessageHandler(filters.TEXT, _handle_msg))
+                # run_polling creates its own event loop on this thread; capture
+                # it so disconnect() can stop the loop from another thread.
+                app.run_polling(stop_signals=None, drop_pending_updates=True)
+                self._app_loop = asyncio.get_event_loop()
+                backoff = 1.0
+                # run_polling only returns when the loop was stopped — treat
+                # that as a shutdown unless we were told to stop otherwise.
+                if self._stop_event.is_set():
+                    break
+                logger.warning(
+                    "Telegram poll loop exited unexpectedly; reconnecting in %.0fs",
+                    backoff,
+                )
+            except Exception as exc:
+                if self._stop_event.is_set():
+                    break
+                logger.warning(
+                    "Telegram poll loop error (retrying in %.0fs): %s",
+                    backoff,
+                    exc,
+                )
             self._status = ChannelStatus.ERROR
+            # Sleep in small slices so disconnect() can interrupt the backoff.
+            for _ in range(int(backoff * 4)):
+                if self._stop_event.is_set():
+                    break
+                self._stop_event.wait(0.25)
+            backoff = min(backoff * 2, 60.0)
+        self._app = None
+        self._app_loop = None
 
     def _publish_sent(self, channel: str, content: str, conversation_id: str) -> None:
         """Publish a CHANNEL_MESSAGE_SENT event on the bus."""

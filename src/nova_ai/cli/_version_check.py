@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +115,8 @@ def check_for_updates(command_name: str) -> None:
         return
     try:
         _do_check()
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional CLI step")
 
 
 def _do_check() -> None:
@@ -158,8 +159,8 @@ def _get_latest_version(current: str) -> str | None:
             if time.time() - last_check < _CACHE_TTL:
                 cached = data.get("latest_version")
                 return cached or None
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional CLI step")
 
     latest = _fetch_latest_stable()
     if not latest:
@@ -176,8 +177,8 @@ def _get_latest_version(current: str) -> str | None:
                 }
             )
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional CLI step")
 
     return latest
 

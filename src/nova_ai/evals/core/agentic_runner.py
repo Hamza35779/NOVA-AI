@@ -20,9 +20,12 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.evals.core.environment import TaskEnvironmentError
 from nova_ai.evals.core.event_recorder import AgentEvent, EventRecorder, EventType
 from nova_ai.evals.core.trace import QueryTrace, TurnTrace
+
+logger = logging.getLogger(__name__)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -217,7 +220,7 @@ class AgenticRunner:
 
         result_slots: list[Optional[QueryTrace]] = [None] * total
         semaphore = asyncio.Semaphore(self._concurrency)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         async def _process(slot: int, index: int, record: Any) -> None:
             async with semaphore:
@@ -287,7 +290,15 @@ class AgenticRunner:
             _process(slot, index, record)
             for slot, (index, record) in enumerate(work_items)
         ]
-        await asyncio.gather(*tasks)
+        # Isolate failures: one query crashing outside the inner try
+        # (agent factory, artifact save, …) must not cancel the whole
+        # sweep and discard every other in-flight trace.
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for slot_result_exc in results:
+            if isinstance(slot_result_exc, BaseException) and not isinstance(
+                slot_result_exc, asyncio.CancelledError
+            ):
+                LOGGER.error("Concurrent query failed: %s", slot_result_exc)
 
         for slot_result in result_slots:
             if slot_result is not None:
@@ -442,9 +453,24 @@ class AgenticRunner:
                 # singleton state (Selectors, Transport) that breaks when a
                 # pooled thread is reused. Use a one-shot ThreadPoolExecutor
                 # so every task gets a guaranteed-fresh thread.
+                #
+                # The executor is NOT closed via ``with``: if the caller's
+                # ``asyncio.wait_for`` fires while we're suspended in
+                # ``run_in_executor``, this coroutine is cancelled and never
+                # resumes — a ``with`` block would leak the executor AND its
+                # worker thread (the "orphan thread" problem: the abandoned
+                # agent keeps calling the model and polluting telemetry
+                # windows). Instead we shut it down ourselves with
+                # ``wait=False, cancel_futures=True``, which prevents any
+                # *queued* work from starting; the running call still has to
+                # finish on its own, but its thread no longer outlives this
+                # query's bookkeeping and the pool is released promptly.
                 loop = asyncio.get_running_loop()
-                with ThreadPoolExecutor(max_workers=1) as executor:
+                executor = ThreadPoolExecutor(max_workers=1)
+                try:
                     await loop.run_in_executor(executor, _run_body)
+                finally:
+                    executor.shutdown(wait=False, cancel_futures=True)
             else:
                 _run_body()
 
@@ -472,8 +498,8 @@ class AgenticRunner:
                 for etype, cb in _bus_unsubs:
                     try:
                         agent_bus.unsubscribe(etype, cb)
-                    except Exception:
-                        pass
+                    except Exception as sub_exc:
+                        soft_fail(logger, sub_exc, "optional eval step")
             return QueryTrace(
                 query_id=query_id,
                 workload_type=str(workload_type),
@@ -491,8 +517,8 @@ class AgenticRunner:
             for etype, cb in _bus_unsubs:
                 try:
                     agent_bus.unsubscribe(etype, cb)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional eval step")
 
         end_time = time.time()
         end_ns = time.monotonic_ns()
@@ -745,23 +771,39 @@ class AgenticRunner:
 
             elif etype == EventType.TOOL_CALL_START:
                 tool_name = event.metadata.get("tool", "unknown")
-                tool_start_times[tool_name] = event.timestamp
-                current_tool_args[tool_name] = event.metadata.get("arguments", {})
+                call_id = event.metadata.get("call_id") or tool_name
+                tool_start_times[call_id] = event.timestamp
+                current_tool_args[call_id] = {
+                    "_name": tool_name,
+                    "args": event.metadata.get("arguments", {}),
+                }
 
             elif etype == EventType.TOOL_CALL_END:
                 tool_name = event.metadata.get("tool", "unknown")
+                call_id = event.metadata.get("call_id") or tool_name
+                started = current_tool_args.pop(call_id, None)
+                tool_args = started["args"] if started else {}
                 current_tools.append(tool_name)
                 current_tool_calls.append(
                     {
                         "name": tool_name,
-                        "arguments": current_tool_args.pop(tool_name, {}),
+                        "arguments": tool_args,
                         "result": event.metadata.get("result", ""),
                     }
                 )
-                start_ts = tool_start_times.pop(tool_name, None)
+                start_ts = tool_start_times.pop(call_id, None)
                 if start_ts is not None:
                     duration = event.timestamp - start_ts
-                    current_tool_latencies[tool_name] = duration
+                    # Two parallel calls to the same tool share a name;
+                    # suffix the second latency key so both survive instead
+                    # of one overwriting the other.
+                    lat_key = tool_name
+                    if lat_key in current_tool_latencies:
+                        n = 2
+                        while f"{tool_name}#{n}" in current_tool_latencies:
+                            n += 1
+                        lat_key = f"{tool_name}#{n}"
+                    current_tool_latencies[lat_key] = duration
                     current_action_spans.append(
                         {
                             "action_type": f"tool_call:{tool_name}",

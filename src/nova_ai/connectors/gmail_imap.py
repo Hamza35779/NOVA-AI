@@ -20,6 +20,7 @@ from nova_ai.connectors._stubs import BaseConnector, Document, SyncStatus
 from nova_ai.connectors.oauth import delete_tokens, load_tokens, save_tokens
 from nova_ai.core.config import DEFAULT_CONFIG_DIR
 from nova_ai.core.registry import ConnectorRegistry
+from nova_ai.core.utils import soft_fail
 from nova_ai.tools._stubs import ToolSpec
 
 logger = logging.getLogger(__name__)
@@ -151,67 +152,79 @@ class GmailIMAPConnector(BaseConnector):
 
         imap = imaplib.IMAP4_SSL(self._imap_host)
         try:
-            imap.login(em, pw)
-        except imaplib.IMAP4.error as exc:
-            logger.error("IMAP login failed: %s", exc)
-            return
-
-        imap.select("INBOX", readonly=True)
-
-        # Always SEARCH ALL. IMAP has no native cursor that survives a
-        # server restart, so applying the SyncEngine's ``since`` filter
-        # during a partial backfill would silently skip the older
-        # unprocessed messages. The pipeline-level dedup (_seen_doc_ids
-        # set + INSERT OR IGNORE in KnowledgeStore) makes re-scanning
-        # already-indexed messages cheap, so resume is correct as long
-        # as we keep enumerating the full inbox.
-        _, data = imap.search(None, "ALL")
-        msg_ids = data[0].split()
-        self._items_total = len(msg_ids)
-
-        # Newest-first iteration so Deep Research becomes useful while
-        # the long tail of older mail finishes indexing in the
-        # background. IMAP returns sequence numbers in arrival order
-        # (oldest -> newest), so reversing puts the most recent first.
-        ordered = list(reversed(msg_ids))
-        if self._max_messages is not None and self._max_messages > 0:
-            ordered = ordered[: self._max_messages]
-        synced = 0
-
-        for mid in ordered:
             try:
-                _, msg_data = imap.fetch(mid, "(RFC822)")
-                raw = msg_data[0][1]
-                msg = email_lib.message_from_bytes(raw)
-            except Exception:
-                continue
+                imap.login(em, pw)
+            except imaplib.IMAP4.error as exc:
+                logger.error("IMAP login failed: %s", exc)
+                return
 
-            subject = _decode_subject(msg.get("Subject", ""))
-            sender = msg.get("From", "")
-            to = msg.get("To", "")
-            body = _extract_text_body(msg)
-            timestamp = _parse_date(msg)
-            message_id = msg.get("Message-ID", mid.decode())
+            imap.select("INBOX", readonly=True)
 
-            synced += 1
-            yield Document(
-                doc_id=f"gmail:{message_id}",
-                source="gmail",
-                doc_type="email",
-                content=body,
-                title=subject,
-                author=sender,
-                participants=[a.strip() for a in (to or "").split(",") if a.strip()],
-                timestamp=timestamp,
-                thread_id=msg.get("In-Reply-To", ""),
-                url="https://mail.google.com/mail/u/0/#inbox",
-                metadata={
-                    "message_id": message_id,
-                },
-            )
+            # Always SEARCH ALL. IMAP has no native cursor that survives a
+            # server restart, so applying the SyncEngine's ``since`` filter
+            # during a partial backfill would silently skip the older
+            # unprocessed messages. The pipeline-level dedup (_seen_doc_ids
+            # set + INSERT OR IGNORE in KnowledgeStore) makes re-scanning
+            # already-indexed messages cheap, so resume is correct as long
+            # as we keep enumerating the full inbox.
+            _, data = imap.search(None, "ALL")
+            msg_ids = data[0].split()
+            self._items_total = len(msg_ids)
 
-        imap.logout()
-        self._items_synced = synced
+            # Newest-first iteration so Deep Research becomes useful while
+            # the long tail of older mail finishes indexing in the
+            # background. IMAP returns sequence numbers in arrival order
+            # (oldest -> newest), so reversing puts the most recent first.
+            ordered = list(reversed(msg_ids))
+            if self._max_messages is not None and self._max_messages > 0:
+                ordered = ordered[: self._max_messages]
+            synced = 0
+
+            for mid in ordered:
+                try:
+                    _, msg_data = imap.fetch(mid, "(RFC822)")
+                    raw = msg_data[0][1]
+                    msg = email_lib.message_from_bytes(raw)
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional connector")
+                    continue
+
+                subject = _decode_subject(msg.get("Subject", ""))
+                sender = msg.get("From", "")
+                to = msg.get("To", "")
+                body = _extract_text_body(msg)
+                timestamp = _parse_date(msg)
+                message_id = msg.get("Message-ID", mid.decode())
+
+                synced += 1
+                yield Document(
+                    doc_id=f"gmail:{message_id}",
+                    source="gmail",
+                    doc_type="email",
+                    content=body,
+                    title=subject,
+                    author=sender,
+                    participants=[
+                        a.strip() for a in (to or "").split(",") if a.strip()
+                    ],
+                    timestamp=timestamp,
+                    thread_id=msg.get("In-Reply-To", ""),
+                    url="https://mail.google.com/mail/u/0/#inbox",
+                    metadata={
+                        "message_id": message_id,
+                    },
+                )
+
+            self._items_synced = synced
+        finally:
+            # logout() both closes the socket and returns the server to the
+            # authenticated state; without it every sync leaked a socket (and
+            # uncleanly dropped the session) whenever the consumer abandoned
+            # the generator or a fetch raised.
+            try:
+                imap.logout()
+            except Exception as exc:
+                soft_fail(logger, exc, "optional connector")
 
     def sync_status(self) -> SyncStatus:
         return SyncStatus(
@@ -249,7 +262,8 @@ class GmailIMAPConnector(BaseConnector):
                     _, msg_data = imap.fetch(mid, "(RFC822)")
                     raw = msg_data[0][1]
                     msg = email_lib.message_from_bytes(raw)
-                except Exception:
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional connector")
                     continue
 
                 subject = _decode_subject(msg.get("Subject", ""))
@@ -270,8 +284,8 @@ class GmailIMAPConnector(BaseConnector):
         finally:
             try:
                 imap.logout()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional connector")
 
     def mcp_tools(self) -> List[ToolSpec]:
         return [

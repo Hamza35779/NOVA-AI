@@ -6,10 +6,13 @@ from ``nova_ai.core`` must not pull in heavy modules at package init).
 
 from __future__ import annotations
 
+import logging
 import platform
 import shutil
 import subprocess
 import webbrowser
+
+logger = logging.getLogger(__name__)
 
 
 def get_python_executable() -> str:
@@ -44,9 +47,56 @@ def open_browser(url: str) -> None:
             # treats a single quoted argument as a window title, not a URL.
             subprocess.run(["cmd", "/c", "start", "", url], check=False)
             return
-        except Exception:  # noqa: BLE001 - any spawn failure -> fall back
-            pass
+        except Exception as exc:  # noqa: BLE001 - any spawn failure -> fall back
+            soft_fail(logger, exc, "cmd.exe start fallback failed")
     webbrowser.open(url)
 
 
-__all__ = ["get_python_executable", "open_browser"]
+def soft_fail(
+    logger: logging.Logger,
+    exc: BaseException,
+    context: str,
+    level: str = "debug",
+) -> None:
+    """Log a deliberately-swallowed exception with consistent context.
+
+    The codebase contains hundreds of best-effort ``except Exception`` blocks
+    (optional features, telemetry, hardware probing...) where a failure must
+    never propagate. Swallowing *silently* makes those paths undebuggable —
+    this helper replaces the bare ``pass`` so every swallow leaves one
+    consistent, greppable breadcrumb at (by default) DEBUG level.
+
+    Usage::
+
+        try:
+            maybe_breaks()
+        except Exception as exc:
+            soft_fail(logger, exc, "loading optional widget")
+
+    Args:
+        logger: Logger to emit through. Use the caller's module logger.
+        exc: The caught exception (formatted with type + message).
+        context: Short phrase describing what was being attempted;
+            rendered as ``"<context>: <ExcType>: <message>"``.
+        level: Log level name — ``"debug"`` (default), ``"info"``,
+            ``"warning"``, or ``"error"``. Use ``"warning"`` when a swallow
+            could plausibly hide a real bug; keep ``"debug"`` for routine
+            best-effort paths.
+    """
+    # A typo'd level would raise AttributeError from inside the very helper
+    # that exists to never propagate an exception — validate and fall back.
+    if level not in ("debug", "info", "warning", "error", "critical"):
+        logger.debug(
+            "soft_fail called with unknown level %r; falling back to debug",
+            level,
+        )
+        level = "debug"
+    getattr(logger, level)(
+        "%s: %s: %s",
+        context,
+        type(exc).__name__,
+        exc,
+    )
+
+
+__all__ = ["get_python_executable", "open_browser", "soft_fail"]

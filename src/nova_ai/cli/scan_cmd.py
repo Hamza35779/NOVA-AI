@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -12,6 +13,9 @@ from typing import Callable, List
 import click
 
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 # Engine ports that should only be listening on localhost.
 _ENGINE_PORTS = {11434, 8080, 8000, 30000, 1234, 52415, 18181}
@@ -156,8 +160,8 @@ class PrivacyScanner:
                         message="iCloud Desktop/Documents sync may be active.",
                         platform="darwin",
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional CLI step")
             return ScanResult(
                 name="iCloud Sync",
                 status="ok",
@@ -236,7 +240,8 @@ class PrivacyScanner:
                             message=warn_msg.format(name=name),
                             platform=platform,
                         )
-                except Exception:
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional CLI step")
                     continue
             return ScanResult(
                 name=check_name,

@@ -58,12 +58,17 @@ Env knobs
 
 from __future__ import annotations
 
+import logging
 import os
 import random
 import threading
 import time
 from typing import Any, Callable, Optional, Tuple
 from urllib.parse import urlparse
+
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Tunables (read once at module load, can be overridden via env)
@@ -123,22 +128,18 @@ def _is_local_endpoint(client: Any) -> bool:
     We detect via either ``api_key == "EMPTY"`` (the convention used by
     our ``_call_vllm`` and ``mini_swe_agent``) or a ``base_url`` whose
     hostname resolves to localhost. Either signal is enough; both are
-    cheap to read.
+    cheap to read. ``getattr`` with a default can't raise for attribute
+    misses, so no broad exception handler is needed here — a broad one
+    would only mask real bugs (e.g. a NameError) as "not local".
     """
-    try:
-        api_key = getattr(client, "api_key", None)
-        if api_key == "EMPTY":
-            return True
-    except Exception:
-        pass
-    try:
-        base_url = str(getattr(client, "base_url", "") or "")
-        if not base_url:
-            return False
-        host = urlparse(base_url).hostname or ""
-        return host in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
-    except Exception:
+    api_key = getattr(client, "api_key", None)
+    if api_key == "EMPTY":
+        return True
+    base_url = str(getattr(client, "base_url", "") or "")
+    if not base_url:
         return False
+    host = urlparse(base_url).hostname or ""
+    return host in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
 
 
 def _extract_retry_after(exc: BaseException) -> Optional[float]:
@@ -280,10 +281,84 @@ def _wrap_create(orig: Callable[..., Any]) -> Callable[..., Any]:
                         file=sys.stderr,
                         flush=True,
                     )
-                except Exception:
-                    pass
+                except Exception as print_exc:
+                    soft_fail(logger, print_exc, "optional agent step")
                 time.sleep(delay)
         # Exhausted. Re-raise so the runner records the row as errored.
+        assert last_exc is not None
+        raise last_exc
+
+    wrapped._hybrid_patched = True  # type: ignore[attr-defined]
+    wrapped.__wrapped__ = orig  # type: ignore[attr-defined]
+    return wrapped
+
+
+def _wrap_create_async(orig: Callable[..., Any]) -> Callable[..., Any]:
+    """Async counterpart of :func:`_wrap_create`.
+
+    Same retry/throttle semantics, but the call is awaited and backoff uses
+    ``asyncio.sleep`` so we don't block the event loop while waiting.
+    """
+
+    async def wrapped(self: Any, *args: Any, **kwargs: Any) -> Any:
+        import asyncio
+
+        client = getattr(self, "_client", None)
+        local = client is not None and _is_local_endpoint(client)
+        if local:
+            local_last_exc: Optional[BaseException] = None
+            for attempt in range(3):
+                try:
+                    return await orig(self, *args, **kwargs)
+                except BaseException as exc:  # noqa: BLE001
+                    try:
+                        import openai
+                    except ImportError:
+                        raise
+                    if not isinstance(
+                        exc,
+                        (
+                            openai.APIConnectionError,
+                            openai.APITimeoutError,
+                            openai.InternalServerError,
+                        ),
+                    ):
+                        raise
+                    local_last_exc = exc
+                    if attempt >= 2:
+                        break
+                    await asyncio.sleep(2**attempt)
+            assert local_last_exc is not None
+            raise local_last_exc
+
+        last_exc: Optional[BaseException] = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                # The threading semaphore is intentionally reused: its hold
+                # time is a single in-flight HTTP call, and using an
+                # asyncio semaphore per event loop would NOT bound total
+                # concurrency across loops the way the eval runner uses
+                # them. Acquiring it via to_thread avoids blocking the loop.
+                await asyncio.to_thread(_SEM.__enter__)
+                try:
+                    return await orig(self, *args, **kwargs)
+                finally:
+                    _SEM.__exit__(None, None, None)
+            except BaseException as exc:  # noqa: BLE001
+                if not _is_retryable(exc):
+                    raise
+                last_exc = exc
+                if attempt >= _MAX_RETRIES:
+                    break
+                delay = _sleep_for(attempt, exc)
+                print(
+                    f"[openai-retry] async attempt {attempt + 1}/{_MAX_RETRIES} "
+                    f"{type(exc).__name__}: {str(exc)[:120]} — "
+                    f"sleeping {delay:.1f}s",
+                    flush=True,
+                )
+                await asyncio.sleep(delay)
+        # Exhausted. Re-raise so the caller records the row as errored.
         assert last_exc is not None
         raise last_exc
 
@@ -334,20 +409,36 @@ def patch_openai_globally() -> None:
                 _comp_mod.Completions.create
             )
 
-        # Also patch the async variant for completeness (none of our
-        # paradigms use it today, but Archon / future paradigms might).
+        # Patch the async variant too. NOTE: the async class lives in the
+        # SAME ``openai.resources.chat.completions`` module as the sync one
+        # (``AsyncCompletions``), so the import above already covers it —
+        # the earlier code here re-imported the sync module and then
+        # silently did nothing, leaving async calls unpatched.
         try:
-            from openai.resources.chat import completions as _comp_mod_async
+            _cls_async = getattr(_comp_mod, "AsyncCompletions", None)
+            if _cls_async is not None and not getattr(
+                _cls_async.create, "_hybrid_patched", False
+            ):
+                _cls_async.create = _wrap_create_async(  # type: ignore[assignment]
+                    _cls_async.create
+                )
+        except (ImportError, AttributeError) as exc:  # pragma: no cover - SDK variance
+            soft_fail(logger, exc, "AsyncCompletions patch skipped")
 
-            cls = getattr(_comp_mod_async, "AsyncCompletions", None)
-            if cls is not None and not getattr(cls.create, "_hybrid_patched", False):
-                # Async wrapper is structurally different — only patch
-                # the bumped defaults via __init__; full retry loop on
-                # async would need an async wrapper. Leave that for the
-                # day a paradigm actually uses it.
-                pass
-        except ImportError:
-            pass
+        # Bump AsyncOpenAI constructor defaults the same way.
+        AsyncOpenAI = getattr(openai, "AsyncOpenAI", None)
+        if AsyncOpenAI is not None and not getattr(
+            AsyncOpenAI.__init__, "_hybrid_patched", False
+        ):
+            _orig_ainit = AsyncOpenAI.__init__
+
+            def _patched_ainit(self: Any, *args: Any, **kwargs: Any) -> None:
+                kwargs.setdefault("timeout", 600.0)
+                kwargs.setdefault("max_retries", _MAX_RETRIES)
+                return _orig_ainit(self, *args, **kwargs)
+
+            _patched_ainit._hybrid_patched = True  # type: ignore[attr-defined]
+            AsyncOpenAI.__init__ = _patched_ainit  # type: ignore[assignment]
 
         _PATCHED = True
 

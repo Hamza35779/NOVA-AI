@@ -91,6 +91,9 @@ class InstrumentedEngine(InferenceEngine):
             {
                 "model": model,
                 "message_count": len(messages),
+                # Agents forward their id in kwargs so the executor's
+                # activity subscriber can attribute the event.
+                "agent": kwargs.get("agent_id", ""),
             },
         )
 
@@ -317,6 +320,7 @@ class InstrumentedEngine(InferenceEngine):
             {
                 "model": model,
                 "message_count": len(messages),
+                "agent": kwargs.get("agent_id", ""),
             },
         )
 

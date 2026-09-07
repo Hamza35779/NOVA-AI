@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+import docker.errors as docker_errors
 import pytest
 
 
@@ -42,6 +43,9 @@ async def test_vllm_pearl_start_writes_sidecar(tmp_path, monkeypatch):
     fake_client = MagicMock()
     fake_container = MagicMock(id="cid-xyz")
     fake_container.status = "running"
+    fake_client.containers.get.side_effect = docker_errors.NotFound(
+        "nova_ai-pearl-miner"
+    )
     fake_client.containers.run.return_value = fake_container
     # ensure_image: image already present
     fake_client.images.get.return_value = MagicMock(id="sha256:abc")

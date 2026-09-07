@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from typing import Optional
@@ -9,6 +10,10 @@ from typing import Optional
 import click
 from rich.console import Console
 from rich.table import Table
+
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 
 def _get_trace_store():
@@ -167,8 +172,8 @@ def optimize_run(
             from nova_ai.evals.cli import _build_judge_backend
 
             optimizer_backend = _build_judge_backend(optimizer_model)
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional CLI step")
 
         store = OptimizationStore(DEFAULT_CONFIG_DIR / "optimize.db")
         llm_opt = LLMOptimizer(
@@ -279,6 +284,7 @@ def optimize_status() -> None:
         console.print(table)
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @optimize_group.command("results")
@@ -294,7 +300,7 @@ def optimize_results(run_id: str) -> None:
         db_path = DEFAULT_CONFIG_DIR / "optimize.db"
         if not db_path.exists():
             console.print("[red]No optimization data found.[/red]")
-            return
+            raise SystemExit(1)
 
         store = OptimizationStore(db_path)
         run = store.get_run(run_id)
@@ -302,7 +308,7 @@ def optimize_results(run_id: str) -> None:
 
         if run is None:
             console.print(f"[red]Run '{run_id}' not found.[/red]")
-            return
+            raise SystemExit(1)
 
         console.print(f"[bold cyan]Optimization Run: {run.run_id}[/bold cyan]")
         console.print(f"  Benchmark: {run.benchmark}")
@@ -341,6 +347,7 @@ def optimize_results(run_id: str) -> None:
             )
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @optimize_group.command("best")
@@ -364,7 +371,7 @@ def optimize_best(run_id: str, output: Optional[str]) -> None:
         db_path = DEFAULT_CONFIG_DIR / "optimize.db"
         if not db_path.exists():
             console.print("[red]No optimization data found.[/red]")
-            return
+            raise SystemExit(1)
 
         store = OptimizationStore(db_path)
         run = store.get_run(run_id)
@@ -372,7 +379,7 @@ def optimize_best(run_id: str, output: Optional[str]) -> None:
 
         if run is None:
             console.print(f"[red]Run '{run_id}' not found.[/red]")
-            return
+            raise SystemExit(1)
 
         if run.best_trial is None:
             console.print("[yellow]No best trial found in this run.[/yellow]")
@@ -389,6 +396,7 @@ def optimize_best(run_id: str, output: Optional[str]) -> None:
         )
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(1)
 
 
 @optimize_group.command("personal")

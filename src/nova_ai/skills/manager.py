@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import html
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from nova_ai.core.events import EventBus
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
 from nova_ai.skills.dependency import validate_dependencies
 from nova_ai.skills.executor import SkillExecutor, SkillResult
 from nova_ai.skills.loader import discover_skills
 from nova_ai.skills.tool_adapter import SkillTool
 from nova_ai.skills.types import SkillManifest
 from nova_ai.tools._stubs import BaseTool, ToolExecutor
+
+logger = logging.getLogger(__name__)
 
 
 class SkillManager:
@@ -52,8 +56,8 @@ class SkillManager:
                 )
                 if cfg_dir:
                     overlay_dir = Path(cfg_dir).expanduser()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional skill step")
             if overlay_dir is None:
                 overlay_dir = get_config_dir() / "learning" / "skills"
         self._overlay_dir = Path(overlay_dir).expanduser()
@@ -399,7 +403,8 @@ class SkillManager:
                     manifest = load_skill_directory(candidate)
                     if manifest is not None and manifest.name == name:
                         matches.append(candidate)
-                except Exception:
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional skill step")
                     continue
         return matches
 

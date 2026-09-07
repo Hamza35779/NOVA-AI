@@ -10,6 +10,7 @@ Pure Python ``sqlite3`` (no Rust extension required).
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import time
 import uuid
@@ -19,7 +20,10 @@ from typing import Any, Dict, List, Optional, Union
 
 from nova_ai.core.events import EventType, get_event_bus
 from nova_ai.core.registry import MemoryRegistry
+from nova_ai.core.utils import soft_fail
 from nova_ai.tools.storage._stubs import MemoryBackend, RetrievalResult
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # DDL
@@ -321,7 +325,38 @@ class KnowledgeStore(MemoryBackend):
                 (source, source_id, chunk_index),
             ).fetchone()
             if existing is not None:
-                return existing["id"]
+                existing_id = existing["id"]
+                # The re-emitted document's content may have CHANGED since
+                # the first sync (edits, new replies in a thread, …).
+                # INSERT OR IGNORE kept the stale row untouched; refresh the
+                # mutable fields so retrieval reflects the current content
+                # instead of silently preserving the original snapshot.
+                self._conn.execute(
+                    """
+                    UPDATE knowledge_chunks
+                    SET content=?, title=?, author=?, participants=?,
+                        participants_raw=?, timestamp=?, thread_id=?, channel=?,
+                        url=?, metadata=?, content_hash=?, last_synced=?
+                    WHERE id=?
+                    """,
+                    (
+                        content,
+                        title,
+                        author,
+                        participants_json,
+                        participants_raw_json,
+                        ts_str,
+                        thread_id or "",
+                        channel or "",
+                        url or "",
+                        meta_json,
+                        content_hash,
+                        last_synced_epoch,
+                        existing_id,
+                    ),
+                )
+                self._conn.commit()
+                return existing_id
             return chunk_id
 
         get_event_bus().publish(
@@ -569,8 +604,8 @@ class KnowledgeStore(MemoryBackend):
         """Close the underlying SQLite connection."""
         try:
             self._conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional connector")
 
 
 __all__ = ["KnowledgeStore"]

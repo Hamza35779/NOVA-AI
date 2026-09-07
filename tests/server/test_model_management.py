@@ -97,6 +97,9 @@ class TestModelPull:
             instance = MockClient.return_value
             instance.post.side_effect = httpx.ConnectError("refused")
             instance.close = MagicMock()
+            # The endpoint now uses the client as a context manager
+            # (with ... as client) — route the CM entry to the same mock.
+            instance.__enter__.return_value = instance
 
             resp = client.post("/v1/models/pull", json={"model": "foo"})
 

@@ -260,10 +260,16 @@ class GmailChannel(BaseChannel):
                         conversation_id=msg.get("threadId", ""),
                     )
 
+                    # Mark as read only when every handler accepted the
+                    # message. Unread-marking after a failed handler would
+                    # silently swallow the mail: the poll loop never sees
+                    # it again, and the user never gets a reply.
+                    handler_errors = 0
                     for handler in self._handlers:
                         try:
                             handler(cm)
                         except Exception:
+                            handler_errors += 1
                             logger.exception("Gmail handler error")
 
                     if self._bus is not None:
@@ -277,12 +283,19 @@ class GmailChannel(BaseChannel):
                             },
                         )
 
-                    # Mark message as read
-                    self._service.users().messages().modify(
-                        userId=self._user_id,
-                        id=msg_id,
-                        body={"removeLabelIds": ["UNREAD"]},
-                    ).execute()
+                    if handler_errors == 0 or not self._handlers:
+                        self._service.users().messages().modify(
+                            userId=self._user_id,
+                            id=msg_id,
+                            body={"removeLabelIds": ["UNREAD"]},
+                        ).execute()
+                    else:
+                        logger.warning(
+                            "Leaving message %s unread: %d/%d handlers failed",
+                            msg_id,
+                            handler_errors,
+                            len(self._handlers),
+                        )
 
             except Exception:
                 logger.debug("Gmail poll error", exc_info=True)

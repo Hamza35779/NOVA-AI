@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.learning.spec_search.diagnose.teacher_agent import (
     TeacherAgent,
 )
@@ -277,7 +278,8 @@ def _parse_clusters(content: str) -> list[FailureCluster]:
     for match in re.finditer(r"\[[\s\S]*\]", content):
         try:
             return _parse_cluster_list(match.group(0))
-        except Exception:
+        except Exception as exc:
+            soft_fail(logger, exc, "optional learning step")
             continue
 
     logger.warning("No failure clusters found in diagnosis output")

@@ -269,6 +269,29 @@ class TestCodingTaskScoring:
         assert is_correct is False
         assert meta["reason"] == "empty_response"
 
+    @pytest.mark.parametrize("tag", ["python", "py", "python3", ""])
+    def test_fenced_answer_language_tags(self, tag: str) -> None:
+        """Fences tagged ``py``/``python3`` must extract like ``python``."""
+        from nova_ai.evals.core.types import EvalRecord
+        from nova_ai.evals.scorers.coding_task import CodingTaskScorer
+
+        scorer = CodingTaskScorer()
+        record = EvalRecord(
+            record_id=f"test-fence-{tag or 'bare'}",
+            problem="Write is_palindrome",
+            reference="",
+            category="use-case",
+            subject="coding_task",
+            metadata={
+                "test_cases": 'assert is_palindrome("racecar") == True',
+            },
+        )
+        fence = f"```{tag}\ndef is_palindrome(s):\n    return s == s[::-1]\n```"
+        answer = f"Here is the solution:\n\n{fence}\n\nDone!"
+        is_correct, meta = scorer.score(record, answer)
+        assert is_correct is True, (tag, meta)
+        assert meta["tests_passed"] == 1
+
 
 class TestEmailTriageScoring:
     """Test exact-match path of email triage scorer."""

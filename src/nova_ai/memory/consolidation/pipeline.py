@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -113,6 +114,7 @@ def run_consolidation(
         embedder=embedder,
     )
     clusters = miner.mine(
+        since=_since_from_run_store(run_store),
         min_cluster_size=max(1, int(getattr(config, "min_session_messages", 6) // 2)),
     )
     if not clusters:
@@ -176,6 +178,29 @@ def run_consolidation(
     if run_store is not None:
         run_store.finish_run(run_id, status="completed", summary=summary)
     return {"status": "completed", "run_id": run_id, **summary}
+
+
+def _since_from_run_store(run_store: Optional[ConsolidationRunStore]) -> Optional[float]:
+    """Epoch cutoff for mining: traces newer than the last completed run.
+
+    Without this, every consolidation re-clusters the same trailing
+    ``limit`` traces. Falls back to ``None`` (mine everything) when there
+    is no run history or the timestamp can't be parsed — a missing cutoff
+    costs a redundant pass, a wrong one silently drops traces.
+    """
+    if run_store is None:
+        return None
+    try:
+        for record in run_store.list_runs(limit=10):
+            if record.get("status") != "completed":
+                continue
+            ended = record.get("ended_at")
+            if not ended:
+                continue
+            return datetime.fromisoformat(ended).timestamp()
+    except Exception as exc:  # run-store trouble must not block mining
+        logger.debug("[consolidate] could not derive since-cutoff: %s", exc)
+    return None
 
 
 def _render_cluster(cluster: dict[str, Any]) -> str:

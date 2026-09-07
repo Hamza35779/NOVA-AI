@@ -82,6 +82,21 @@ def detect_new_models(
     return fresh
 
 
+def forget_model(*, state_path: Path, model: str) -> None:
+    """Drop *model* from the snapshot so the next tick treats it as new.
+
+    Called when an auto-prove attempt crashes before producing a verdict:
+    the candidate was marked known up-front, and without this a transient
+    failure (engine down, OOM) would mean the model is never proven.
+    """
+    state_path = Path(state_path)
+    state = _load_state(state_path)
+    models: dict[str, Any] = state.get("models", {})
+    if model in models:
+        del models[model]
+        _save_state(state_path, state)
+
+
 def maybe_auto_prove(
     *,
     trace_store: Any,
@@ -113,6 +128,7 @@ def maybe_auto_prove(
         return [{"status": "skipped", "reason": "no new models"}]
 
     results: list[dict[str, Any]] = []
+    state_path = root / KNOWN_MODELS_FILENAME
     for candidate in new_models:
         try:
             record = run_proving(
@@ -133,7 +149,14 @@ def maybe_auto_prove(
                 }
             )
         except Exception as exc:
+            # The candidate was marked known up-front; a crashed attempt
+            # never produced a verdict, so un-mark it or it would never be
+            # proven — the next watcher tick must retry it.
             logger.warning("Auto-prove for %s failed: %s", candidate, exc)
+            try:
+                forget_model(state_path=state_path, model=candidate)
+            except Exception as forget_exc:  # never mask the real failure
+                logger.debug("Could not reset watcher state: %s", forget_exc)
             results.append(
                 {"candidate": candidate, "status": "failed", "error": str(exc)}
             )
@@ -143,6 +166,7 @@ def maybe_auto_prove(
 __all__ = [
     "KNOWN_MODELS_FILENAME",
     "detect_new_models",
+    "forget_model",
     "list_local_models",
     "maybe_auto_prove",
 ]

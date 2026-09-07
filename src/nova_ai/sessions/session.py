@@ -249,11 +249,17 @@ class SessionStore:
             summary_parts.append(f"[{msg.role}] {msg.content[:100]}")
         summary = "Session history summary:\n" + "\n".join(summary_parts)
 
-        # Delete old messages
+        # Delete old messages. timestamp is a wall clock (REAL) and several
+        # messages can share the same second, so the cutoff alone could
+        # spare (or delete) same-second rows nondeterministically — anchor
+        # on the monotonically increasing rowid, which ORDER BY timestamp
+        # walking preserves for equal timestamps.
         oldest_ts = old_messages[-1].timestamp if old_messages else 0
         self._conn.execute(
-            "DELETE FROM session_messages WHERE session_id = ? AND timestamp <= ?",
-            (session_id, oldest_ts),
+            "DELETE FROM session_messages WHERE session_id = ? AND rowid <= "
+            "(SELECT MAX(rowid) FROM session_messages "
+            " WHERE session_id = ? AND timestamp <= ?)",
+            (session_id, session_id, oldest_ts),
         )
         # Insert summary as system message
         self._conn.execute(

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.operators.loader import load_operator
 from nova_ai.operators.types import OperatorManifest
 
@@ -145,8 +146,8 @@ class OperatorManager:
                 if t.id == task_id and t.status == "active":
                     logger.info("Operator %s already active", operator_id)
                     return task_id
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional operator step")
 
         tools_str = ",".join(manifest.tools) if manifest.tools else ""
         metadata: Dict[str, Any] = {
@@ -160,20 +161,20 @@ class OperatorManager:
             "max_consecutive_failures": manifest.max_consecutive_failures,
         }
 
-        # Use the scheduler's create_task but with a deterministic ID
-        task = scheduler.create_task(
+        # Create the task with the deterministic ID in one step. The old
+        # create-then-re-save dance persisted TWO rows: create_task() wrote
+        # a row under a random UUID (which kept firing forever — the
+        # scheduler polls by row) and the re-save wrote a second row under
+        # ``operator:{id}``, the only one pause/resume/cancel ever touched.
+        scheduler.create_task(
             prompt=_TICK_PROMPT,
             schedule_type=manifest.schedule_type,
             schedule_value=manifest.schedule_value,
             agent="operative",
             tools=tools_str,
             metadata=metadata,
+            task_id=task_id,
         )
-
-        # Override the random ID with our deterministic one
-        task_dict = task.to_dict()
-        task_dict["id"] = task_id
-        scheduler._store.save_task(task_dict)
         logger.info("Activated operator %s (task_id=%s)", operator_id, task_id)
         return task_id
 
@@ -235,8 +236,8 @@ class OperatorManager:
                             info["next_run"] = t.next_run
                             info["last_run"] = t.last_run
                             break
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional operator step")
             results.append(info)
         return results
 
@@ -273,8 +274,8 @@ class OperatorManager:
                         if t.id == task_id:
                             task_dict = t.to_dict()
                             break
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional operator step")
 
             if task_dict is not None:
                 info["status"] = task_dict.get("status", "registered")

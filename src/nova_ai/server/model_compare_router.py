@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/compare", tags=["compare"])
@@ -127,8 +128,8 @@ async def vote_winner(body: VoteRequest):
             tier_chosen="medium",
             correct_tier="large" if "32b" in body.winner_model.lower() or "pro" in body.winner_model.lower() else "medium",
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional server subsystem")
 
     return {"status": "recorded", "vote_id": vote_id, "winner": body.winner_model}
 

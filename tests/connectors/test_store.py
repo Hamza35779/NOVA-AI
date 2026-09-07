@@ -382,11 +382,14 @@ def test_deleted_at_filters_retrieve(ks: KnowledgeStore) -> None:
 
 
 def test_unique_natural_key_constraint(ks: KnowledgeStore) -> None:
-    """Duplicate (source, source_id, chunk_index) is silently skipped.
+    """Duplicate (source, source_id, chunk_index) is deduplicated in place.
 
     The store uses ``INSERT OR IGNORE`` so re-running a sync or replaying a
-    dogfood script over an already-populated store no longer crashes; the
-    original row stays put and the duplicate is dropped.
+    dogfood script over an already-populated store no longer crashes. When a
+    duplicate arrives, the existing row's identity is kept (same chunk id,
+    single row) — but its mutable fields are REFRESHED from the incoming
+    document, so a re-synced email/thread reflects edited content instead of
+    silently preserving a stale snapshot forever.
     """
     first_id = _store(
         ks,
@@ -404,11 +407,11 @@ def test_unique_natural_key_constraint(ks: KnowledgeStore) -> None:
     )
     # Same identity — the natural key collision returned the existing row's id.
     assert second_id == first_id
-    # Content of the original row is preserved.
+    # Content of the original row is refreshed to the latest copy.
     row = ks._conn.execute(
         "SELECT content FROM knowledge_chunks WHERE id = ?", (first_id,)
     ).fetchone()
-    assert row["content"] == "First copy"
+    assert row["content"] == "Duplicate copy"
     # Only one row exists for this natural key.
     count = ks._conn.execute(
         "SELECT COUNT(*) FROM knowledge_chunks "

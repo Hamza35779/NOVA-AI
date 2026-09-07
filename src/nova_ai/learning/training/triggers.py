@@ -17,6 +17,7 @@ rewriting weights.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,22 @@ def count_new_pairs_since(
             if (t.query, t.result) not in seen_pairs:
                 continue  # deduplicated away by the miner
             started = getattr(t, "started_at", None)
-            started_iso = getattr(started, "isoformat", lambda: None)()
+            # Trace.started_at is an epoch float (core/types.py), not a
+            # datetime — the old getattr(started, "isoformat", ...)() probe
+            # always returned None, so the recency guard never fired and
+            # every historical pair counted as "new" on every tick. Traces
+            # saved with a datetime come back from SQLite as ISO strings
+            # (deprecated default adapter), so those must be parsed too.
+            if isinstance(started, datetime):
+                started_iso = started.isoformat()
+            elif isinstance(started, (int, float)) and started > 0:
+                started_iso = datetime.fromtimestamp(
+                    started, tz=timezone.utc
+                ).isoformat()
+            elif isinstance(started, str) and started:
+                started_iso = started
+            else:
+                started_iso = ""
             if started_iso and started_iso <= since_iso:
                 continue
             count += 1

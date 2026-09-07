@@ -6,6 +6,7 @@ See spec ``docs/design/2026-05-05-vllm-pearl-mining-integration-design.md``.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Optional
 
@@ -13,6 +14,7 @@ import httpx
 
 from nova_ai.core.config import HardwareInfo
 from nova_ai.core.registry import MinerRegistry
+from nova_ai.core.utils import soft_fail
 from nova_ai.mining._constants import (
     DEFAULT_GATEWAY_METRICS_PORT,
     DEFAULT_GATEWAY_RPC_PORT,
@@ -33,6 +35,8 @@ from nova_ai.mining._stubs import (
     Sidecar,
     SoloTarget,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class VllmPearlProvider(MiningProvider):
@@ -118,8 +122,8 @@ class VllmPearlProvider(MiningProvider):
                         resp.text,
                         provider_id=self.provider_id,
                     )
-        except Exception:  # noqa: BLE001 - vLLM fallback below.
-            pass
+        except Exception as exc:  # noqa: BLE001 - vLLM fallback below.
+            soft_fail(logger, exc, "optional mining step")
 
         vllm_endpoint = sidecar.get("vllm_endpoint")
         if vllm_endpoint:

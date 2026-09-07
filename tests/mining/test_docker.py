@@ -148,10 +148,13 @@ def _env_password(monkeypatch):
 
 
 def test_launcher_start_calls_run_with_expected_kwargs(_env_password):
-    from nova_ai.mining._docker import PearlDockerLauncher
+    from nova_ai.mining._docker import NotFound, PearlDockerLauncher
     from nova_ai.mining._stubs import MiningConfig, SoloTarget
 
     fake = MagicMock()
+    # No pre-existing container on the daemon (start()'s stale-container
+    # preflight queries this).
+    fake.containers.get.side_effect = NotFound("nova_ai-pearl-miner")
     fake.containers.run.return_value = MagicMock(id="cid-1", status="running")
     launcher = PearlDockerLauncher(client=fake)
     cfg = MiningConfig(
@@ -193,10 +196,11 @@ def test_launcher_start_calls_run_with_expected_kwargs(_env_password):
 def test_launcher_start_maps_host_gpu_ids_to_container_local_cuda_ids(
     _env_password,
 ) -> None:
-    from nova_ai.mining._docker import PearlDockerLauncher
+    from nova_ai.mining._docker import NotFound, PearlDockerLauncher
     from nova_ai.mining._stubs import MiningConfig, SoloTarget
 
     fake = MagicMock()
+    fake.containers.get.side_effect = NotFound("nova_ai-pearl-miner")
     fake.containers.run.return_value = MagicMock(id="cid-1", status="running")
     launcher = PearlDockerLauncher(client=fake)
     cfg = MiningConfig(
@@ -219,12 +223,17 @@ def test_launcher_start_maps_host_gpu_ids_to_container_local_cuda_ids(
 
 
 def test_launcher_start_mounts_local_model_path(_env_password, tmp_path):
-    from nova_ai.mining._docker import LOCAL_MODEL_BIND_PATH, PearlDockerLauncher
+    from nova_ai.mining._docker import (
+        LOCAL_MODEL_BIND_PATH,
+        NotFound,
+        PearlDockerLauncher,
+    )
     from nova_ai.mining._stubs import MiningConfig, SoloTarget
 
     local_model = tmp_path / "llama31-pearl"
     local_model.mkdir()
     fake = MagicMock()
+    fake.containers.get.side_effect = NotFound("nova_ai-pearl-miner")
     fake.containers.run.return_value = MagicMock(id="cid-1", status="running")
     launcher = PearlDockerLauncher(client=fake)
     cfg = MiningConfig(
@@ -347,11 +356,13 @@ def test_launcher_get_logs_redacts_rpc_passwords():
 def test_launcher_start_errors_when_password_env_missing():
     from nova_ai.mining._docker import (
         ConfigurationError,
+        NotFound,
         PearlDockerLauncher,
     )
     from nova_ai.mining._stubs import MiningConfig, SoloTarget
 
     fake = MagicMock()
+    fake.containers.get.side_effect = NotFound("nova_ai-pearl-miner")
     launcher = PearlDockerLauncher(client=fake)
     cfg = MiningConfig(
         provider="vllm-pearl",

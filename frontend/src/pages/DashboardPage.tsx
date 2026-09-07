@@ -1,6 +1,7 @@
 import { EnergyDashboard } from '../components/Dashboard/EnergyDashboard';
 import { CostComparison } from '../components/Dashboard/CostComparison';
 import { TraceDebugger } from '../components/Dashboard/TraceDebugger';
+import { HardwareGauges } from '../components/Dashboard/HardwareGauges';
 
 export function DashboardPage() {
   const now = new Date();
@@ -22,6 +23,8 @@ export function DashboardPage() {
             Live telemetry for the on-device inference engine — power draw, token throughput, and cost savings versus cloud APIs.
           </p>
         </header>
+
+        <HardwareGauges className="mb-4" />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           <EnergyDashboard />

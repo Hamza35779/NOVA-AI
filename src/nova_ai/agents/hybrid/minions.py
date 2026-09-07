@@ -39,6 +39,7 @@ Ported from ``hybrid-local-cloud-compute/adapters/minions_adapter.py``.
 from __future__ import annotations
 
 import json as _json
+import logging
 import sys
 import types
 from typing import Any, Dict, List, Optional, Tuple
@@ -57,6 +58,9 @@ from nova_ai.agents.hybrid._openai_retry import (
 from nova_ai.agents.hybrid._prices import NO_TEMP_PREFIXES, default_max_output_tokens
 from nova_ai.agents.hybrid.mini_swe_agent import run_swe_agent_loop
 from nova_ai.core.registry import AgentRegistry
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 MINIONS_SWE_PLANNER_SYS = (
     "You are the cloud supervisor in a Minions setup. The small local model "
@@ -460,8 +464,8 @@ class MinionsAgent(LocalCloudAgent):
 
             if isinstance(exc, anthropic.BadRequestError):
                 return f"{type(exc).__name__}: {str(exc)[:120]}"
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional agent step")
         if isinstance(exc, (_json.JSONDecodeError, ValueError, KeyError)):
             return f"{type(exc).__name__}: {str(exc)[:120]}"
         if "JSONDecodeError" in type(exc).__name__:

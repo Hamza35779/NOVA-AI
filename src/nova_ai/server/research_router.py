@@ -40,6 +40,7 @@ from nova_ai.connectors.hybrid_search import HybridSearch
 from nova_ai.connectors.store import KnowledgeStore
 from nova_ai.core.config import DEFAULT_CONFIG_DIR
 from nova_ai.core.types import TelemetryRecord
+from nova_ai.core.utils import soft_fail
 from nova_ai.engine.ollama import OllamaEngine
 from nova_ai.telemetry.store import TelemetryStore
 
@@ -51,6 +52,10 @@ _WEB_CLARIFY_RESPONSE = "no clarification available in web session"
 
 # Sentinel placed on the queue when the agent thread terminates.
 _DONE = object()
+
+# Total wall-clock budget for a research stream (seconds). The consumer loop
+# raises a timeout when this is exceeded even if the worker keeps producing.
+_RESEARCH_TOTAL_TIMEOUT_S = 300.0
 
 
 def _record_research_telemetry(
@@ -107,8 +112,8 @@ def _record_research_telemetry(
     finally:
         try:
             store.close()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            soft_fail(logger, exc, "optional server subsystem")
 
 
 # ---------------------------------------------------------------------------
@@ -180,8 +185,8 @@ class _LiveGPUSampler:
         for h in self._handles:
             try:
                 total += self._pynvml.nvmlDeviceGetPowerUsage(h) / 1000.0
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                soft_fail(logger, exc, "optional server subsystem")
         return total
 
     def _loop(self) -> None:
@@ -226,8 +231,8 @@ class _LiveGPUSampler:
         mean = self._power_sum / self._sample_count if self._sample_count else 0.0
         try:
             self._pynvml.nvmlShutdown()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            soft_fail(logger, exc, "optional server subsystem")
         return {
             "energy_j": self._energy_j,
             "mean_power_w": mean,
@@ -387,8 +392,8 @@ async def _stream_research(query: str, model: str) -> AsyncGenerator[str, None]:
             # past the request lifetime.
             try:
                 sampler.stop()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as sub_exc:  # noqa: BLE001
+                soft_fail(logger, sub_exc, "optional server subsystem")
             loop.call_soon_threadsafe(
                 queue.put_nowait,
                 {"type": "error", "message": f"{type(exc).__name__}: {exc}"},
@@ -398,12 +403,27 @@ async def _stream_research(query: str, model: str) -> AsyncGenerator[str, None]:
 
     task = asyncio.create_task(asyncio.to_thread(_run))
 
+    _t_consumer_start = time.monotonic()
     final_answer: Optional[str] = None
     final_usage: Dict[str, int] = {}
     final_sources: List[Dict[str, Any]] = []
+    # Overall deadline for the whole research stream. Without it a wedged
+    # worker (Ollama daemon stuck, network hang with no socket timeout) holds
+    # the SSE connection open forever — the DeepResearch path already had a
+    # queue timeout; this applies a total-budget version here.
+    deadline_s = _RESEARCH_TOTAL_TIMEOUT_S
+    timed_out = False
     try:
         while True:
-            event = await queue.get()
+            remaining = deadline_s - (time.monotonic() - _t_consumer_start)
+            if remaining <= 0:
+                timed_out = True
+                break
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=remaining)
+            except asyncio.TimeoutError:
+                timed_out = True
+                break
             if event is _DONE:
                 break
             if not isinstance(event, dict):
@@ -430,11 +450,29 @@ async def _stream_research(query: str, model: str) -> AsyncGenerator[str, None]:
 
             yield _sse(event)
 
+        if timed_out:
+            # Deadline exceeded: tell the client and keep the two-frame
+            # contract (error + done) so the frontend can clean up.
+            logger.warning(
+                "research: total deadline of %.0fs exceeded; terminating stream",
+                _RESEARCH_TOTAL_TIMEOUT_S,
+            )
+            yield _sse(
+                {
+                    "type": "error",
+                    "message": (
+                        f"Research timed out after {_RESEARCH_TOTAL_TIMEOUT_S:.0f}s."
+                    ),
+                }
+            )
+            yield _sse({"type": "done", "usage": final_usage, "sources": final_sources})
+
         # If the agent thread crashed before producing a final answer, the
         # client still gets the error frame (emitted above) followed by done.
         # The done frame also carries the deduped sources so a client that
         # only listens for ``done`` still gets the canonical citation list.
-        yield _sse({"type": "done", "usage": final_usage, "sources": final_sources})
+        if not timed_out:
+            yield _sse({"type": "done", "usage": final_usage, "sources": final_sources})
     except Exception as exc:  # noqa: BLE001
         # Consumer loop crashed unexpectedly (e.g. JSON serialization fault,
         # logic bug). Surface a clean error frame rather than letting the
@@ -452,11 +490,23 @@ async def _stream_research(query: str, model: str) -> AsyncGenerator[str, None]:
         # leak a dangling task. Swallow any straggler exception so a worker
         # failure during teardown doesn't escape the generator after we've
         # already emitted the terminal done frame.
+        # CancelledError (client disconnect, Starlette timeout) inherits from
+        # BaseException, NOT Exception — without handling it, ``await task``
+        # here would raise straight through the generator and Starlette would
+        # log a generic cancellation instead of a clean teardown. We cancel
+        # the worker explicitly, then await it shielded so our own teardown
+        # completes even if the cancellation storm continues.
         if not task.done():
+            task.cancel()
             try:
-                await task
-            except Exception as exc:  # noqa: BLE001
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                if not task.cancelled():
+                    raise
+            except BaseException as exc:  # noqa: BLE001
                 logger.debug("research: worker task ended with %s", exc)
+        elif task.cancelled():
+            pass
 
 
 # ---------------------------------------------------------------------------

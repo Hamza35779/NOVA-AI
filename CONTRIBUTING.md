@@ -149,6 +149,50 @@ Use the appropriate [issue template](https://github.com/Hamza35779/NOVA-AI/issue
 4. Add tests for new functionality
 5. Follow the [registry pattern](docs/development/contributing.md#registry-pattern) for new components
 
+### Test Lanes
+
+Some tests exercise real hardware, live engines, or cloud APIs and cannot run
+in a hermetic CI environment. They are separated with pytest **markers**, and
+the default lane (both locally and in CI, via `addopts` in `pyproject.toml`)
+excludes them automatically:
+
+```bash
+# Default lane — everything hermetic; mirrors CI exactly:
+pytest
+
+# Explicitly (equivalent to the default):
+pytest -m "not live and not cloud and not hub"
+
+# Include live-inference tests (requires a running local engine):
+pytest -m "live"
+
+# Include cloud-API tests (requires API keys in the environment):
+pytest -m "cloud"
+
+# Include Hub tests (downloads real datasets from HuggingFace at runtime):
+pytest -m "hub"
+```
+
+| Marker | Requires | Default lane |
+|---|---|---|
+| `live` | A running local inference engine | excluded |
+| `cloud` | Cloud API keys (OpenAI/Anthropic/Google…) | excluded |
+| `hub` | HuggingFace Hub network access | excluded |
+| `nvidia` / `amd` / `apple` | The matching GPU/platform | auto-skip if absent |
+| `docker` | A working Docker daemon | auto-skip if absent |
+| `macos15` | macOS 15+ (Apple FM) | auto-skip if absent |
+| `live_channel` | Real channel credentials (env vars) | excluded |
+| `live_external` | Hermes/OpenClaw checkouts (env vars) | excluded |
+| `modal` | Modal token; runs swebench on Modal | excluded |
+| `slow` | Nothing, just time | included |
+
+Hardware/platform markers (`nvidia`, `amd`, `apple`, `docker`, `macos15`)
+self-skip when the requirement is missing, so they are safe to leave in the
+default run. The rest (`live`, `cloud`, `hub`, `live_channel`,
+`live_external`, `modal`) hit real services and are excluded from the
+default `-m` filter — run them explicitly when developing against those
+systems.
+
 ### Commit Messages
 
 We use [Conventional Commits](https://www.conventionalcommits.org/):

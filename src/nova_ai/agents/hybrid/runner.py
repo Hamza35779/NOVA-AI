@@ -35,10 +35,15 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib  # type: ignore[import-not-found,no-redef]
 
+import logging
+
 from nova_ai.agents._stubs import AgentContext, AgentResult
 from nova_ai.agents.hybrid._energy import EnergyCollector
 from nova_ai.agents.hybrid._prompts import format_prompt as _format_prompt
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 PACKAGE_DIR = Path(__file__).parent
 DEFAULT_REGISTRY_DIR = PACKAGE_DIR / "registry"
@@ -412,8 +417,8 @@ def _cell_lock(out_dir: Path, cell_name: str):
     finally:
         try:
             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional agent step")
         f.close()
         try:
             lock_path.unlink()
@@ -710,7 +715,8 @@ def _run_cell_locked(
         for line in results_path.read_text().splitlines():
             try:
                 row = json.loads(line)
-            except Exception:
+            except Exception as exc:
+                soft_fail(logger, exc, "optional agent step")
                 continue
             if not row.get("error"):
                 kept.append(line)

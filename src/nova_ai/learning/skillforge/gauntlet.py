@@ -24,6 +24,7 @@ import json
 import logging
 from typing import Any, Optional
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.skills.security import (
     has_dangerous_capabilities,
     validate_capabilities,
@@ -49,8 +50,8 @@ def _tool_catalog_names() -> set[str]:
         names = set(ToolRegistry.keys())
         if names:
             return names
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional learning step")
     # Registries are lazily populated; force tool-module import so the
     # static gate sees the full catalog even in a bare interpreter.
     try:
@@ -251,7 +252,8 @@ def run_gauntlet(
                 outputs.append(
                     " ".join(r.content for r in res.step_results if r.success)
                 )
-            except Exception:
+            except Exception as exc:
+                soft_fail(logger, exc, "optional learning step")
                 continue
         judge_gate = _judge_gate(
             manifest, candidate, judge=judge, replay_outputs=outputs

@@ -21,8 +21,11 @@ from typing import Any, Dict, List, Optional
 
 from nova_ai.core.paths import get_config_dir
 from nova_ai.core.types import Trace, TraceStep
+from nova_ai.core.utils import soft_fail
 from nova_ai.skills.manager import SkillManager
 from nova_ai.skills.overlay import SkillOverlay, write_overlay
+
+logger = logging.getLogger(__name__)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -96,8 +99,8 @@ class SkillOptimizer:
                 )
                 if cfg_dir:
                     overlay_dir = Path(cfg_dir).expanduser()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional learning step")
             if overlay_dir is None:
                 overlay_dir = Path(
                     str(get_config_dir() / "learning" / "skills")

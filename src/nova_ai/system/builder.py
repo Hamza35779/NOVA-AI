@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import uuid
 from typing import Any, List, Optional
 
 from nova_ai.core.config import NovaConfig, load_config
 from nova_ai.core.events import EventBus, get_event_bus
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.types import ToolCall
 from nova_ai.engine._stubs import InferenceEngine
 from nova_ai.system.core import NovaSystem
 from nova_ai.tools._stubs import BaseTool, ToolExecutor
@@ -315,6 +318,50 @@ class SystemBuilder:
         system._mcp_clients = list(getattr(self, "_mcp_clients", []))
         if system.agent_executor is not None:
             system.agent_executor.set_system(system)
+        # Wire the finished system into the scheduler so due tasks actually
+        # execute instead of silently falling into the "[dry-run]" branch —
+        # the scheduler is constructed before the system exists, so it can't
+        # take a ``system`` at construction time.
+        if task_scheduler is not None:
+            task_scheduler.set_system(system)
+        # Post-build wiring for the MCP scheduler tools: _inject_tool_deps
+        # skipped them because the scheduler didn't exist yet. Point every
+        # scheduler tool instance at the built scheduler so they stop
+        # answering "Scheduler not available."
+        if scheduler_store is not None or task_scheduler is not None:
+            for tool in tool_list:
+                if getattr(tool, "spec", None) is not None and (
+                    tool.spec.name
+                    in (
+                        "schedule_task",
+                        "list_scheduled_tasks",
+                        "pause_scheduled_task",
+                        "resume_scheduled_task",
+                        "cancel_scheduled_task",
+                    )
+                ):
+                    tool._scheduler = task_scheduler
+        # Give the in-process tool scheduler (tools/scheduler_tool.py) an
+        # executor backed by this system's ToolExecutor so scheduled jobs
+        # actually fire their tool. Falls back to a registry-built executor
+        # inside the scheduler when no tool executor exists. Only a default-
+        # constructed scheduler is reused here — one passed in via
+        # ``.scheduler(store)`` may be the *task* scheduler, which executes
+        # prompts, not tools.
+        if system.tool_executor is not None:
+            from nova_ai.tools.scheduler_tool import get_scheduler
+
+            tool_sched = get_scheduler()
+            if tool_sched is not task_scheduler:
+                tool_sched.set_executor(
+                    lambda name, params: system.tool_executor.execute(
+                        ToolCall(
+                            id=f"scheduled-{uuid.uuid4().hex[:8]}",
+                            name=name,
+                            arguments=json.dumps(params or {}),
+                        )
+                    )
+                )
         return system
 
     def _resolve_engine(self, config: NovaConfig):

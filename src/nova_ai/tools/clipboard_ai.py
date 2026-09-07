@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from nova_ai.core.registry import ToolRegistry
 from nova_ai.core.types import ToolResult
+from nova_ai.core.utils import soft_fail
 from nova_ai.tools._stubs import BaseTool, ToolSpec
 
 logger = logging.getLogger(__name__)
@@ -16,8 +17,8 @@ def _get_clipboard_text() -> str:
     try:
         import pyperclip  # type: ignore
         return pyperclip.paste() or ""
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional tool")
 
     try:
         import tkinter as tk
@@ -26,8 +27,8 @@ def _get_clipboard_text() -> str:
         text = r.clipboard_get()
         r.destroy()
         return text or ""
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional tool")
     return ""
 
 
@@ -37,8 +38,8 @@ def _set_clipboard_text(text: str) -> bool:
         import pyperclip  # type: ignore
         pyperclip.copy(text)
         return True
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional tool")
     return False
 
 

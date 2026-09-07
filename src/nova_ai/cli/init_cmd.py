@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -26,6 +27,9 @@ from nova_ai.core.config import (
     recommend_engine,
     recommend_model,
 )
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 # Engines supported by ``nova init --engine``.
 _SUPPORTED_ENGINES = [
@@ -60,8 +64,8 @@ def _detect_running_engines() -> list[str]:
             resp = httpx.get(url, timeout=2.0)
             if resp.status_code < 500:
                 running.append(key)
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional CLI step")
     return running
 
 
@@ -490,7 +494,16 @@ sources = ["hackernews", "news_rss"]
 """
         target = config if config else DEFAULT_CONFIG_PATH
         existing = target.read_text()
-        target.write_text(existing + digest_section)
+        # The generated TOML never contains a [digest] section, but an
+        # explicit --config file might: appending blindly would create a
+        # duplicate table and make the config unparseable.
+        if "[digest]" in existing:
+            console.print(
+                "[yellow]Config already has a [digest] section — "
+                "leaving it untouched.[/yellow]"
+            )
+        else:
+            target.write_text(existing + digest_section)
         toml_content = target.read_text()
         console.print(
             "[green]Morning Digest config added.[/green] "

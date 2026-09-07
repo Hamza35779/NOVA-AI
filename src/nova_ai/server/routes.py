@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from nova_ai.core.paths import get_config_dir
 from nova_ai.core.types import Message, Role
+from nova_ai.core.utils import soft_fail
 from nova_ai.server.models import (
     ChatCompletionChunk,
     ChatCompletionRequest,
@@ -24,6 +25,8 @@ from nova_ai.server.models import (
     StreamChoice,
     UsageInfo,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -624,8 +627,8 @@ async def _handle_stream(
                         _routed = _inner._engine_for(model)
                         if _routed is not None and getattr(_routed, "is_cloud", False):
                             _use_local_fallback = True
-                except Exception:
-                    pass
+                except Exception as exc:
+                    soft_fail(logger, exc, "optional server subsystem")
                 if _use_local_fallback:
                     token_iter = stream_local(
                         model, messages, req.temperature, req.max_tokens
@@ -765,16 +768,24 @@ async def pull_model(request: Request):
             detail="Model pulling is only supported with the Ollama engine",
         )
 
+    import asyncio as _asyncio
+
     import httpx as _httpx
 
     host = getattr(engine, "_host", "http://localhost:11434")
-    client = _httpx.Client(base_url=host, timeout=600.0)
+
+    def _do_pull() -> None:
+        # A model pull can run for minutes; a sync client inside the async
+        # endpoint blocked the whole event loop for that duration.
+        with _httpx.Client(base_url=host, timeout=600.0) as client:
+            resp = client.post(
+                "/api/pull",
+                json={"name": model_name, "stream": False},
+            )
+            resp.raise_for_status()
+
     try:
-        resp = client.post(
-            "/api/pull",
-            json={"name": model_name, "stream": False},
-        )
-        resp.raise_for_status()
+        await _asyncio.to_thread(_do_pull)
     except (_httpx.ConnectError, _httpx.TimeoutException) as exc:
         raise HTTPException(status_code=502, detail=f"Ollama unreachable: {exc}")
     except _httpx.HTTPStatusError as exc:
@@ -782,8 +793,6 @@ async def pull_model(request: Request):
             status_code=exc.response.status_code,
             detail=f"Ollama error: {exc.response.text[:300]}",
         )
-    finally:
-        client.close()
 
     return {"status": "ok", "model": model_name}
 
@@ -796,17 +805,23 @@ async def delete_model(model_name: str, request: Request):
     if engine_name != "ollama" and getattr(engine, "engine_id", "") != "ollama":
         raise HTTPException(status_code=501, detail="Only supported with Ollama engine")
 
+    import asyncio as _asyncio
+
     import httpx as _httpx
 
     host = getattr(engine, "_host", "http://localhost:11434")
-    client = _httpx.Client(base_url=host, timeout=30.0)
+
+    def _do_delete() -> None:
+        with _httpx.Client(base_url=host, timeout=30.0) as client:
+            resp = client.request(
+                "DELETE",
+                "/api/delete",
+                json={"name": model_name},
+            )
+            resp.raise_for_status()
+
     try:
-        resp = client.request(
-            "DELETE",
-            "/api/delete",
-            json={"name": model_name},
-        )
-        resp.raise_for_status()
+        await _asyncio.to_thread(_do_delete)
     except (_httpx.ConnectError, _httpx.TimeoutException) as exc:
         raise HTTPException(status_code=502, detail=f"Ollama unreachable: {exc}")
     except _httpx.HTTPStatusError as exc:
@@ -814,8 +829,6 @@ async def delete_model(model_name: str, request: Request):
             status_code=exc.response.status_code,
             detail=f"Ollama error: {exc.response.text[:300]}",
         )
-    finally:
-        client.close()
 
     return {"status": "deleted", "model": model_name}
 

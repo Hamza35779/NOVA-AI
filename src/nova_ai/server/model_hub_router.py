@@ -11,6 +11,8 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from nova_ai.core.utils import soft_fail
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/models/hub", tags=["model_hub"])
 
@@ -26,14 +28,22 @@ class InstallModelRequest(BaseModel):
 @router.get("/catalog")
 async def get_model_catalog() -> Dict[str, Any]:
     """Return curated model catalog grouped by categories with install state."""
-    # Discover currently installed models
+    # Discover currently installed models. list_models() performs a blocking
+    # HTTP call to Ollama — push it to a worker thread so the event loop
+    # isn't stalled while Ollama is slow to answer.
+    import asyncio as _asyncio
+
     installed_models = set()
-    try:
+
+    def _list_installed() -> set:
         from nova_ai.engine.ollama import OllamaEngine
-        ollama = OllamaEngine()
-        installed_models.update(ollama.list_models())
-    except Exception:
-        pass
+
+        return set(OllamaEngine().list_models())
+
+    try:
+        installed_models.update(await _asyncio.to_thread(_list_installed))
+    except Exception as exc:
+        soft_fail(logger, exc, "optional server subsystem")
 
     curated = [
         {
@@ -169,7 +179,8 @@ async def install_model(body: InstallModelRequest):
                             continue
                         try:
                             data = json.loads(line)
-                        except Exception:
+                        except Exception as exc:
+                            soft_fail(logger, exc, "optional server subsystem")
                             continue
                         status = data.get("status", "")
                         total = data.get("total", 0)
@@ -204,6 +215,11 @@ async def stream_install_progress(task_id: str):
             if info.get("done") or info.get("error"):
                 break
             await asyncio.sleep(0.5)
+        # Terminal event reached — drop the completed entry so the module-level
+        # dict doesn't grow without bound across many installs. Sleep one tick
+        # first so the frontend's last poll still finds the final state.
+        await asyncio.sleep(0.5)
+        _download_progress.pop(task_id, None)
 
     return StreamingResponse(
         _generator(),

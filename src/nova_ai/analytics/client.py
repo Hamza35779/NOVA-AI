@@ -24,6 +24,7 @@ from nova_ai.analytics.identity import (
 )
 from nova_ai.analytics.redaction import redact
 from nova_ai.core.config import AnalyticsConfig
+from nova_ai.core.utils import soft_fail
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +108,8 @@ class AnalyticsClient:
             return
         try:
             self._posthog.flush()
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional analytics step")
 
     def shutdown(self) -> None:
         """Flush and close the SDK. Call once on process exit."""
@@ -118,8 +119,8 @@ class AnalyticsClient:
             try:
                 self._posthog.flush()
                 self._posthog.shutdown()
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional analytics step")
             self._posthog = None
             self._enabled = False
 

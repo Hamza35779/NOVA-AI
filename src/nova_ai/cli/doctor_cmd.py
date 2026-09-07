@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,9 @@ from rich.console import Console
 from rich.table import Table
 
 from nova_ai.core.config import DEFAULT_CONFIG_PATH, load_config
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -65,8 +69,8 @@ def _ensure_engines_imported() -> None:
     """Import engine modules to trigger registration decorators."""
     try:
         import nova_ai.engine  # noqa: F401
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional CLI step")
 
 
 def _get_config() -> Any:
@@ -143,7 +147,8 @@ def _check_models() -> List[CheckResult]:
                             details="Pull a model (e.g. `ollama pull qwen3.5:2b`).",
                         )
                     )
-        except Exception:
+        except Exception as exc:
+            soft_fail(logger, exc, "optional CLI step")
             continue
 
     return results
@@ -187,7 +192,8 @@ def _check_default_model() -> CheckResult:
                         "ok",
                         f"{default_model} (on {key})",
                     )
-        except Exception:
+        except Exception as exc:
+            soft_fail(logger, exc, "optional CLI step")
             continue
 
     return CheckResult(
@@ -363,6 +369,14 @@ def _results_to_dicts(checks: List[CheckResult]) -> List[Dict[str, Any]]:
 def doctor(as_json: bool) -> None:
     """Run diagnostic checks on your NOVA AI installation."""
     checks = _run_all_checks()
+
+    # A failing check must fail the command: CI and setup scripts gate on
+    # the exit code, and exit 0 on a broken install reads as healthy.
+    # (Warnings are informational — only "fail" blocks.)
+    if any(c.status == "fail" for c in checks):
+        if as_json:
+            click.echo(json.dumps(_results_to_dicts(checks), indent=2))
+        raise click.exceptions.Exit(code=1)
 
     if as_json:
         click.echo(json.dumps(_results_to_dicts(checks), indent=2))

@@ -7,6 +7,7 @@ the LLM (narrative synthesis), and text_to_speech (audio generation).
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
@@ -16,6 +17,9 @@ from nova_ai.agents.digest_store import DigestArtifact, DigestStore
 from nova_ai.core.paths import get_config_dir
 from nova_ai.core.registry import AgentRegistry
 from nova_ai.core.types import Message, Role, ToolCall
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 
 def _load_persona(persona_name: str) -> str:
@@ -191,8 +195,8 @@ class MorningDigestAgent(ToolUsingAgent):
                 )
                 result = self._generate(messages)
                 narrative = self._strip_think_tags(result.get("content", ""))
-        except Exception:  # noqa: BLE001
-            pass  # Evaluator failure shouldn't block digest delivery
+        except Exception as exc:  # noqa: BLE001
+            soft_fail(logger, exc, "Evaluator failure shouldn't block digest delivery")
 
         # Step 3: Generate audio via TTS
         # Strip any markdown that slipped through (##, *, -, etc.)

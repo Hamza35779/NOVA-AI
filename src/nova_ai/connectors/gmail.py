@@ -28,6 +28,7 @@ from nova_ai.connectors.oauth import (
     GOOGLE_ALL_SCOPES,
     build_google_auth_url,
     delete_tokens,
+    exchange_google_token,
     load_tokens,
     refresh_google_token,
     resolve_google_credentials,
@@ -35,6 +36,7 @@ from nova_ai.connectors.oauth import (
 )
 from nova_ai.core.config import DEFAULT_CONFIG_DIR
 from nova_ai.core.registry import ConnectorRegistry
+from nova_ai.core.utils import soft_fail
 from nova_ai.tools._stubs import ToolSpec
 
 logger = logging.getLogger(__name__)
@@ -240,9 +242,8 @@ def _html_to_text(html: str) -> str:
     try:
         extractor.feed(html)
         extractor.close()
-    except Exception:  # noqa: BLE001
-        # Parser exceptions still leave partial output in self._parts.
-        pass
+    except Exception as exc:  # noqa: BLE001
+        soft_fail(logger, exc, "optional connector")
     return extractor.get_text()
 
 
@@ -385,12 +386,51 @@ class GmailConnector(BaseConnector):
         )
 
     def handle_callback(self, code: str) -> None:
-        """Handle the OAuth callback by persisting the authorization code.
+        """Handle the OAuth callback by exchanging the authorization code.
 
-        In a full implementation this would exchange the code for tokens.
-        For now the code is saved directly as the token value.
+        Tries a full code→token exchange using stored client credentials
+        (``client_id``/``client_secret`` persisted by a pasted client pair or
+        the in-process server flow). On success the real ``access_token`` /
+        ``refresh_token`` payload is saved.
+
+        If no client credentials are stored the code cannot be exchanged, and
+        the previous behavior — persisting the one-time authorization code as
+        if it were an access token — would leave ``is_connected()`` reporting
+        healthy with a credential that can never authenticate. Instead the
+        code is stored under ``pending_code`` (never under ``token``), so
+        ``is_connected()`` stays False until a real exchange writes an access
+        token.
         """
-        save_tokens(self._credentials_path, {"token": code})
+        code = code.strip()
+        client_creds = load_tokens(self._credentials_path) or {}
+        client_id = client_creds.get("client_id", "")
+        client_secret = client_creds.get("client_secret", "")
+        if client_id and client_secret:
+            try:
+                tokens = exchange_google_token(code, client_id, client_secret)
+            except Exception as exc:
+                logger.warning(
+                    "Gmail OAuth code exchange failed: %s — existing "
+                    "credentials left intact, code discarded",
+                    exc,
+                )
+                raise
+            save_tokens(
+                self._credentials_path,
+                {
+                    "access_token": tokens.get("access_token", ""),
+                    "token": tokens.get("access_token", ""),
+                    "refresh_token": tokens.get("refresh_token", ""),
+                    "token_type": tokens.get("token_type", "Bearer"),
+                    "expires_in": tokens.get("expires_in", 3600),
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                },
+            )
+            return
+        # No client credentials to exchange with — do NOT write the one-time
+        # code under "token"; it would corrupt the credentials file.
+        save_tokens(self._credentials_path, {"pending_code": code})
 
     def sync(
         self,

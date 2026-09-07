@@ -138,26 +138,43 @@ def race_models(
             metadata={"race": True, "success": success},
         )
         candidates.append(
-            {"model": model, "node_id": node_id, "content": content}
+            {"model": model, "node_id": node_id, "content": content, "success": success}
         )
 
     if not candidates:
         raise ValueError("race_models requires at least one model")
 
-    if judge is not None and len(candidates) > 1 and candidates[0]["content"]:
+    ok_candidates = [c for c in candidates if c["success"]]
+    if not ok_candidates:
+        # Every candidate failed to generate — recording a preference pair
+        # would poison the DPO lane with error-text answers. Still return
+        # the candidates (nodes carry metadata.success=False) for callers
+        # that want to inspect or retry the race.
+        logger.warning(
+            "race: all %d candidates failed generation; no preference pair recorded",
+            len(candidates),
+        )
+        return {
+            "candidates": candidates,
+            "winner_node_id": "",
+            "winner_model": "",
+            "pair_id": "",
+        }
+
+    if judge is not None and len(ok_candidates) > 1 and ok_candidates[0]["content"]:
         verdict = _judge_answer(
             judge,
             prompt_path,
-            candidates[0]["content"],
-            candidates[1]["content"],
+            ok_candidates[0]["content"],
+            ok_candidates[1]["content"],
             judge_model=judge_model,
         )
         if verdict == "b":
-            candidates = [candidates[1], candidates[0]]
+            ok_candidates = [ok_candidates[1], ok_candidates[0]]
     # Without a judge (or with a single model) the first answer wins.
 
-    winner = candidates[0]
-    losers = [c for c in candidates if c["node_id"] != winner["node_id"]]
+    winner = ok_candidates[0]
+    losers = [c for c in ok_candidates if c["node_id"] != winner["node_id"]]
     pair_id = store.add_sibling_choice(
         parent["conversation_id"],
         prompt_path,

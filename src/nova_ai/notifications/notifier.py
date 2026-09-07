@@ -1,4 +1,10 @@
-"""Desktop notification dispatcher with SSE subscriber broadcasting."""
+"""Desktop notification dispatcher with SSE subscriber broadcasting.
+
+Only the Windows PowerShell balloon path actually raises an OS-level
+toast; on macOS and Linux ``send()`` persists the record and broadcasts
+it to SSE subscribers (the UI notification center) but no native OS
+notification is shown.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +19,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from nova_ai.core.paths import get_config_dir
+from nova_ai.core.utils import soft_fail
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +48,8 @@ def _broadcast_sse(payload: dict) -> None:
     for q in queues:
         try:
             q.put_nowait(msg)
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional notification step")
 
 
 class NotificationDispatcher:
@@ -77,7 +84,11 @@ class NotificationDispatcher:
         urgency: str = "normal",
         action_url: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Send a notification: save to DB, trigger desktop alert, and broadcast SSE."""
+        """Send a notification: save to DB, trigger desktop alert, and broadcast SSE.
+
+        The OS-level toast is Windows-only; on other platforms the record
+        still lands in history and the SSE stream (UI notification center).
+        """
         notif_id = str(uuid.uuid4())[:8]
         now = time.time()
 
@@ -100,7 +111,8 @@ class NotificationDispatcher:
             "read": False,
         }
 
-        # Desktop alert (Windows PowerShell toast / fallback)
+        # Desktop alert (Windows PowerShell toast; no-op elsewhere — the
+        # SSE broadcast below is the cross-platform delivery path)
         self._trigger_os_notification(title, message)
 
         # Broadcast to UI

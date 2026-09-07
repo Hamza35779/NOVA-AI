@@ -51,6 +51,7 @@ cloud model, and gpt-5-mini).
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 import tempfile
@@ -77,6 +78,9 @@ from nova_ai.agents.hybrid.mini_swe_agent import (
     run_swe_agent_loop,
 )
 from nova_ai.core.registry import AgentRegistry
+from nova_ai.core.utils import soft_fail
+
+logger = logging.getLogger(__name__)
 
 ORCHESTRATOR_SYS = """\
 You are a tool-orchestrating agent. You coordinate a pool of workers to answer the user's question. Each turn you MUST emit exactly one JSON object — no prose, no markdown fences — taking one of two forms:
@@ -418,8 +422,8 @@ def _call_modal_python(code: str, timeout_s: int = 60) -> Tuple[str, int]:
         rc = sb.returncode if sb.returncode is not None else -1
         try:
             sb.terminate()
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional agent step")
         combined = out + (("\n" + err) if err else "")
         if len(combined) > 8192:
             combined = combined[:8192] + "\n... (output truncated)"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -116,6 +117,10 @@ class TraceStore:
         except sqlite3.OperationalError:
             pass  # Column already exists
         self._conn.commit()
+        # check_same_thread=False means writes can originate from any
+        # thread; serialize execute+commit pairs so a trace is never left
+        # half-written (rows without steps) by interleaved writers.
+        self._lock = threading.Lock()
 
     def save(self, trace: Trace) -> None:
         """Persist a complete trace with all its steps.
@@ -126,44 +131,48 @@ class TraceStore:
         avoids re-saving the same trace by keeping the ``TraceCollector`` the
         single writer — see ``server/app.py`` — rather than swallowing
         collisions here.
+
+        The trace row and its steps commit atomically: a crash mid-save
+        leaves no trace at all rather than a trace without steps.
         """
-        self._conn.execute(
-            _INSERT_TRACE,
-            (
-                trace.trace_id,
-                trace.query,
-                trace.agent,
-                trace.model,
-                trace.engine,
-                trace.result,
-                trace.outcome,
-                trace.feedback,
-                trace.started_at,
-                trace.ended_at,
-                trace.total_tokens,
-                trace.total_latency_seconds,
-                json.dumps(trace.metadata),
-                json.dumps(trace.messages),
-                trace.total_cost_usd,
-            ),
-        )
-        for idx, step in enumerate(trace.steps):
+        with self._lock:
             self._conn.execute(
-                _INSERT_STEP,
+                _INSERT_TRACE,
                 (
                     trace.trace_id,
-                    idx,
-                    step.step_type.value
-                    if isinstance(step.step_type, StepType)
-                    else step.step_type,
-                    step.timestamp,
-                    step.duration_seconds,
-                    json.dumps(step.input),
-                    json.dumps(step.output),
-                    json.dumps(step.metadata),
+                    trace.query,
+                    trace.agent,
+                    trace.model,
+                    trace.engine,
+                    trace.result,
+                    trace.outcome,
+                    trace.feedback,
+                    trace.started_at,
+                    trace.ended_at,
+                    trace.total_tokens,
+                    trace.total_latency_seconds,
+                    json.dumps(trace.metadata),
+                    json.dumps(trace.messages),
+                    trace.total_cost_usd,
                 ),
             )
-        self._conn.commit()
+            for idx, step in enumerate(trace.steps):
+                self._conn.execute(
+                    _INSERT_STEP,
+                    (
+                        trace.trace_id,
+                        idx,
+                        step.step_type.value
+                        if isinstance(step.step_type, StepType)
+                        else step.step_type,
+                        step.timestamp,
+                        step.duration_seconds,
+                        json.dumps(step.input),
+                        json.dumps(step.output),
+                        json.dumps(step.metadata),
+                    ),
+                )
+            self._conn.commit()
 
     def get(self, trace_id: str) -> Optional[Trace]:
         """Retrieve a trace by id, or ``None`` if not found."""
@@ -261,11 +270,12 @@ class TraceStore:
 
         Returns True if the trace was found and updated, False otherwise.
         """
-        cursor = self._conn.execute(
-            "UPDATE traces SET feedback = ? WHERE trace_id = ?",
-            (score, trace_id),
-        )
-        self._conn.commit()
+        with self._lock:
+            cursor = self._conn.execute(
+                "UPDATE traces SET feedback = ? WHERE trace_id = ?",
+                (score, trace_id),
+            )
+            self._conn.commit()
         return cursor.rowcount > 0
 
     def close(self) -> None:

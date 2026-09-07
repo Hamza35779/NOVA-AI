@@ -75,6 +75,23 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _now_in_tz(tz_name: str) -> Optional[datetime]:
+    """Return aware ``datetime.now()`` in *tz_name*, or None if unknown.
+
+    A bad/missing timezone name falls back to None so the caller can use
+    UTC rather than crashing the scheduler poll loop.
+    """
+    if not tz_name:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        logger.warning("Unknown timezone %r — evaluating cron in UTC", tz_name)
+        return None
+
+
 class TaskScheduler:
     """Scheduler that polls for due tasks and executes them.
 
@@ -108,6 +125,16 @@ class TaskScheduler:
 
     # -- Public API ----------------------------------------------------------
 
+    def set_system(self, system: Any) -> None:
+        """Attach the execution system after construction.
+
+        The scheduler is typically built before the ``NovaSystem`` exists
+        (builder wires components in stages), so ``system`` can't always be
+        passed to ``__init__``. Without this setter every due task would
+        fall into the ``[dry-run]`` branch and be logged as a success.
+        """
+        self._system = system
+
     def start(self) -> None:
         """Start the background polling daemon thread."""
         if self._thread is not None and self._thread.is_alive():
@@ -134,9 +161,18 @@ class TaskScheduler:
         schedule_value: str,
         **kwargs: Any,
     ) -> ScheduledTask:
-        """Create and persist a new scheduled task."""
+        """Create and persist a new scheduled task.
+
+        Callers may pass ``task_id=`` to pin a deterministic ID (used by
+        OperatorManager, whose lifecycle verbs all target
+        ``operator:{id}``); otherwise a random ID is generated. Creating
+        with a random ID and then re-saving under a different ID would leave
+        TWO rows — the phantom random-ID task keeps firing while
+        pause/resume/cancel only see the deterministic one.
+        """
+        task_id = kwargs.get("task_id") or uuid.uuid4().hex[:16]
         task = ScheduledTask(
-            id=uuid.uuid4().hex[:16],
+            id=task_id,
             prompt=prompt,
             schedule_type=schedule_type,
             schedule_value=schedule_value,
@@ -252,7 +288,9 @@ class TaskScheduler:
                         else task.tools.split(",")
                     )
                     tools_list = (
-                        [t.strip() for t in raw_tools if t.strip()] if task.tools else []
+                        [t.strip() for t in raw_tools if t.strip()]
+                        if task.tools
+                        else []
                     )
                     ask_kwargs: Dict[str, Any] = {
                         "agent": task.agent,
@@ -334,7 +372,9 @@ class TaskScheduler:
         # Optional DPO lane: metadata {"kind": "train", "lane": "dpo"}.
         lane = "dpo" if (task.metadata or {}).get("lane") == "dpo" else "sft"
         if lane == "dpo" and not getattr(config, "dpo_enabled", False):
-            return "[train] lane=dpo but learning.training.dpo_enabled is false; skipping"
+            return (
+                "[train] lane=dpo but learning.training.dpo_enabled is false; skipping"
+            )
 
         record = run_scheduled_training(
             trace_store=self._training_trace_store(),
@@ -633,7 +673,14 @@ class TaskScheduler:
             return next_time.isoformat()
 
         if task.schedule_type == "cron":
-            return self._compute_next_cron(task.schedule_value, now)
+            # Cron wall-clock fields ("0 6 * * *" = 6am) must be evaluated in
+            # the task's LOCAL timezone, not UTC — otherwise a 6am briefing
+            # fires at 6am UTC (10pm/11pm previous day in the US). The
+            # timezone comes from task metadata; callers like the digest
+            # schedule and proactive agent already record it there.
+            tz_name = (task.metadata or {}).get("timezone", "")
+            now_local = _now_in_tz(tz_name) or now
+            return self._compute_next_cron(task.schedule_value, now_local)
 
         return None
 
@@ -642,7 +689,9 @@ class TaskScheduler:
         """Compute the next run time from a cron expression.
 
         Uses ``croniter`` if available, otherwise falls back to a basic
-        minute-granularity parser for simple expressions.
+        minute-granularity parser for simple expressions. The expression is
+        interpreted in *now*'s timezone — pass an aware local datetime for
+        wall-clock semantics.
         """
         try:
             from croniter import croniter  # type: ignore[import-untyped]

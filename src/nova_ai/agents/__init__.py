@@ -30,6 +30,11 @@ except ImportError:
     pass
 
 try:
+    import nova_ai.agents.self_healing  # noqa: F401
+except ImportError:
+    pass
+
+try:
     import nova_ai.agents.native_openhands  # noqa: F401
 except ImportError:
     pass
@@ -81,6 +86,11 @@ except ImportError:
 
 try:
     import nova_ai.agents.morning_digest  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import nova_ai.agents.proactive_agent  # noqa: F401
 except ImportError:
     pass
 

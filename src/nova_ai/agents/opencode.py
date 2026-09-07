@@ -26,6 +26,7 @@ from nova_ai.agents._stubs import AgentContext, AgentResult, BaseAgent
 from nova_ai.core.events import EventBus
 from nova_ai.core.registry import AgentRegistry
 from nova_ai.core.types import ToolResult
+from nova_ai.core.utils import soft_fail
 from nova_ai.engine._stubs import InferenceEngine
 
 logger = logging.getLogger(__name__)
@@ -238,6 +239,10 @@ class OpenCodeAgent(BaseAgent):
             text=True,
         )
         # Parse the "listening on <url>" line from startup output.
+        # NB: the loop used to `continue` on an empty line while the process
+        # was still alive — a 100%-CPU busy-wait (readline() only blocks until
+        # the next newline, and a quiet server emits nothing). A short sleep
+        # between polls keeps the wait bounded and the CPU idle.
         deadline = time.monotonic() + 60
         base = ""
         assert self._proc.stdout is not None
@@ -246,6 +251,7 @@ class OpenCodeAgent(BaseAgent):
             if not line:
                 if self._proc.poll() is not None:
                     raise RuntimeError("opencode server exited during startup")
+                time.sleep(0.1)
                 continue
             m = _LISTENING_RE.search(line)
             if m:
@@ -276,8 +282,8 @@ class OpenCodeAgent(BaseAgent):
             try:
                 with self._client() as c:
                     c.post("/global/dispose")
-            except Exception:
-                pass
+            except Exception as exc:
+                soft_fail(logger, exc, "optional agent step")
         if self._proc and self._proc.poll() is None:
             self._proc.terminate()
             try:

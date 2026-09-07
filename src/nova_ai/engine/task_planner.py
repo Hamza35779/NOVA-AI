@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.engine.self_optimizer import get_optimizer
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,8 @@ def _emit_task_event(plan_id: str, event: dict) -> None:
     for q in queues:
         try:
             q.put_nowait(payload)
-        except Exception:
-            pass
+        except Exception as exc:
+            soft_fail(logger, exc, "optional engine capability")
 
 
 def subscribe_to_plan(plan_id: str, queue) -> None:
@@ -52,7 +53,6 @@ def unsubscribe_from_plan(plan_id: str, queue) -> None:
                 _plan_queues[plan_id].remove(queue)
             except ValueError:
                 pass
-
 
 
 class TaskStatus(str, Enum):
@@ -189,13 +189,30 @@ class TaskPlanner:
             for task in ready:
                 self._execute_task(task, plan, optimizer)
 
-            # Check for deadlocks — remaining pending tasks with unmet deps
-            pending = [t for t in plan.tasks if t.status == TaskStatus.PENDING]
-            if pending and not ready:
-                for t in pending:
-                    t.status = TaskStatus.BLOCKED
-                    t.error = "Blocked by failed or missing dependency"
+            # The batch ran: retry any still-pending tasks on the next pass
+            # (a FAILED task's dependents stay unrunnable, but a PENDING one
+            # whose deps later completed gets another chance).
+            if not self.get_ready_tasks(plan):
                 break
+
+        # Any remaining pending tasks are deadlocked: their dependencies
+        # failed or don't exist. The old check compared the *previous*
+        # ready batch to pending, so this branch was unreachable and
+        # deadlocked tasks stayed PENDING forever.
+        pending = [t for t in plan.tasks if t.status == TaskStatus.PENDING]
+        for t in pending:
+            unmet = [
+                dep
+                for dep in t.depends_on
+                if dep
+                not in {
+                    x.id
+                    for x in plan.tasks
+                    if x.status in (TaskStatus.COMPLETED, TaskStatus.SKIPPED)
+                }
+            ]
+            t.status = TaskStatus.BLOCKED
+            t.error = f"Blocked by unmet dependency: {', '.join(unmet) or 'unknown'}"
 
         all_done = all(
             t.status in (TaskStatus.COMPLETED, TaskStatus.SKIPPED, TaskStatus.BLOCKED)
@@ -209,12 +226,15 @@ class TaskPlanner:
             plan.status = TaskStatus.FAILED
         plan.completed_at = time.time()
 
-        _emit_task_event(plan.id, {
-            "type": "plan_complete",
-            "plan_id": plan.id,
-            "status": plan.status.value,
-            "progress": plan.progress,
-        })
+        _emit_task_event(
+            plan.id,
+            {
+                "type": "plan_complete",
+                "plan_id": plan.id,
+                "status": plan.status.value,
+                "progress": plan.progress,
+            },
+        )
 
         optimizer.record(
             component="task_planner",
@@ -229,16 +249,19 @@ class TaskPlanner:
     def _execute_task(self, task: SubTask, plan: TaskPlan, optimizer: Any) -> None:
         """Execute a single subtask with retry logic."""
         task.status = TaskStatus.RUNNING
-        _emit_task_event(plan.id, {
-            "type": "task_update",
-            "plan_id": plan.id,
-            "task_id": task.id,
-            "title": task.title,
-            "status": task.status.value,
-            "tool_name": task.tool_name,
-            "retries": task.retries,
-            "duration_ms": task.duration_ms,
-        })
+        _emit_task_event(
+            plan.id,
+            {
+                "type": "task_update",
+                "plan_id": plan.id,
+                "task_id": task.id,
+                "title": task.title,
+                "status": task.status.value,
+                "tool_name": task.tool_name,
+                "retries": task.retries,
+                "duration_ms": task.duration_ms,
+            },
+        )
         logger.info("Executing task [%s]: %s", task.id, task.title)
 
         for attempt in range(task.max_retries + 1):
@@ -262,16 +285,19 @@ class TaskPlanner:
                 task.status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
 
                 if success:
-                    _emit_task_event(plan.id, {
-                        "type": "task_update",
-                        "plan_id": plan.id,
-                        "task_id": task.id,
-                        "title": task.title,
-                        "status": task.status.value,
-                        "tool_name": task.tool_name,
-                        "retries": task.retries,
-                        "duration_ms": task.duration_ms,
-                    })
+                    _emit_task_event(
+                        plan.id,
+                        {
+                            "type": "task_update",
+                            "plan_id": plan.id,
+                            "task_id": task.id,
+                            "title": task.title,
+                            "status": task.status.value,
+                            "tool_name": task.tool_name,
+                            "retries": task.retries,
+                            "duration_ms": task.duration_ms,
+                        },
+                    )
                     optimizer.record(
                         component=f"task:{task.tool_name or 'manual'}",
                         action=task.title,
@@ -298,16 +324,19 @@ class TaskPlanner:
                     continue
 
                 task.status = TaskStatus.FAILED
-                _emit_task_event(plan.id, {
-                    "type": "task_update",
-                    "plan_id": plan.id,
-                    "task_id": task.id,
-                    "title": task.title,
-                    "status": task.status.value,
-                    "tool_name": task.tool_name,
-                    "retries": task.retries,
-                    "duration_ms": task.duration_ms,
-                })
+                _emit_task_event(
+                    plan.id,
+                    {
+                        "type": "task_update",
+                        "plan_id": plan.id,
+                        "task_id": task.id,
+                        "title": task.title,
+                        "status": task.status.value,
+                        "tool_name": task.tool_name,
+                        "retries": task.retries,
+                        "duration_ms": task.duration_ms,
+                    },
+                )
                 optimizer.record(
                     component=f"task:{task.tool_name or 'manual'}",
                     action=task.title,
@@ -318,16 +347,19 @@ class TaskPlanner:
                 return
 
         task.status = TaskStatus.FAILED
-        _emit_task_event(plan.id, {
-            "type": "task_update",
-            "plan_id": plan.id,
-            "task_id": task.id,
-            "title": task.title,
-            "status": task.status.value,
-            "tool_name": task.tool_name,
-            "retries": task.retries,
-            "duration_ms": task.duration_ms,
-        })
+        _emit_task_event(
+            plan.id,
+            {
+                "type": "task_update",
+                "plan_id": plan.id,
+                "task_id": task.id,
+                "title": task.title,
+                "status": task.status.value,
+                "tool_name": task.tool_name,
+                "retries": task.retries,
+                "duration_ms": task.duration_ms,
+            },
+        )
 
     def get_plan(self, plan_id: str) -> Optional[TaskPlan]:
         return self._plans.get(plan_id)
@@ -378,13 +410,24 @@ class TaskPlanner:
                 task.error = "Cancelled by user"
         plan.status = TaskStatus.FAILED
         plan.completed_at = time.time()
-        _emit_task_event(plan_id, {
-            "type": "plan_complete",
-            "plan_id": plan_id,
-            "status": "cancelled",
-            "progress": plan.progress,
-        })
+        _emit_task_event(
+            plan_id,
+            {
+                "type": "plan_complete",
+                "plan_id": plan_id,
+                "status": "cancelled",
+                "progress": plan.progress,
+            },
+        )
         return True
 
 
-__all__ = ["TaskPlanner", "TaskPlan", "SubTask", "TaskStatus", "subscribe_to_plan", "unsubscribe_from_plan", "_emit_task_event"]
+__all__ = [
+    "TaskPlanner",
+    "TaskPlan",
+    "SubTask",
+    "TaskStatus",
+    "subscribe_to_plan",
+    "unsubscribe_from_plan",
+    "_emit_task_event",
+]

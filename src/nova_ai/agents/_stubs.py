@@ -189,7 +189,15 @@ class BaseAgent(ABC):
             engine_id = getattr(self._engine, "engine_id", "")
             self._bus.publish(
                 EventType.INFERENCE_START,
-                {"model": self._model, "engine": engine_id},
+                {
+                    "model": self._model,
+                    "engine": engine_id,
+                    # The AgentExecutor's activity subscriber filters by
+                    # ``event.data["agent"] == agent_id``; without this key
+                    # last_activity_at froze at tick start for the whole
+                    # (potentially multi-minute) inference.
+                    "agent": self.agent_id,
+                },
             )
 
         result = self._engine.generate(

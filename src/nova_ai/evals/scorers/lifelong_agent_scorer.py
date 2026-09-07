@@ -39,6 +39,7 @@ import sqlite3
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
+from nova_ai.core.utils import soft_fail
 from nova_ai.evals.core.scorer import Scorer
 from nova_ai.evals.core.types import EvalRecord
 
@@ -782,8 +783,8 @@ def _evaluate_os_in_docker(
                 "Build the original's Docker image for faithful evaluation.",
                 image,
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        soft_fail(logger, exc, "optional eval step")
 
     try:
         subprocess.run(
