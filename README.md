@@ -37,6 +37,7 @@ Pick your platform and start in seconds:
 
 | Platform | Quick Launch | Installation One-liner |
 |---|---|---|
+| **Windows (Setup EXE, no Python)** | Double-click `NOVA-AI-Setup-1.2.4.exe` | [Latest Release](https://github.com/Hamza35779/NOVA-AI/releases) |
 | **Windows (1-Click)** | Double-click `start.bat` | `irm https://hamza35779.github.io/NOVA-AI/install.ps1 \| iex` or run `install.bat` |
 | **Linux · macOS** | `./start.sh` | `curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh \| bash` |
 | **Docker** | `docker compose -f deploy/docker/docker-compose.yml up` | Containerized setup with local Ollama engine |

@@ -4,6 +4,16 @@ Phase-1 of the native-Windows-support RFC (#298). Mirrors the Linux
 (`deploy/systemd/`) and macOS (`deploy/launchd/`) deployments — but for
 PowerShell, without WSL2 or Docker.
 
+There are now **two Windows install paths**:
+
+- **Setup installer (no Python needed)** — download `NOVA-AI-Setup-<version>.exe`
+  from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases) and run it.
+  It packages the self-contained PyInstaller backend (`deploy/windows/nova-ai-setup.iss`),
+  installs to `%LOCALAPPDATA%\Programs\NOVA AI`, and needs no Python / git / uv.
+- **Source install (this document)** — the `install.ps1` one-liner below clones the
+  repo and sets up a uv-managed Python environment. Use it when you want the CLI
+  (`nova ...`), source access, or the auto-start scheduled task.
+
 ## One-liner install
 
 In an elevated-or-regular PowerShell:

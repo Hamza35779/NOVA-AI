@@ -11,6 +11,22 @@ NOVA AI runs entirely on your hardware. Choose the interface that fits your work
 
 ---
 
+## Windows Setup EXE (no Python required)
+
+The fastest path on Windows — a per-user installer that bundles everything:
+
+1. Download `NOVA-AI-Setup-<version>.exe` from the
+   [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
+2. Run it. Installs to `%LOCALAPPDATA%\Programs\NOVA AI` (no admin required),
+   with optional shortcuts and an "Add to PATH" checkbox.
+3. Launch **NOVA AI** from the Start Menu, then open `http://localhost:8000`.
+
+Built from `deploy/windows/nova-ai-setup.iss` over the PyInstaller ONEDIR
+backend (`nova-ai-windows-x64.spec`) — embeds Python 3.13 and the web
+workstation UI, so no runtime dependencies need installing.
+
+---
+
 ## Browser App
 
 Run the full chat UI in your browser. Everything stays local — the backend runs on

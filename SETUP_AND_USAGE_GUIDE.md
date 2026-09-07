@@ -46,11 +46,19 @@ Choose the method that best fits your environment:
 ### Method A: Standalone Windows Executable (Easiest)
 *No Python, Node.js, or external runtimes required.*
 
-1. Download `nova-ai-windows-x64.zip` or `nova-ai-windows-x64.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases) or your `dist/` directory.
+**Option 1 — Setup Installer (recommended):**
+
+1. Download `NOVA-AI-Setup-1.2.4.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
+2. Run it — installs to `%LOCALAPPDATA%\Programs\NOVA AI` (per-user, no admin required), with optional Start Menu / Desktop shortcuts and a "Add to PATH" checkbox.
+3. Launch **NOVA AI** from the Start Menu (or run `nova-ai-windows-x64 serve` from any terminal).
+
+**Option 2 — Portable ZIP:**
+
+1. Download `nova-ai-windows-x64.zip` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases) or your `dist/` directory.
 2. Extract the `.zip` archive to a folder of your choice (e.g. `C:\Program Files\NOVA AI` or `D:\NOVA AI`).
-3. Double-click `nova-ai.exe` or launch it via PowerShell / Command Prompt:
+3. Double-click `nova-ai-windows-x64.exe` or launch it via PowerShell / Command Prompt:
    ```powershell
-   .\nova-ai.exe serve
+   .\nova-ai-windows-x64.exe serve
    ```
 4. Open your browser to: **`http://localhost:8000`**
 
