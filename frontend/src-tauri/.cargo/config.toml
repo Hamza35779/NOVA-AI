@@ -1,0 +1,18 @@
+
+
+# NOVA AI Desktop builds with the GNU toolchain on this machine — the
+# installed VS BuildTools has no MSVC linker, so the msvc target fails
+# with "link: extra operand" (cargo picks up Git Bash's /usr/bin/link).
+# See rust/crates README / memory note: always build with
+# cargo +1.90-x86_64-pc-windows-gnu or this pinned default target.
+#
+# windres (via embed-resource → tauri-winres) shells its default
+# preprocessor through cmd's popen, which breaks on paths containing
+# spaces ("D:\My Softwares\..."). The wrapper batch uses the 8.3 short
+# path and quoted quoting so preprocessing succeeds. The windres
+# override itself is applied by the build.rs wrapper in this crate.
+[build]
+target = "x86_64-pc-windows-gnu"
+
+[target.x86_64-pc-windows-gnu]
+linker = "C:/Users/D E L L/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/gcc.exe"

@@ -126,6 +126,31 @@ class MorningDigestAgent(ToolUsingAgent):
             sources.update(section_sources)
         return list(sources)
 
+    def _notify_digest_ready(self, artifact: DigestArtifact) -> None:
+        """Fire a desktop notification once the digest is stored.
+
+        Covers every delivery path (scheduler, CLI, server) in one place.
+        Notification failures must never fail the digest itself.
+        """
+        try:
+            from nova_ai.notifications.notifier import get_notifier
+
+            first_sentence = artifact.text.split(". ", 1)[0].strip()
+            if len(first_sentence) > 140:
+                first_sentence = first_sentence[:137].rstrip() + "..."
+            has_audio = bool(artifact.audio_path) and artifact.audio_path.exists()
+            message = first_sentence or "Your morning briefing is ready."
+            if has_audio:
+                message += "\nClick to open the digest player."
+            get_notifier().send(
+                title="Morning digest ready",
+                message=message,
+                urgency="normal",
+                action_url="/digest",
+            )
+        except Exception as exc:  # noqa: BLE001
+            soft_fail(logger, exc, "Digest notification failure shouldn't block delivery")
+
     def run(
         self,
         input: str,
@@ -242,6 +267,8 @@ class MorningDigestAgent(ToolUsingAgent):
         store = DigestStore(db_path=self._digest_store_path)
         store.save(artifact)
         store.close()
+
+        self._notify_digest_ready(artifact)
 
         self._emit_turn_end(turns=1)
         return AgentResult(

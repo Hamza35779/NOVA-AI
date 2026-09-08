@@ -20,6 +20,7 @@ from nova_ai.cli.config_cmd import config
 from nova_ai.cli.connect_cmd import connect
 from nova_ai.cli.conversation_cmd import conversation
 from nova_ai.cli.daemon_cmd import restart, start, status, stop
+from nova_ai.cli.dev_watch_cmd import dev_watch
 from nova_ai.cli.digest_cmd import digest
 from nova_ai.cli.doctor_cmd import doctor
 from nova_ai.cli.eval_cmd import eval_group
@@ -145,6 +146,7 @@ cli.add_command(config, "config")
 cli.add_command(scan, "scan")
 cli.add_command(connect, "connect")
 cli.add_command(digest, "digest")
+cli.add_command(dev_watch, "dev-watch")
 cli.add_command(router_cmd, "router")
 cli.add_command(voice, "voice")
 cli.add_command(clip, "clip")

@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default permissions for NOVA AI Desktop",
-  "windows": ["main"],
+  "windows": ["main", "quick-capture"],
   "permissions": [
     "core:default",
     "notification:default",

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import os
+import platform
 import subprocess
 import threading
 from typing import Optional
@@ -13,9 +16,32 @@ from rich.markdown import Markdown
 from nova_ai.agents.digest_store import DigestStore
 from nova_ai.core.config import DEFAULT_CONFIG_PATH, load_config
 
+logger = logging.getLogger(__name__)
+
+
+def _play_audio_windows(audio_path: str) -> None:
+    """Play an audio file on Windows, wav via winsound and mp3 via the
+    default associated media player."""
+    if audio_path.lower().endswith(".wav"):
+        try:
+            import winsound
+
+            winsound.PlaySound(audio_path, winsound.SND_FILENAME | winsound.SND_SYNC)
+            return
+        except (ImportError, Exception):  # noqa: BLE001
+            pass
+    # mp3/m4a/ogg — hand off to the shell's default media player
+    try:
+        os.startfile(audio_path)  # type: ignore[attr-defined]  # Windows-only
+    except Exception:  # noqa: BLE001
+        logger.debug("Windows audio playback failed for %s", audio_path)
+
 
 def _play_audio(audio_path: str) -> None:
     """Play audio file in background using available system player."""
+    if platform.system() == "Windows":
+        _play_audio_windows(audio_path)
+        return
     players = ["ffplay -nodisp -autoexit", "aplay", "afplay", "paplay"]
     for player in players:
         cmd_parts = player.split() + [audio_path]

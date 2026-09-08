@@ -2,6 +2,7 @@ import { EnergyDashboard } from '../components/Dashboard/EnergyDashboard';
 import { CostComparison } from '../components/Dashboard/CostComparison';
 import { TraceDebugger } from '../components/Dashboard/TraceDebugger';
 import { HardwareGauges } from '../components/Dashboard/HardwareGauges';
+import { DevWatchFeed } from '../components/Dashboard/DevWatchFeed';
 
 export function DashboardPage() {
   const now = new Date();
@@ -37,6 +38,10 @@ export function DashboardPage() {
         </div>
 
         <TraceDebugger />
+
+        <div className="mt-4">
+          <DevWatchFeed />
+        </div>
       </div>
     </div>
   );

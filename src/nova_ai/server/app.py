@@ -19,6 +19,7 @@ from nova_ai.server.api_routes import include_all_routes
 from nova_ai.server.clipboard_router import router as clipboard_router
 from nova_ai.server.connectors_router import create_connectors_router
 from nova_ai.server.dashboard import dashboard_router
+from nova_ai.server.devwatch_router import router as devwatch_router
 from nova_ai.server.digest_routes import create_digest_router
 from nova_ai.server.gguf_hub_router import router as gguf_hub_router
 from nova_ai.server.history_router import router as history_router
@@ -347,6 +348,7 @@ def create_app(
     app.include_router(model_hub_router)
     app.include_router(gguf_hub_router)
     app.include_router(system_telemetry_router)
+    app.include_router(devwatch_router)
     from nova_ai.server.conversation_routes import router as conversation_router
 
     app.include_router(conversation_router)

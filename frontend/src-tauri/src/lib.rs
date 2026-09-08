@@ -1,3 +1,4 @@
+
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -1994,6 +1995,58 @@ async fn speech_health(api_url: String) -> Result<serde_json::Value, String> {
     Ok(body)
 }
 
+/// Label of the quick-capture popup window. Must be listed in
+/// capabilities/default.json so the webview can invoke commands.
+const QUICK_CAPTURE_LABEL: &str = "quick-capture";
+
+// ---------------------------------------------------------------------------
+// Overlay conversation persistence (shared by the quick-capture window)
+// ---------------------------------------------------------------------------
+
+fn overlay_conversation_path() -> std::path::PathBuf {
+    std::path::PathBuf::from(home_dir())
+        .join(".nova_ai")
+        .join("overlay-conversation.json")
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn overlay_load_conversation() -> String {
+    std::fs::read_to_string(overlay_conversation_path()).unwrap_or_else(|_| "[]".into())
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn overlay_save_conversation(json: &str) {
+    let path = overlay_conversation_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, json);
+}
+
+/// Read cloud API keys and return a JSON array of model IDs whose provider
+/// has a key configured. Used by the macOS native overlay panel and the
+/// cross-platform quick-capture popup.
+fn cloud_models_json() -> String {
+    let keys = read_cloud_keys();
+    let mut models: Vec<&str> = Vec::new();
+    for (name, value) in &keys {
+        if value.is_empty() {
+            continue;
+        }
+        match name.as_str() {
+            "OPENAI_API_KEY" => models.extend(["gpt-4o", "gpt-4o-mini"]),
+            "ANTHROPIC_API_KEY" => {
+                models.extend(["claude-sonnet-4-20250514", "claude-haiku-4-20250414"])
+            }
+            "GEMINI_API_KEY" | "GOOGLE_API_KEY" => {
+                models.extend(["gemini-2.5-flash", "gemini-2.5-pro"])
+            }
+            _ => {}
+        }
+    }
+    serde_json::to_string(&models).unwrap_or_else(|_| "[]".into())
+}
+
 // ---------------------------------------------------------------------------
 // Native macOS overlay — NSPanel + WKWebView, entirely bypassing Tauri's
 // window management so we get proper always-on-top, transparency, non-
@@ -2045,49 +2098,12 @@ mod native_overlay {
     }
 
     // ------------------------------------------------------------------
-    // Conversation persistence
+    // Conversation persistence lives in the parent module so both the
+    // native macOS panel and the cross-platform quick-capture window
+    // read/write the same file.
     // ------------------------------------------------------------------
 
-    fn conversation_path() -> std::path::PathBuf {
-        std::path::PathBuf::from(super::home_dir())
-            .join(".nova_ai")
-            .join("overlay-conversation.json")
-    }
-
-    pub fn load_conversation() -> String {
-        std::fs::read_to_string(conversation_path()).unwrap_or_else(|_| "[]".into())
-    }
-
-    /// Read cloud API keys and return a JSON array of model IDs
-    /// whose provider has a key configured.
-    fn cloud_models_json() -> String {
-        let keys = super::read_cloud_keys();
-        let mut models: Vec<&str> = Vec::new();
-        for (name, value) in &keys {
-            if value.is_empty() {
-                continue;
-            }
-            match name.as_str() {
-                "OPENAI_API_KEY" => models.extend(["gpt-4o", "gpt-4o-mini"]),
-                "ANTHROPIC_API_KEY" => {
-                    models.extend(["claude-sonnet-4-20250514", "claude-haiku-4-20250414"])
-                }
-                "GEMINI_API_KEY" | "GOOGLE_API_KEY" => {
-                    models.extend(["gemini-2.5-flash", "gemini-2.5-pro"])
-                }
-                _ => {}
-            }
-        }
-        serde_json::to_string(&models).unwrap_or_else(|_| "[]".into())
-    }
-
-    fn save_conversation(json: &str) {
-        let path = conversation_path();
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::write(&path, json);
-    }
+    use super::{overlay_load_conversation as load_conversation, overlay_save_conversation as save_conversation};
 
     /// Apply every transparency trick to the WKWebView.
     /// Called once at creation and again after the page finishes loading.
@@ -2242,7 +2258,7 @@ mod native_overlay {
         // Escape "</" so the JSON can't prematurely close the <script> tag.
         // ("\/" is valid JSON — resolves back to "/" when parsed.)
         let saved = load_conversation().replace("</", "<\\/");
-        let cloud = cloud_models_json();
+        let cloud = super::cloud_models_json();
         let filled = html
             .replace("__SAVED_MESSAGES__", &saved)
             .replace("__CLOUD_MODELS__", &cloud);
@@ -2354,6 +2370,83 @@ fn on_main_thread(f: impl FnOnce() + Send + 'static) {
 }
 
 // ---------------------------------------------------------------------------
+// Quick-capture popup (Windows / Linux / any non-macOS platform)
+//
+// macOS gets the native NSPanel above; everywhere else we toggle a real
+// Tauri WebviewWindow loading quick-capture.html (shipped in frontend/public,
+// so vite copies it into the bundled assets). The page pulls the saved
+// conversation and cloud models from Rust commands and talks to the backend
+// at http://127.0.0.1:<NOVA_PORT>. It persists its conversation to the same
+// ~/.nova_ai/overlay-conversation.json file so the main window's 5-second
+// `importOverlayConversation` poll picks it up unchanged.
+// ---------------------------------------------------------------------------
+
+#[cfg(not(target_os = "macos"))]
+mod quick_capture {
+    use super::QUICK_CAPTURE_LABEL;
+    use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+    /// Show the popup, creating it on first use (centered on the primary
+    /// monitor, Raycast-style). Hides again on focus loss.
+    pub fn show(app: &tauri::AppHandle) {
+        if let Some(win) = app.get_webview_window(QUICK_CAPTURE_LABEL) {
+            let _ = win.show();
+            let _ = win.set_focus();
+            return;
+        }
+        let builder = WebviewWindowBuilder::new(
+            app,
+            QUICK_CAPTURE_LABEL,
+            WebviewUrl::App("quick-capture.html".into()),
+        )
+        .title("NOVA AI Quick Capture")
+        .inner_size(560.0, 420.0)
+        .center()
+        .decorations(false)
+        .always_on_top(true)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .skip_taskbar(true)
+        .focused(true);
+
+        match builder.build() {
+            Ok(win) => {
+                // Dismiss when the user clicks another window.
+                let handle = app.clone();
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Focused(false) = event {
+                        if let Some(existing) = handle.get_webview_window(QUICK_CAPTURE_LABEL) {
+                            let _ = existing.hide();
+                        }
+                    }
+                });
+            }
+            Err(e) => eprintln!("Warning: could not create quick-capture window: {e}"),
+        }
+    }
+
+    pub fn hide(app: &tauri::AppHandle) {
+        if let Some(win) = app.get_webview_window(QUICK_CAPTURE_LABEL) {
+            let _ = win.hide();
+        }
+    }
+
+    pub fn toggle(app: &tauri::AppHandle) {
+        if let Some(win) = app.get_webview_window(QUICK_CAPTURE_LABEL) {
+            if win.is_visible().unwrap_or(false) {
+                hide(app);
+            } else {
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        } else {
+            show(app);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Overlay Tauri commands (thin wrappers that dispatch to the main thread)
 // ---------------------------------------------------------------------------
 
@@ -2364,20 +2457,38 @@ async fn get_overlay_conversation() -> Result<String, String> {
         return Ok(native_overlay::load_conversation());
     }
     #[cfg(not(target_os = "macos"))]
-    Ok("[]".into())
+    Ok(overlay_load_conversation())
+}
+
+/// Persist the quick-capture popup's conversation (non-macOS twin of the
+/// macOS panel's `save:` script-message path).
+#[tauri::command]
+async fn save_overlay_conversation(json: String) -> Result<(), String> {
+    overlay_save_conversation(&json);
+    Ok(())
+}
+
+/// JSON array of cloud model IDs whose provider has an API key configured.
+#[tauri::command]
+async fn get_cloud_models() -> Result<String, String> {
+    Ok(cloud_models_json())
 }
 
 #[tauri::command]
-async fn toggle_overlay() -> Result<(), String> {
+async fn toggle_overlay(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     on_main_thread(|| unsafe { native_overlay::toggle() });
+    #[cfg(not(target_os = "macos"))]
+    quick_capture::toggle(&app);
     Ok(())
 }
 
 #[tauri::command]
-async fn hide_overlay() -> Result<(), String> {
+async fn hide_overlay(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     on_main_thread(|| unsafe { native_overlay::hide() });
+    #[cfg(not(target_os = "macos"))]
+    quick_capture::hide(&app);
     Ok(())
 }
 
@@ -2455,7 +2566,9 @@ pub fn run() {
                 native_overlay::create(include_str!("overlay.html"), NOVA_PORT);
             }
 
-            // Register Cmd+Shift+Space to toggle the overlay
+            // Register Cmd+Shift+Space to toggle the overlay (macOS native
+            // panel). On Windows / Linux, Alt+Space toggles the
+            // quick-capture popup window.
             {
                 use tauri_plugin_global_shortcut::{
                     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
@@ -2470,6 +2583,18 @@ pub fn run() {
                     }
                 }) {
                     eprintln!("Warning: could not register Cmd+Shift+Space: {e}");
+                }
+
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let alt_space = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+                    if let Err(e) = app.global_shortcut().on_shortcut(alt_space, |app, _sc, ev| {
+                        if ev.state == ShortcutState::Pressed {
+                            quick_capture::toggle(app);
+                        }
+                    }) {
+                        eprintln!("Warning: could not register Alt+Space: {e}");
+                    }
                 }
             }
 
@@ -2507,6 +2632,8 @@ pub fn run() {
             set_inference_source,
             toggle_overlay,
             hide_overlay,
+            save_overlay_conversation,
+            get_cloud_models,
             get_overlay_conversation,
         ])
         .build(tauri::generate_context!())
