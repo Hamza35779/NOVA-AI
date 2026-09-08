@@ -66,9 +66,10 @@ NOVA AI is that stack. It is a framework for local-first personal AI, built arou
 
     **Step 2.** Download and open the desktop app:
 
-    [Download for macOS](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_universal.dmg){ .md-button .md-button--primary }
+    [Download the latest release](https://github.com/Hamza35779/NOVA-AI/releases/latest){ .md-button .md-button--primary }
 
-    Also available for [Windows](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_x64-setup.exe), [Linux (DEB)](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_amd64.deb), and [Linux (RPM)](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI-1.0.1-1.x86_64.rpm). See the [Downloads](downloads.md) page for details.
+    On Windows, the **NOVA-AI-Setup** EXE bundles the backend and UI in one installer (with the
+    `Alt+Space` Quick Capture popup built in). See the [Downloads](downloads.md) page for details.
 
     The app connects to `http://localhost:8000` automatically.
 

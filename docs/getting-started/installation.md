@@ -21,6 +21,11 @@ The fastest path on Windows — a per-user installer that bundles everything:
    with optional shortcuts and an "Add to PATH" checkbox.
 3. Launch **NOVA AI** from the Start Menu, then open `http://localhost:8000`.
 
+The installer ships the full workstation: press `Alt+Space` anywhere on Windows for the
+**Quick Capture** chat popup, run `nova dev-watch -c "pytest -q"` for **build diagnostics
+with self-healing suggestions**, and get a **desktop notification** whenever your morning
+digest is ready.
+
 Built from `deploy/windows/nova-ai-setup.iss` over the PyInstaller ONEDIR
 backend (`nova-ai-windows-x64.spec`) — embeds Python 3.13 and the web
 workstation UI, so no runtime dependencies need installing.
@@ -106,15 +111,12 @@ cd NOVA AI
 ./scripts/quickstart.sh
 ```
 
-**Step 2.** Download and open the desktop app:
+**Step 2.** Download and open the desktop app (see [Downloads](../downloads.md) for the
+current asset list — the Windows Setup EXE bundles backend + UI and needs no local backend):
 
 | Platform | Download |
 |----------|----------|
-| macOS (Universal) | [:material-download: **NOVA AI.dmg**](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_universal.dmg) |
-| Windows (64-bit) | [:material-download: **NOVA AI-setup.exe**](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_x64-setup.exe) |
-| Linux (DEB) | [:material-download: **NOVA AI.deb**](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_amd64.deb) |
-| Linux (RPM) | [:material-download: **NOVA AI.rpm**](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI-1.0.1-1.x86_64.rpm) |
-| Linux (AppImage) | [:material-download: **NOVA AI.AppImage**](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_amd64.AppImage) |
+| All platforms | [:material-download: **GitHub Releases**](https://github.com/Hamza35779/NOVA-AI/releases) |
 
 The app connects to `http://localhost:8000` automatically.
 

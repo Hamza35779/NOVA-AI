@@ -37,7 +37,7 @@ Pick your platform and start in seconds:
 
 | Platform | Quick Launch | Installation One-liner |
 |---|---|---|
-| **Windows (Setup EXE, no Python)** | Double-click `NOVA-AI-Setup-1.2.4.exe` | [Latest Release](https://github.com/Hamza35779/NOVA-AI/releases) |
+| **Windows (Setup EXE, no Python)** | Double-click `NOVA-AI-Setup-1.2.4.exe` — includes **Alt+Space Quick Capture** | [Latest Release](https://github.com/Hamza35779/NOVA-AI/releases) |
 | **Windows (1-Click)** | Double-click `start.bat` | `irm https://hamza35779.github.io/NOVA-AI/install.ps1 \| iex` or run `install.bat` |
 | **Linux · macOS** | `./start.sh` | `curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh \| bash` |
 | **Docker** | `docker compose -f deploy/docker/docker-compose.yml up` | Containerized setup with local Ollama engine |
@@ -62,6 +62,9 @@ nova memory-wiki search "preferences"
 
 # Interactive Canvas (Open HTML/SVG/Chart visualizations)
 nova canvas list
+
+# Build/Test Diagnostics with Self-Healing Fix Suggestions
+nova dev-watch -c "pytest -q"
 
 # Presets & System Diagnostics
 nova init --preset morning-digest-minimal
@@ -117,14 +120,21 @@ NOVA AI ships with eight built-in agents across three execution modes (on-demand
 
 | Agent | Type | What it does |
 |-------|------|-------------|
-| `morning_digest` | Scheduled | Daily briefing from email, calendar, health, news — with TTS audio |
+| `morning_digest` | Scheduled | Daily briefing from email, calendar, health, news — with TTS audio and a desktop notification when ready |
 | `deep_research` | On-demand | Multi-hop research with citations across web and local docs |
 | `monitor_operative` | Continuous | Long-horizon monitoring with memory, compression, and retrieval |
 | `orchestrator` | On-demand | Multi-turn reasoning with automatic tool selection |
 | `native_react` | On-demand | ReAct (Thought-Action-Observation) loop agent |
+| `self_healing_react` | On-demand | ReAct with a bounded self-repair loop — powers `nova dev-watch` diagnostics |
 | `operative` | Continuous | Persistent autonomous agent with state management |
 | `native_openhands` | On-demand | CodeAct — generates and executes Python code |
 | `simple` | On-demand | Single-turn chat, no tools |
+
+### Desktop Extras
+
+- **⚡ Quick Capture (Windows: `Alt+Space`, macOS: `Cmd+Shift+Space`)** — a Raycast-style chat popup from anywhere; the conversation syncs back to the main app automatically.
+- **🔔 Morning digest notifications** — a desktop notification fires the moment your briefing is stored (covers scheduler, CLI, and server delivery); `nova digest` plays audio on Windows via `winsound`/the default media player.
+- **🔨 Dev-Watch** — run a build/test command, get failure classification (timeout / exit code / embedded errors) plus self-healing fix suggestions; results feed the **Build Diagnostics** panel on the Dashboard (`/api/devwatch/runs`).
 
 ---
 
@@ -182,6 +192,7 @@ NOVA AI features a comprehensive CLI suite (`nova` or `python -m nova_ai.cli` or
 | Command | Description | Example |
 |---|---|---|
 | `nova doctor` | Run full hardware, GPU, and engine health diagnostics | `nova doctor` |
+| `nova dev-watch -c "<cmd>"` | Run a build/test command and self-diagnose failures with fix suggestions | `nova dev-watch -c "pytest -q" --watch` |
 | `nova init` | Auto-detect GPU hardware and create `~/.nova_ai/config.toml` | `nova init --preset deep-research` |
 | `nova config show` | Print loaded configuration hierarchy and settings | `nova config show` |
 | `nova config set <k> <v>` | Modify a configuration property in TOML | `nova config set engine.default ollama` |

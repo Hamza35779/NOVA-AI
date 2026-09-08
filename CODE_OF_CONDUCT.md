@@ -23,6 +23,7 @@ Examples of unacceptable behavior include:
 * Trolling, insulting or derogatory comments, and personal or political attacks
 * Public or private harassment
 * Publishing others' private information, such as a physical or email address, without their explicit permission
+* Sharing other people's personal data (conversations, traces, digests, or memory content) that NOVA AI may process locally — such data must never be pasted into issues, PRs, or discussions
 * Other conduct which could reasonably be considered inappropriate in a professional setting
 
 ## Enforcement Responsibilities
@@ -33,7 +34,9 @@ Community leaders have the right and responsibility to remove, edit, or reject c
 
 ## Scope
 
-This Code of Conduct applies within all community spaces, and also applies when an individual is officially representing the community in public spaces. Examples of representing our community include using an official e-mail address, posting via an official social media account, or acting as an appointed representative at an online or offline event.
+This Code of Conduct applies within all community spaces — including GitHub issues, pull requests, discussions, and the documentation — and also applies when an individual is officially representing the community in public spaces. Examples of representing our community include using an official e-mail address, posting via an official social media account, or acting as an appointed representative at an online or offline event.
+
+Because NOVA AI processes personal data (email, calendar, health, messages) on the user's own devices, reports and bug reproductions must be sanitized: never include real personal content from a NOVA AI instance in a public issue. Maintainers may remove or redact such content on sight.
 
 ## Enforcement
 

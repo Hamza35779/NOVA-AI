@@ -10,6 +10,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+**Global hotkey quick-capture popup.** Pressing `Alt+Space` on Windows (macOS keeps its
+native `Cmd+Shift+Space` NSPanel) opens a compact Raycast-style chat window from anywhere —
+frameless, always-on-top, skip-taskbar — that talks to the local backend over the
+OpenAI-compatible API with streaming responses. The popup persists its conversation to
+`~/.nova_ai/overlay-conversation.json`, the same file the macOS panel writes, so the main
+app's existing import poll picks it up on both platforms; `Escape` hides the window and
+losing focus auto-hides it. Shipped as `quick-capture.html` via the frontend build, with
+new `save_overlay_conversation` / `get_cloud_models` / `toggle_overlay` / `hide_overlay`
+Tauri commands and a `quick-capture` entry in the capabilities file.
+
+**`nova dev-watch` build/terminal diagnostics.** A new CLI command runs a build or test
+command (`nova dev-watch -c "pytest -q"`), captures its output, and classifies failures
+using the self-healing agent's marker set (`timeout`, `exit_code`, and `error_output` for
+zero-exit runs that embed tracebacks). On failure it consults the `self_healing_react`
+agent for a diagnosis and minimal fix (shown in a suggestion panel), or applies the fix
+with `--on-failure fix`; `--on-failure off` disables consultation. `--watch` re-runs on an
+interval and skips re-consultation when output is unchanged. Every run is best-effort
+POSTed to the new `/api/devwatch/runs` server endpoint (in-memory ring of 50 runs), which
+feeds a **Build Diagnostics** panel on the Dashboard with pass/fail history, failure
+categories, and expandable suggestions/output.
+
+**Desktop notification when the morning digest is stored.** `MorningDigestAgent` fires a
+"Morning digest ready" notification (first-sentence snippet, plus a hint when audio is
+available) through the existing notifier the moment the artifact is saved — one hook
+covering the scheduler, CLI, and server delivery paths, soft-fail so a broken notifier can
+never block digest delivery. `nova digest` also gained Windows audio playback: `.wav` via
+built-in `winsound`, everything else via the OS default media player.
+
+**Windows setup installer refreshed.** `NOVA-AI-Setup-1.2.4.exe` rebuilt over the PyInstaller
+ONEDIR backend with all three features above; the release asset was replaced in place.
+
+### Developer environment (Windows)
+
+**GNU Rust toolchain pinned for the Tauri desktop build.**
+`frontend/src-tauri/.cargo/config.toml` now sets
+`target = "x86_64-pc-windows-gnu"` with the WinLibs `gcc` linker — machines without an
+MSVC linker no longer die with `link: extra operand`. `build.rs` points windres at a cpp
+wrapper (`build-tools/cppwrap.bat`) so resource compilation survives paths containing
+spaces (`D:\My Softwares\...`).
+
 **Query complexity routing (`model="auto"`).** Closes a *Ready* item from
 Workstream 3 of the roadmap. `MultiEngine` now accepts the alias
 `model="auto"`: the last user message is scored by the existing

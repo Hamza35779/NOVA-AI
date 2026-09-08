@@ -88,6 +88,29 @@ cd NOVA AI
 uv sync --extra dev
 ```
 
+### Frontend & Desktop (Tauri)
+
+The web workstation lives in `frontend/` (React + TypeScript + Vite); the desktop shell is
+Tauri 2 (`frontend/src-tauri/`). To work on either:
+
+```bash
+cd frontend
+npm install
+npx tsc -b        # type-check
+npx vite build    # production build into src/nova_ai/server/static/
+npm test          # vitest
+```
+
+**Windows build note.** If your machine has no MSVC linker, the Tauri build fails with
+`link: extra operand`. Two options: install the VS C++ Build Tools with the MSVC
+component, or (as the repo ships) pin the GNU toolchain —
+`frontend/src-tauri/.cargo/config.toml` already sets
+`target = "x86_64-pc-windows-gnu"` with a WinLibs `gcc` linker. If your checkout path
+contains spaces (e.g. `D:\My Softwares\...`), windres chokes on the `.rc` preprocessing;
+either build from a space-free `subst` drive (e.g. `subst X: .` then build from
+`X:\frontend\src-tauri`) or use the `build-tools/cppwrap.bat` wrapper referenced by
+`build.rs`.
+
 ### Pre-commit Hooks
 
 We use [pre-commit](https://pre-commit.com/) to run linting and formatting checks before each commit:
@@ -229,6 +252,8 @@ NOVA AI is built on five composable primitives. Here's where you can contribute:
 | **Learning** | Router policies, reward functions, training | [Dev Guide](docs/development/contributing.md) |
 | **Evals** | New datasets, scorers, benchmark configs | [Dev Guide](docs/development/contributing.md) |
 | **Channels** | Chat platform integrations | [Dev Guide](docs/development/contributing.md) |
+| **Desktop / Tauri** | Quick-capture, overlay windows, desktop UX | `frontend/src-tauri/` + `frontend/public/` |
+| **Server APIs** | FastAPI routers feeding the Dashboard (see `devwatch_router.py`) | [Dev Guide](docs/development/contributing.md) |
 | **Rust Port** | PyO3 bindings, crate parity with Python | See `rust/` directory |
 
 ---

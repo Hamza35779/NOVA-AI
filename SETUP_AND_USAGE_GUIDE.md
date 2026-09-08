@@ -20,6 +20,9 @@ Welcome to **NOVA AI**, a modular, high-performance AI assistant workstation. NO
    - [Web Workstation UI](#web-workstation-ui)
    - [Command-Line Interface (CLI)](#command-line-interface-cli)
    - [Voice Mode & Wake-Word Detection](#voice-mode--wake-word-detection)
+   - [Quick Capture Popup (Alt+Space)](#quick-capture-popup-alt_space)
+   - [Morning Digest & Notifications](#morning-digest--notifications)
+   - [Build Diagnostics (nova dev-watch)](#build-diagnostics-nova-dev-watch)
    - [Task Planner & Workflow Execution](#task-planner--workflow-execution)
    - [Interactive Canvas Artifacts](#interactive-canvas-artifacts)
    - [Deep Research & Web Search](#deep-research--web-search)
@@ -46,15 +49,18 @@ Choose the method that best fits your environment:
 ### Method A: Standalone Windows Executable (Easiest)
 *No Python, Node.js, or external runtimes required.*
 
-**Option 1 — Setup Installer (recommended):**
+### Option 1 — Setup Installer (recommended):
 
 1. Download `NOVA-AI-Setup-1.2.4.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
 2. Run it — installs to `%LOCALAPPDATA%\Programs\NOVA AI` (per-user, no admin required), with optional Start Menu / Desktop shortcuts and a "Add to PATH" checkbox.
 3. Launch **NOVA AI** from the Start Menu (or run `nova-ai-windows-x64 serve` from any terminal).
 
+> The installer bundles the **Quick Capture popup** (press `Alt+Space` anywhere on Windows), the
+> **dev-watch diagnostics** CLI, and **morning digest notifications** — no extra setup needed.
+
 **Option 2 — Portable ZIP:**
 
-1. Download `nova-ai-windows-x64.zip` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases) or your `dist/` directory.
+1. Download `nova-ai-windows-x64.zip` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
 2. Extract the `.zip` archive to a folder of your choice (e.g. `C:\Program Files\NOVA AI` or `D:\NOVA AI`).
 3. Double-click `nova-ai-windows-x64.exe` or launch it via PowerShell / Command Prompt:
    ```powershell
@@ -245,6 +251,55 @@ nova voice
 # Hands-free wake-word mode (activates when you say "hey nova")
 nova voice --wake-word "hey nova"
 ```
+
+---
+
+### Quick Capture Popup (Alt+Space)
+Instant AI access from anywhere without switching windows:
+
+* **Windows:** press `Alt+Space` — a compact, frameless chat popup appears centered on screen.
+* **macOS:** press `Cmd+Shift+Space` for the native panel.
+* Type a question, get a streaming answer, press `Escape` (or click elsewhere) to dismiss.
+* The popup's conversation is saved and synced back into the main app automatically, so
+  nothing you ask in the popup is lost.
+
+> The popup talks to the local backend (`http://127.0.0.1:8000`) — start NOVA AI first.
+
+---
+
+### Morning Digest & Notifications
+The scheduled morning briefing now tells you when it's ready:
+
+* When a digest is generated (via scheduler, CLI, or server), a desktop notification fires
+  with the briefing's opening line — click it to open the digest player.
+* `nova digest` plays the audio on Windows natively (`.wav` via `winsound`; `.mp3` opens in
+  your default media player).
+
+```bash
+nova digest --fresh    # generate + play your briefing
+```
+
+---
+
+### Build Diagnostics (nova dev-watch)
+Run a build or test command and let NOVA AI diagnose the failures:
+
+```bash
+# Run once; on failure, print a self-healing fix suggestion
+nova dev-watch -c "pytest -q"
+
+# Keep re-running every 60 seconds (Ctrl+C to stop)
+nova dev-watch -c "cargo build" --watch --interval 60
+
+# Let the agent apply fixes, not just suggest them
+nova dev-watch -c "npx tsc -b" --on-failure fix
+```
+
+* Failures are classified as `timeout`, `exit_code`, or `error_output` (zero-exit runs that
+  embed tracebacks are caught too).
+* Suggestions come from the `self_healing_react` agent and appear in the terminal panel.
+* Every run is reported to the local server and shown live in the **Build Diagnostics**
+  panel on the Dashboard (pass/fail history, exit codes, expandable suggestions).
 
 ---
 

@@ -21,15 +21,23 @@ processing happens on your local machine — the app connects to the backend you
     ./scripts/quickstart.sh
     ```
 
-### Download
+### Windows: all-in-one Setup EXE (recommended)
+
+The **[NOVA-AI-Setup](https://github.com/Hamza35779/NOVA-AI/releases/latest)** installer bundles
+the backend *and* the UI — no Python, no Ollama, no git. It includes the `Alt+Space`
+**Quick Capture** popup, `nova dev-watch` build diagnostics, and morning digest notifications:
+
+1. Download `NOVA-AI-Setup-<version>.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
+2. Run it — per-user install, optional "Add to PATH".
+3. Launch from the Start Menu and open `http://localhost:8000`.
+
+### Tauri desktop shell (advanced)
 
 | Platform | Download | Notes |
 |----------|----------|-------|
-| macOS (Universal) | [:material-download: **NOVA AI.dmg**](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_universal.dmg) | Apple Silicon + Intel |
-| Windows (64-bit) | [:material-download: **NOVA AI-setup.exe**](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_x64-setup.exe) | Windows 10+ |
-| Linux (DEB) | [:material-download: **NOVA AI.deb**](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_amd64.deb) | Ubuntu, Debian |
-| Linux (RPM) | [:material-download: **NOVA AI.rpm**](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI-1.0.1-1.x86_64.rpm) | Fedora, RHEL |
-| Linux (AppImage) | [:material-download: **NOVA AI.AppImage**](https://github.com/Hamza35779/NOVA-AI/releases/download/desktop-v1.0.2/NOVA AI_1.0.1_amd64.AppImage) | Any distro |
+| macOS (Universal) | [:material-download: **NOVA AI.dmg**](https://github.com/Hamza35779/NOVA-AI/releases) | Apple Silicon + Intel — see [Releases](https://github.com/Hamza35779/NOVA-AI/releases) |
+| Windows (64-bit) | [:material-download: **NOVA-AI-Setup.exe**](https://github.com/Hamza35779/NOVA-AI/releases) | Windows 10+ — see [Releases](https://github.com/Hamza35779/NOVA-AI/releases) |
+| Linux (DEB) | [:material-download: **NOVA AI.deb**](https://github.com/Hamza35779/NOVA-AI/releases) | Ubuntu, Debian — see [Releases](https://github.com/Hamza35779/NOVA-AI/releases) |
 
 !!! tip "All releases"
     Browse all versions on the [GitHub Releases](https://github.com/Hamza35779/NOVA-AI/releases) page.
