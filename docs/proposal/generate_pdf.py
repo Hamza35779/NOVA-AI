@@ -521,10 +521,31 @@ pdf.body(
     "- Ollama integration for local model management\n"
     "- Model Hub with curated catalog and background installation\n"
     "- Auto-update via GitHub releases\n"
-    "- Built-in chat UI with voice support"
+    "- Built-in chat UI with voice support\n"
+    "- Quick Capture popup: Alt+Space global hotkey (Cmd+Shift+Space on macOS) — a\n"
+    "  frameless always-on-top chat window whose conversation syncs with the main app"
 )
 
-pdf.subsection("9.4 Channel Integrations")
+pdf.subsection("9.4 Developer Diagnostics")
+pdf.body(
+    "nova dev-watch runs a build or test command, classifies failures (timeout, exit_code, "
+    "or error_output for zero-exit runs embedding tracebacks) using the self-healing marker "
+    "set, and consults the self_healing_react agent for a fix — printed as a suggestion or "
+    "applied with --on-failure fix. --watch re-runs on an interval, skipping re-consultation "
+    "when output is unchanged. Every run is best-effort POSTed to /api/devwatch/runs, which "
+    "feeds the Dashboard's Build Diagnostics panel (pass/fail history, failure categories, "
+    "expandable suggestions and output tails)."
+)
+
+pdf.subsection("9.5 Digest Notifications")
+pdf.body(
+    "MorningDigestAgent fires a 'Morning digest ready' desktop notification the moment the "
+    "artifact is stored — one hook covering the scheduler, CLI, and server delivery paths, "
+    "soft-fail so a broken notifier can never block delivery. nova digest plays audio "
+    "natively on Windows: .wav via winsound, other formats via the OS default media player."
+)
+
+pdf.subsection("9.6 Channel Integrations")
 pdf.body(
     "Built-in channels (15+): Telegram, Discord, Slack, WhatsApp, Line, Viber, Messenger, "
     "Reddit, Mastodon, XMPP, Rocket.Chat, Zulip, Twitter/X, Twitch, Nostr, Twilio, Gmail. "

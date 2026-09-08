@@ -245,6 +245,7 @@ add_table(slide, 6.8, 1.3, 5.7, [
     ["simple", "On-demand", "Single-turn Q&A, no tools"],
     ["orchestrator", "On-demand", "Multi-turn tool-calling loop (default)"],
     ["native_react", "On-demand", "Thought-Action-Observation loop"],
+    ["self_healing_react", "On-demand", "ReAct + bounded self-repair loop"],
     ["native_openhands", "On-demand", "CodeAct - writes and executes Python"],
     ["deep_research", "On-demand", "Multi-hop research with citations"],
     ["operative", "Continuous", "Persistent agent with state"],
@@ -383,6 +384,10 @@ add_table(slide, 0.8, 1.3, 11.7, [
 ], [2.5, 4, 5.2])
 
 add_text(slide, 0.8, 5.2, 11.7, 2,
+         "Desktop Highlights:\n\n"
+         "  Quick Capture popup: Alt+Space global hotkey (Cmd+Shift+Space on macOS)\n"
+         "  nova dev-watch: self-healing build/test diagnostics with a Dashboard feed\n"
+         "  Morning digest: desktop notification on delivery + Windows audio playback\n\n"
          "Channel Integrations (15+):\n\n"
          "Telegram, Discord, Slack, WhatsApp, Line, Viber, Messenger, Reddit, Mastodon, "
          "XMPP, Rocket.Chat, Zulip, Twitter/X, Twitch, Nostr, Twilio, Gmail",
@@ -425,12 +430,15 @@ add_text(slide, 0.8, 0.4, 11.7, 0.8, "Roadmap",
 add_text(slide, 0.8, 1.3, 5.5, 0.6, "Current (v1.2.4)", font_size=20, color=ACCENT2, bold=True)
 add_bullet_list(slide, 0.8, 2.0, 5.5, 4, [
     "Five-primitive architecture",
-    "8+ agent types",
+    "8+ agent types (incl. self-healing)",
     "58+ built-in tools",
     "5 memory backends",
     "Smart model router",
     "MCP integration",
     "Desktop app (Tauri)",
+    "Quick Capture popup (Alt+Space)",
+    "dev-watch self-healing diagnostics",
+    "Digest desktop notifications",
     "Windows/Linux/macOS installers",
     "15+ channel integrations",
     "Trace-driven learning",

@@ -117,6 +117,7 @@ All backends implement `InferenceEngine` ABC: `generate()`, `stream()`, `list_mo
 | `simple` | On-demand | Single-turn Q&A, no tools |
 | `orchestrator` | On-demand | Multi-turn tool-calling loop (**default**) |
 | `native_react` | On-demand | Thought → Action → Observation loop |
+| `self_healing_react` | On-demand | ReAct + bounded self-repair loop (powers `dev-watch`) |
 | `native_openhands` | On-demand | CodeAct — writes and executes Python |
 | `deep_research` | On-demand | Multi-hop research with citations |
 | `operative` | Continuous | Persistent agent with state management |
@@ -186,7 +187,16 @@ nova init --preset morning-digest-mac
 nova connect gdrive
 nova digest --fresh
 ```
-Spoken daily briefing from email, calendar, health, and news.
+Spoken daily briefing from email, calendar, health, and news — with a desktop notification the moment it's ready.
+
+### ⚡ Quick Capture
+Press `Alt+Space` anywhere on Windows (`Cmd+Shift+Space` on macOS) — a Raycast-style chat popup with streaming answers that syncs back into the main app.
+
+### 🔨 Dev-Watch Diagnostics
+```
+nova dev-watch -c "pytest -q"
+```
+Runs build/test commands, classifies failures, and asks the self-healing agent for fixes — live on the Dashboard.
 
 ### 🔬 Deep Research
 ```
@@ -221,6 +231,7 @@ Agent with code execution, file I/O, and shell access.
 nova chat                    # Interactive chat
 nova voice --push-to-talk    # Voice conversation
 nova serve                   # Start API server (OpenAI-compatible)
+nova dev-watch -c "pytest"   # Self-healing build diagnostics
 nova doctor                  # System diagnostics
 nova agents list             # List managed agents
 ```
@@ -274,6 +285,7 @@ Add new engines, agents, tools, channels, or memory backends by implementing the
 ✅ Five-primitive architecture · ✅ 8+ agent types · ✅ 58+ tools
 ✅ 5 memory backends · ✅ Smart router · ✅ MCP integration
 ✅ Desktop app · ✅ Windows installer · ✅ 15+ channels
+✅ Quick Capture popup (Alt+Space) · ✅ Self-healing dev-watch · ✅ Digest notifications
 ✅ Trace-driven learning · ✅ Skill synthesis · ✅ Training pipelines
 
 ## Planned

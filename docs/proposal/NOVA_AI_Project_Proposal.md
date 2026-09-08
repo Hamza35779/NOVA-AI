@@ -36,6 +36,8 @@ The framework is organized around **five core primitives** — Intelligence, Eng
 - 58+ tools including web browsing, code execution, file I/O, and knowledge retrieval
 - Full MCP (Model Context Protocol) integration for external tool servers
 - Self-contained Windows installer — no uv, git, or Python required for end users
+- Global-hotkey Quick Capture popup (Windows `Alt+Space`, macOS `Cmd+Shift+Space`)
+- Self-healing build diagnostics (`nova dev-watch`) with a live Dashboard feed
 
 ---
 
@@ -208,7 +210,15 @@ Skills teach agents how to better use tools. Every skill is a tool — agents di
 
 ### Morning Digest
 
-Spoken daily briefings from email, calendar, health, and news with TTS audio. Configurable presets for macOS, Linux, and minimal setups.
+Spoken daily briefings from email, calendar, health, and news with TTS audio. Configurable presets for macOS, Linux, and minimal setups. A desktop notification fires the moment a digest is stored — one hook covering the scheduler, CLI, and server delivery paths — and `nova digest` plays the audio natively on Windows.
+
+### Quick Capture Popup
+
+A Raycast-style chat popup summonable from anywhere: `Alt+Space` on Windows, `Cmd+Shift+Space` on macOS. Frameless, always-on-top, streaming responses backed by the local API; the conversation syncs back into the main workstation automatically.
+
+### Dev-Watch Self-Healing Diagnostics
+
+`nova dev-watch -c "pytest -q"` runs a build or test command, classifies failures (timeout / exit code / embedded tracebacks), and consults the self-healing ReAct agent for a fix — as a suggestion or applied in place. Runs are reported to `/api/devwatch/runs` and surfaced live on the Dashboard's Build Diagnostics panel.
 
 ### Deep Research
 
@@ -221,6 +231,7 @@ Tauri-based desktop app with:
 - Ollama integration for local model management
 - Model Hub with curated catalog and background installation
 - Auto-update via GitHub releases
+- Global-hotkey Quick Capture popup (Alt+Space) sharing conversation state with the main window
 
 ### Multi-Channel Support
 
@@ -326,13 +337,16 @@ AI-powered bot for messaging platforms with multi-turn conversation support.
 ### Current Status (v1.2.4)
 
 - ✅ Five-primitive architecture implemented
-- ✅ 8+ agent types registered
+- ✅ 8+ agent types registered (incl. `self_healing_react`)
 - ✅ 58+ built-in tools
 - ✅ 5 memory backends
 - ✅ Smart model router with complexity scoring
 - ✅ MCP client/server integration
 - ✅ Desktop app (Tauri) with auto-update
 - ✅ Self-contained Windows installer
+- ✅ Quick Capture global-hotkey popup (Windows + macOS)
+- ✅ `nova dev-watch` self-healing build diagnostics + Dashboard feed
+- ✅ Desktop notifications for digest delivery; Windows audio playback
 - ✅ Multi-channel support (15+ platforms)
 - ✅ Trace-driven learning system
 - ✅ Skill synthesis pipeline (SkillForge)
