@@ -11,6 +11,12 @@ These are the areas where active development is happening and contributions are 
 - **Federated memory** — memory backends that synchronize across devices
 - **LLM-guided spec search:** Frontier-driven harness learning — a frontier model analyzes your traces and proposes config improvements. See [user guide](../user-guide/llm-guided-spec-search.md) and [architecture](../architecture/learning.md#llm-guided-spec-search-frontier-driven-harness-learning).
 
+### Recently shipped (v1.2.4)
+
+- **Quick Capture global-hotkey popup** — `Alt+Space` on Windows (`Cmd+Shift+Space` on macOS) opens a Raycast-style chat popup whose conversation syncs with the main app
+- **`nova dev-watch` self-healing build diagnostics** — failure classification + fix suggestions from the self-healing agent, with a live Build Diagnostics panel on the Dashboard (`/api/devwatch/runs`)
+- **Morning digest desktop notifications** — notification on digest storage across scheduler/CLI/server paths, plus native Windows audio playback in `nova digest`
+
 ---
 
 ## How to Get Involved
@@ -24,7 +30,7 @@ These are the areas where active development is happening and contributions are 
 
 ## Workstreams
 
-NOVA AI development is organized into **five independent workstreams**. Contributors can pick any track that matches their skills and interests — workstreams are designed to be worked on in parallel without blocking each other.
+NOVA AI development is organized into **six independent workstreams**. Contributors can pick any track that matches their skills and interests — workstreams are designed to be worked on in parallel without blocking each other.
 
 Every item carries a maturity tag:
 
@@ -72,6 +78,7 @@ Personal AI must be accessible from the devices people actually carry. NOVA AI r
 | WhatsApp via Meta Cloud API | **Design Needed** | Baileys protocol is blocked by WhatsApp (405 errors). Need to implement via the official Meta WhatsApp Business API. Requires Meta Business account registration. |
 | WhatsApp via Baileys (workaround) | **Blocked** | WhatsApp is actively blocking unofficial Baileys connections (405 Method Not Allowed). Monitor the [Baileys repo](https://github.com/WhiskeySockets/Baileys) for protocol updates. |
 | Slack rich messages (Block Kit) | **Shipped** | Done — `slack_blocks.py` converts structured replies to header/section/divider/code layouts (chunked to Slack limits), and daemon research replies carry Summarize / Go deeper / Sources buttons handled in-thread. |
+| Desktop notification adapters | **Partially Shipped** | Done for the local desktop — the notifier already fires morning-digest "ready" notifications across scheduler/CLI/server paths. Remaining: per-channel push adapters (operator completion / attention-needed events) feeding mobile push. |
 | Unified notification system | **Design Needed** | Push notifications when operators complete tasks or need user attention. Requires per-channel notification adapters. |
 | Signal bidirectional | **Design Needed** | Currently send-only via signal-cli REST API. Add incoming message listener with background polling. |
 | Voice interface | **Research-Stage** | Speech-to-text (Whisper) → agent → text-to-speech loop over phone channels. Existing `speech/` module provides a foundation. |
@@ -125,7 +132,7 @@ NOVA AI has reference docs and four tutorials, but critical gaps remain in conti
 
 Personal AI means running on the hardware people actually own. Each new hardware target expands who can use NOVA AI and generates data for the research agenda (energy, cost, latency tradeoffs across silicon).
 
-Adding a new hardware target involves up to four components: hardware detection in `core/config.py`, an inference engine adapter in `engine/`, an energy monitor in `telemetry/`, and an entry in the GPU specs database in `telemetry/gpu_monitor.py`.
+Adding a new hardware target involves up to four components: hardware detection in `core/config/`, an inference engine adapter in `engine/`, an energy monitor in `telemetry/`, and an entry in the GPU specs database in `telemetry/gpu_monitor.py`.
 
 #### Where you can help
 
@@ -139,3 +146,21 @@ Adding a new hardware target involves up to four components: hardware detection 
 | Intel Lunar Lake NPU via OpenVINO | **Design Needed** | 48 TOPS — most mature NPU software stack for x86 laptops. New engine wrapping OpenVINO GenAI. |
 | Raspberry Pi 5 | **Design Needed** | CPU-only via llama.cpp ARM NEON for 1-3B models. $100 entry point for hobbyists. |
 | Unified hardware benchmark suite | **Design Needed** | Standardized benchmark that runs the same workloads across all supported hardware, producing comparable energy/latency/throughput/cost numbers. |
+
+---
+
+### Workstream 6: Desktop & Developer Experience
+
+The desktop shell (Tauri 2) and developer tooling make NOVA AI pleasant to live with daily. This workstream covers the popup, diagnostics, dashboard surfaces, and packaging.
+
+#### Where you can help
+
+| Item | Maturity | Details |
+|------|----------|---------|
+| Quick Capture popup (global hotkey) | **Shipped** | Done — `Alt+Space` on Windows / `Cmd+Shift+Space` on macOS opens a frameless, always-on-top chat window persisting to `~/.nova_ai/overlay-conversation.json`, imported by the main app's poll. |
+| `nova dev-watch` build diagnostics | **Shipped** | Done — subprocess runner with failure classification via the self-healing markers, `self_healing_react` consultation (`--on-failure suggest/fix`), unchanged-output skip in `--watch` mode, and `/api/devwatch/runs` feeding the Dashboard's Build Diagnostics panel. |
+| Digest desktop notification + Windows audio | **Shipped** | Done — notifier hook in `MorningDigestAgent.run()` covering all delivery paths (soft-fail); `nova digest` plays `.wav` via winsound and `.mp3` via the default media player. |
+| Quick-capture tool calling | **Design Needed** | The popup currently streams plain chat. Extend it to invoke tools (clipboard, screen, memory) from the compact surface. |
+| Windows GNU/MSVC build matrix | **Design Needed** | The repo pins `x86_64-pc-windows-gnu` (see `frontend/src-tauri/.cargo/config.toml`) with a windres cpp wrapper for space-containing paths. CI should verify both GNU and MSVC targets plus a space-free-path build. |
+| Dev-watch server persistence | **Ready** | `/api/devwatch/runs` keeps an in-memory ring (50 runs); persist to SQLite so history survives server restarts. **Good first issue.** |
+| Quick-capture on Linux | **Research-Stage** | The hotkey window currently ships on Windows (Tauri WebviewWindow) and macOS (native NSPanel). Evaluate a Linux equivalent (global shortcut + always-on-top window on X11/Wayland). |
