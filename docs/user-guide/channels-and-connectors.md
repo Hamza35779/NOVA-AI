@@ -194,7 +194,7 @@ The fastest way is to use the App Manifest — paste this JSON to configure ever
 | "Error 400: redirect_uri_mismatch" | Add `http://localhost:8789/callback` as an authorized redirect URI (step 5) |
 | "Error 403: access_denied" | Make sure you selected "Desktop app" when creating the OAuth client |
 | Connected but 0 files | Check that you granted Drive read access in the consent screen. Try reconnecting. |
-| Token expired | Access tokens expire after 1 hour. Reconnect to get a new one. (Auto-refresh coming soon.) |
+| Token expired | Access tokens expire after 1 hour. Connectors call `call_with_refresh` to mint a new access token automatically; if the refresh grant is rejected, reconnect. |
 
 ---
 

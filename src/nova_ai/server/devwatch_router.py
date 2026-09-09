@@ -10,7 +10,7 @@ import logging
 import threading
 from collections import deque
 from datetime import datetime, timezone
-from typing import Deque, Dict, List, Optional
+from typing import Deque, Dict, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel

@@ -9,7 +9,7 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from nova_ai.server.devwatch_router import router, _lock, _runs
+from nova_ai.server.devwatch_router import _lock, _runs, router
 
 
 def _client() -> TestClient:
@@ -68,8 +68,9 @@ class TestDevwatchRouter:
 
 class TestCliServerReporting:
     def test_run_once_posts_to_server(self) -> None:
-        from nova_ai.cli.dev_watch_cmd import _run_once
         from rich.console import Console
+
+        from nova_ai.cli.dev_watch_cmd import _run_once
 
         posted = {}
 
@@ -89,8 +90,9 @@ class TestCliServerReporting:
         assert b"pytest -q" in posted["data"]
 
     def test_server_down_is_silent(self) -> None:
-        from nova_ai.cli.dev_watch_cmd import _run_once
         from rich.console import Console
+
+        from nova_ai.cli.dev_watch_cmd import _run_once
 
         with patch.object(
             subprocess, "run", return_value=SimpleNamespace(

@@ -32,6 +32,15 @@ from nova_ai.core.registry import (
 # output) from the test suite; tests that exercise the checker stub it.
 os.environ.setdefault("NOVA_AI_NO_UPDATE_CHECK", "1")
 
+# Rich honors both: NO_COLOR strips markup styles, TTY_COMPATIBLE=0 makes
+# Console.is_terminal() return False (checked before isatty), which disables
+# auto-highlighting too — otherwise "Exported 2 SFT pairs" gets bold SGR
+# around the "2" and string-containment assertions fail, but only on machines
+# where tests run attached to a TTY (CI stdout is never a TTY, so this only
+# bites local Windows/dev runs).
+os.environ.setdefault("NO_COLOR", "1")
+os.environ.setdefault("TTY_COMPATIBLE", "0")
+
 
 @pytest.fixture(autouse=True)
 def _clean_registries() -> None:

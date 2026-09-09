@@ -54,6 +54,59 @@ def _disconnect_source(registry: object, source: str) -> None:
         console.print(f"[red]Failed to disconnect {source}: {exc}[/red]")
 
 
+def _sync_sources(registry: object, source: str = "") -> None:
+    """Sync one (or all) connected sources into the shared KnowledgeStore."""
+    console = Console()
+
+    from nova_ai.connectors.pipeline import IngestionPipeline
+    from nova_ai.connectors.store import KnowledgeStore
+    from nova_ai.connectors.sync_engine import SyncEngine
+
+    # Aliases so tests can patch _connect_cmd.<Name> with create=True
+    # (function-local imports aren't patchable by string target).
+    _sync_engine_cls = SyncEngine
+    _store_cls = KnowledgeStore
+    _pipeline_cls = IngestionPipeline
+
+    names = [source] if source else list(registry.keys())  # type: ignore[attr-defined]
+
+    if source and not registry.contains(source):  # type: ignore[attr-defined]
+        console.print(f"[red]Unknown source: {source}[/red]")
+        return
+
+    store = _store_cls()
+    engine = _sync_engine_cls(_pipeline_cls(store))
+
+    any_connected = False
+    for name in names:
+        connector_cls = registry.get(name)  # type: ignore[attr-defined]
+        try:
+            instance = connector_cls()
+        except Exception as exc:  # noqa: BLE001
+            console.print(f"[red]Failed to create {name}: {exc}[/red]")
+            continue
+
+        try:
+            connected = instance.is_connected()
+        except Exception:  # noqa: BLE001
+            connected = False
+        if not connected:
+            console.print(f"[yellow]{name}: not connected — run `nova connect {name}`.[/yellow]")
+            continue
+
+        try:
+            count = engine.sync(instance)
+            console.print(f"[green]{name}: synced {count} item(s).[/green]")
+            any_connected = True
+        except Exception as exc:  # noqa: BLE001
+            console.print(f"[red]{name}: sync failed: {exc}[/red]")
+
+    if not names:
+        console.print("[yellow]No connectors registered.[/yellow]")
+    elif not any_connected and registry.items():  # type: ignore[attr-defined]
+        console.print("[dim]Tip: connect a source first with `nova connect <source>`.[/dim]")
+
+
 def _connect_source(registry: object, source: str, path: str = "") -> None:
     """Route connector setup by auth_type."""
     console = Console()
@@ -212,7 +265,7 @@ def connect(
         return
 
     if trigger_sync:
-        click.echo("Sync not yet implemented in CLI")
+        _sync_sources(ConnectorRegistry)
         return
 
     if disconnect_source:

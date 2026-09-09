@@ -108,11 +108,7 @@ class AudioTranscribeTool(BaseTool):
         language = params.get("language")
 
         if provider == "local":
-            return ToolResult(
-                tool_name="audio_transcribe",
-                content="Local transcription provider is not yet implemented.",
-                success=False,
-            )
+            return self._transcribe_local(path, suffix, language)
 
         if provider != "openai":
             return ToolResult(
@@ -175,6 +171,76 @@ class AudioTranscribeTool(BaseTool):
                 content=f"Transcription error: {exc}",
                 success=False,
             )
+
+    def _transcribe_local(
+        self,
+        path: Path,
+        suffix: str,
+        language: str | None,
+    ) -> ToolResult:
+        """Transcribe locally via the Faster-Whisper speech backend."""
+        try:
+            from nova_ai.core.config import load_config
+            from nova_ai.speech.faster_whisper import FasterWhisperBackend
+        except ImportError as exc:
+            return ToolResult(
+                tool_name="audio_transcribe",
+                content=f"Local transcription unavailable: {exc}",
+                success=False,
+            )
+
+        try:
+            config = load_config()
+        except Exception:
+            config = None  # type: ignore[assignment]
+
+        try:
+            if config is not None:
+                from nova_ai.speech._discovery import _create_backend
+
+                backend = _create_backend("faster-whisper", config)
+            else:
+                backend = None
+        except Exception:
+            backend = None
+
+        if backend is None:
+            backend = FasterWhisperBackend()
+
+        try:
+            audio = path.read_bytes()
+            result = backend.transcribe(audio, format=suffix.lstrip("."), language=language)
+        except ImportError as exc:
+            return ToolResult(
+                tool_name="audio_transcribe",
+                content=(
+                    "Local transcription requires faster-whisper. "
+                    f"Install with: pip install faster-whisper ({exc})"
+                ),
+                success=False,
+            )
+        except Exception as exc:
+            return ToolResult(
+                tool_name="audio_transcribe",
+                content=f"Transcription error: {exc}",
+                success=False,
+            )
+
+        metadata: dict[str, Any] = {
+            "file_path": str(path.resolve()),
+            "provider": "local",
+        }
+        if result.language:
+            metadata["language"] = result.language
+        if result.duration_seconds:
+            metadata["duration_ms"] = int(result.duration_seconds * 1000)
+
+        return ToolResult(
+            tool_name="audio_transcribe",
+            content=result.text,
+            success=True,
+            metadata=metadata,
+        )
 
 
 __all__ = ["AudioTranscribeTool"]

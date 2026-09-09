@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -14,7 +14,6 @@ from nova_ai.cli.dev_watch_cmd import (
     DevWatchRun,
     _classify,
     _run_once,
-    dev_watch,
 )
 
 
