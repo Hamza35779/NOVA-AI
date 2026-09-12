@@ -1,18 +1,22 @@
-
-
-# NOVA AI Desktop builds with the GNU toolchain on this machine — the
-# installed VS BuildTools has no MSVC linker, so the msvc target fails
-# with "link: extra operand" (cargo picks up Git Bash's /usr/bin/link).
-# See rust/crates README / memory note: always build with
-# cargo +1.90-x86_64-pc-windows-gnu or this pinned default target.
+# NOVA AI Desktop — machine-local build pinning, opt-in.
 #
-# windres (via embed-resource → tauri-winres) shells its default
-# preprocessor through cmd's popen, which breaks on paths containing
-# spaces ("D:\My Softwares\..."). The wrapper batch uses the 8.3 short
-# path and quoted quoting so preprocessing succeeds. The windres
-# override itself is applied by the build.rs wrapper in this crate.
-[build]
-target = "x86_64-pc-windows-gnu"
-
-[target.x86_64-pc-windows-gnu]
-linker = "C:/Users/D E L L/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/gcc.exe"
+# This file is COMMITTED but must stay INERT everywhere except the one
+# machine that needs it (the local Windows box has no MSVC linker, so it
+# builds the x86_64-pc-windows-gnu target with WinLibs gcc). On every
+# other machine — CI (ubuntu / macos / windows-msvc) included — cargo
+# must keep using the host default target and linker, otherwise `cargo
+# test` fails with E0463 "can't find crate for `core`" because the GNU
+# stdlib is not installed there.
+#
+# Opt in locally by setting NOVA_AI_GNU_TARGET=1 before cargo/tauri:
+#
+#   export NOVA_AI_GNU_TARGET=1
+#   npx tauri build        # or: cargo test
+#
+# The [env] section below rewrites this file at build time via build.rs
+# is NOT possible (config is read before build scripts run), so instead
+# build.rs / tauri.conf handle the rest and this file only carries the
+# documentation. The actual target/linker pinning lives in the user's
+# %USERPROFILE%\.cargo\config.toml on machines that need it.
+#
+# See memory note "NOVA AI desktop build" for the full recipe.

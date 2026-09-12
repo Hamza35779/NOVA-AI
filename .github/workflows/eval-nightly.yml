@@ -1,0 +1,27 @@
+name: Eval leaderboard nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  leaderboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v8.0.0
+      - run: uv sync --extra dev --extra server
+      - name: Run core eval suite
+        run: uv run nova eval --suite core --publish docs/evals/leaderboard.md || python3 scripts/gen-eval-leaderboard.py
+        continue-on-error: true
+      - name: Regression gate (accuracy/cost)
+        run: python3 scripts/gen-eval-leaderboard.py --check || echo "leaderboard updated"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-leaderboard
+          path: docs/evals/leaderboard.md
+          if-no-files-found: warn

@@ -150,34 +150,53 @@ class TestShellExecTool:
         assert result.success is False
         assert "not a directory" in result.content
 
-    @pytest.mark.skip(reason="Rust backend inherits parent env — no env isolation")
     def test_env_clearing(self):
-        """Verify that arbitrary env vars are NOT passed through."""
+        """Verify that arbitrary env vars are NOT passed through.
+
+        Forces the Python subprocess path (the Rust backend inherits the
+        parent env) and checks the sanitised environment hides the marker."""
         marker = "NOVA_AI_TEST_SECRET_12345"
         os.environ[marker] = "leaked"
+        if sys.platform == "win32":
+            cmd = f"echo %{marker}%"
+        else:
+            cmd = f"echo ${marker}"
         try:
             tool = ShellExecTool()
-            result = tool.execute(command=f"echo ${marker}")
+            with patch(
+                "nova_ai._rust_bridge.get_rust_module",
+                side_effect=ImportError("forced python path"),
+            ):
+                result = tool.execute(command=cmd)
             assert result.success is True
+            # The sanitised env drops the marker: cmd/bash cannot expand it,
+            # so the raw placeholder (or empty output) is echoed back — never
+            # the secret value.
             assert "leaked" not in result.content
         finally:
             os.environ.pop(marker, None)
 
-    @pytest.mark.skip(
-        reason="Rust backend inherits parent env — no env_passthrough",
-    )
-    def test_env_passthrough(self):
-        """Verify that explicitly listed env vars ARE passed through."""
+    def test_env_passthrough_ignored(self):
+        """env_passthrough in tool arguments is deprecated and ignored.
+
+        Even when the LLM explicitly lists a variable, it must NOT reach the
+        child process — that LLM-controlled allowlist was the exfiltration
+        vector. Forces the Python subprocess path."""
         marker = "NOVA_AI_TEST_PASSTHROUGH_67890"
         os.environ[marker] = "allowed_value"
+        if sys.platform == "win32":
+            cmd = f"echo %{marker}%"
+        else:
+            cmd = f"echo ${marker}"
         try:
             tool = ShellExecTool()
-            result = tool.execute(
-                command=f"echo ${marker}",
-                env_passthrough=[marker],
-            )
+            with patch(
+                "nova_ai._rust_bridge.get_rust_module",
+                side_effect=ImportError("forced python path"),
+            ):
+                result = tool.execute(command=cmd, env_passthrough=[marker])
             assert result.success is True
-            assert "allowed_value" in result.content
+            assert "allowed_value" not in result.content
         finally:
             os.environ.pop(marker, None)
 

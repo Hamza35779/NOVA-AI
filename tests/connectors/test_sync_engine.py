@@ -182,3 +182,140 @@ def test_sync_multiple_connectors(
     assert len(results_b) >= 1
     for r in results_b:
         assert r.metadata.get("source") == "source_b"
+
+
+# ---------------------------------------------------------------------------
+# Cursor checkpointing (regression: current_cursor was assigned once and
+# never advanced, so an interrupted sync replayed the whole stream)
+# ---------------------------------------------------------------------------
+
+
+class CursorConnector(BaseConnector):
+    """Connector that pages through a fixed document list, advancing a
+    public cursor after every yielded document (mirrors how the 8 real
+    connectors maintain ``_last_cursor``)."""
+
+    connector_id = "cursor_stub"
+    display_name = "Cursor Stub"
+    auth_type = "filesystem"
+
+    def __init__(self, docs: List[Document]) -> None:
+        self._docs = docs
+        self._last_cursor: Optional[str] = None
+
+    def is_connected(self) -> bool:
+        return True
+
+    def disconnect(self) -> None:
+        pass
+
+    def sync(
+        self,
+        *,
+        since: Optional[datetime] = None,
+        cursor: Optional[str] = None,
+    ) -> Iterator[Document]:
+        for i, doc in enumerate(self._docs):
+            # A resume request restarts after the checkpointed page.
+            if cursor is not None and i <= int(cursor):
+                continue
+            # Publish BEFORE yield so sync_status() reflects the latest
+            # yielded doc at any suspension point (engine polls progress
+            # while the generator is suspended at yield).
+            self._last_cursor = str(i)
+            yield doc
+
+    def sync_status(self) -> SyncStatus:
+        return SyncStatus(state="idle", cursor=self._last_cursor)
+
+
+def _make_many_docs(count: int) -> List[Document]:
+    return [
+        _make_doc(f"cur:doc:{i}", content=f"Cursor page content {i} — unique text")
+        for i in range(count)
+    ]
+
+
+def test_interrupted_sync_resumes_from_advanced_cursor(
+    pipeline: IngestionPipeline, store: KnowledgeStore, tmp_path: Path
+) -> None:
+    """A sync that dies mid-stream must checkpoint the last FULLY-INGESTED
+    batch cursor so a re-run replays (and dedups) the in-flight batch
+    instead of skipping it. Checkpointing the connector's live cursor here
+    would skip docs 100-149 (never ingested) — data loss (was 200/250)."""
+    engine = SyncEngine(pipeline, state_db=str(tmp_path / "resume_state.db"))
+    connector = CursorConnector(_make_many_docs(250))  # > _BATCH_SIZE (100)
+
+    # First run raises after the connector yielded ~150 docs.
+    original_sync = connector.sync
+
+    def exploding_sync(**kwargs):  # type: ignore[no-untyped-def]
+        yielded = 0
+        for doc in original_sync(**kwargs):
+            if yielded >= 150:
+                raise RuntimeError("boom — sync interrupted mid-page")
+            yielded += 1
+            yield doc
+
+    connector.sync = exploding_sync  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="interrupted"):
+        engine.sync(connector)
+
+    # The checkpoint must be the last fully-ingested batch boundary
+    # (docs 0-99 → cursor "99"), NOT the live cursor ("149"): the in-flight
+    # batch (100-149) was never ingested and must be replayed on resume.
+    cp = engine.get_checkpoint("cursor_stub")
+    assert cp is not None
+    assert cp["cursor"] == "99", (
+        "cursor should be the last ingested batch boundary, got"
+        f" {cp['cursor']!r}"
+    )
+
+    # Resume: the connector restarts after the saved cursor, so at most
+    # ~150 docs are replayed — NOT the full 250.
+    connector2 = CursorConnector(_make_many_docs(250))
+    connector2._last_cursor = cp["cursor"]
+    # Simulate server-side resume semantics: yield only docs past the cursor.
+    docs_seen: List[Document] = []
+
+    def resuming_sync(**kwargs):  # type: ignore[no-untyped-def]
+        cursor = kwargs.get("cursor")
+        for i, doc in enumerate(connector2._docs):
+            if cursor is not None and i <= int(cursor):
+                continue
+            connector2._last_cursor = str(i)
+            docs_seen.append(doc)
+            yield doc
+
+    connector2.sync = resuming_sync  # type: ignore[method-assign]
+    engine.sync(connector2)
+
+    # The dedup pipeline skips already-ingested chunks, so the store ends
+    # up with exactly 250 unique chunks and no duplicates.
+    assert store.count() == 250
+
+
+def test_batch_checkpoint_uses_live_connector_cursor(
+    pipeline: IngestionPipeline, tmp_path: Path
+) -> None:
+    """Per-batch checkpoints must persist the cursor the connector reports
+    at that moment, not the value captured once before the loop began."""
+    engine = SyncEngine(pipeline, state_db=str(tmp_path / "batch_state.db"))
+    connector = CursorConnector(_make_many_docs(100))
+
+    seen_checkpoints: List[Optional[str]] = []
+    original_save = engine._save_checkpoint
+
+    def spy_save(connector_id, items_synced, *, cursor=None, error=None):  # type: ignore[no-untyped-def]
+        seen_checkpoints.append(cursor)
+        return original_save(connector_id, items_synced, cursor=cursor, error=error)
+
+    engine._save_checkpoint = spy_save  # type: ignore[method-assign]
+    engine.sync(connector)
+
+    # At the final checkpoint the cursor equals the connector's last page
+    # index (99), not None.
+    assert seen_checkpoints[-1] == "99"
+    cp = engine.get_checkpoint("cursor_stub")
+    assert cp is not None
+    assert cp["cursor"] == "99"

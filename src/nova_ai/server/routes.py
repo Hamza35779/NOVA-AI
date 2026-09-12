@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import Any
@@ -226,7 +227,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     # the agent to execute them), add an explicit opt-in header rather
     # than removing this guard — silent re-routing is what produced #414.
     if agent is not None and not request_body.tools:
-        return _handle_agent(
+        return await _handle_agent(
             agent,
             model,
             request_body,
@@ -236,7 +237,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
         )
 
     bus = getattr(request.app.state, "bus", None)
-    return _handle_direct(
+    return await _handle_direct(
         engine,
         model,
         request_body,
@@ -246,7 +247,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     )
 
 
-def _handle_direct(
+async def _handle_direct(
     engine,
     model: str,
     req: ChatCompletionRequest,
@@ -288,7 +289,10 @@ def _handle_direct(
         # the lightweight wrapper for engines that aren't already
         # instrumented.
         if isinstance(engine, InstrumentedEngine):
-            result = engine.generate(
+            # Off the event loop: one slow Ollama generation must not freeze
+            # /health and every other endpoint (forensic P0 §17.3).
+            result = await asyncio.to_thread(
+                engine.generate,
                 messages,
                 model=model,
                 temperature=req.temperature,
@@ -296,7 +300,8 @@ def _handle_direct(
                 **kwargs,
             )
         else:
-            result = instrumented_generate(
+            result = await asyncio.to_thread(
+                instrumented_generate,
                 engine,
                 messages,
                 model=model,
@@ -306,7 +311,8 @@ def _handle_direct(
                 **kwargs,
             )
     else:
-        result = engine.generate(
+        result = await asyncio.to_thread(
+            engine.generate,
             messages,
             model=model,
             temperature=req.temperature,
@@ -349,7 +355,7 @@ def _handle_direct(
     )
 
 
-def _handle_agent(
+async def _handle_agent(
     agent,
     model: str,
     req: ChatCompletionRequest,
@@ -388,9 +394,9 @@ def _handle_agent(
             from nova_ai.traces.collector import TraceCollector
 
             collector = TraceCollector(agent, store=trace_store, bus=bus)
-            result = collector.run(input_text, context=ctx)
+            result = await asyncio.to_thread(collector.run, input_text, context=ctx)
         else:
-            result = agent.run(input_text, context=ctx)
+            result = await asyncio.to_thread(agent.run, input_text, context=ctx)
     finally:
         agent._model = original_model
 

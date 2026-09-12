@@ -41,7 +41,7 @@ your machine and the frontend connects via `localhost`.
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 ./scripts/quickstart.sh
 ```
 
@@ -61,7 +61,7 @@ If you prefer to run each step yourself:
 
     ```bash
     git clone https://github.com/Hamza35779/NOVA-AI.git
-    cd NOVA AI
+    cd NOVA-AI
     uv sync --extra desktop
     uv run maturin develop -m rust/crates/nova_ai-python/Cargo.toml
     cd frontend && npm install && cd ..
@@ -107,7 +107,7 @@ processing happens on your local machine — the app connects to the backend you
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 ./scripts/quickstart.sh
 ```
 
@@ -134,7 +134,7 @@ The app connects to `http://localhost:8000` automatically.
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI/desktop
+cd NOVA-AI/frontend
 npm install
 npm run tauri build
 ```
@@ -152,7 +152,7 @@ programmatically. Every feature is accessible from the terminal.
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync
 uv run maturin develop -m rust/crates/nova_ai-python/Cargo.toml
 ```
@@ -196,7 +196,7 @@ For programmatic access, the `Nova` class provides a high-level sync API.
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync
 uv run maturin develop -m rust/crates/nova_ai-python/Cargo.toml
 ```

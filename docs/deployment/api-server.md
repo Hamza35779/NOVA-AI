@@ -8,7 +8,7 @@ The server requires the `[server]` extra (FastAPI + uvicorn):
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync --extra server
 ```
 

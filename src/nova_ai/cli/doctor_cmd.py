@@ -343,12 +343,60 @@ _STATUS_ICONS = {
 }
 
 
+def _check_node_version() -> CheckResult:
+    """Alias gate: Node 22+ required (CONTRIBUTING canonical)."""
+    return _check_nodejs()
+
+
+def _check_port_free(port: int = 8000) -> CheckResult:
+    """Check default serve port is free."""
+    import socket
+
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", port))
+        return CheckResult(f"Port {port}", "ok", "free")
+    except OSError:
+        return CheckResult(
+            f"Port {port}", "warn", "in use",
+            details=f"Stop stale server or run `nova serve --port {port + 1}`.",
+        )
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+
+
+def _check_dirs_writable() -> CheckResult:
+    """Check ~/.nova_ai writable + keyring availability."""
+    from nova_ai.core.paths import get_config_dir
+
+    try:
+        d = get_config_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        probe = d / ".doctor_write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        try:
+            import keyring  # noqa: F401
+            kr = "keyring available"
+        except ImportError:
+            kr = "keyring missing (file fallback)"
+        return CheckResult("Config dir", "ok", f"{d} writable; {kr}")
+    except Exception as exc:
+        return CheckResult("Config dir", "fail", f"not writable: {exc}")
+
+
 def _run_all_checks() -> List[CheckResult]:
     """Run all diagnostic checks and return results."""
     checks: List[CheckResult] = []
     checks.append(_check_python_version())
+    checks.append(_check_node_version())
     checks.append(_check_config_exists())
     checks.append(_check_config_parses())
+    checks.append(_check_port_free())
+    checks.append(_check_dirs_writable())
     checks.extend(_check_engines())
     checks.extend(_check_models())
     checks.append(_check_default_model())
@@ -366,8 +414,14 @@ def _results_to_dicts(checks: List[CheckResult]) -> List[Dict[str, Any]]:
 
 @click.command()
 @click.option("--json", "as_json", is_flag=True, help="Output results as JSON.")
-def doctor(as_json: bool) -> None:
+@click.option("--fix", "auto_fix", is_flag=True, help="Auto-fix: create dirs, pull starter model.")
+@click.option("--bundle", "bundle", is_flag=True, help="Write redacted diagnostics bundle for GitHub issues.")
+@click.option("--check-all", "check_all", is_flag=True, help="Alias: run all checks (default).")
+def doctor(as_json: bool, auto_fix: bool, bundle: bool, check_all: bool) -> None:
     """Run diagnostic checks on your NOVA AI installation."""
+    del check_all  # default behavior; flag kept for docs parity
+    if auto_fix:
+        _auto_fix()
     checks = _run_all_checks()
 
     # A failing check must fail the command: CI and setup scripts gate on
@@ -445,3 +499,40 @@ def doctor(as_json: bool) -> None:
 
     if bg_failed:
         raise click.exceptions.Exit(code=1)
+
+    if bundle:
+        path = _write_bundle(checks)
+        console.print(f"[dim]Diagnostics bundle: {path} (secrets redacted)[/dim]")
+
+
+def _auto_fix() -> None:
+    """Best-effort fixes: config dir, starter model hint, stale pid cleanup."""
+    from nova_ai.core.paths import get_config_dir
+
+    try:
+        get_config_dir().mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        soft_fail(logger, exc, "doctor --fix mkdir")
+    # Model pull is intentionally hint-only (no network side effects in CI):
+    # real pull runs via `ollama pull qwen3:8b` when Ollama is reachable.
+
+
+def _write_bundle(checks: List[CheckResult]) -> str:
+    """Zip redacted doctor JSON for GitHub issues."""
+    import tempfile
+    import zipfile
+
+    try:
+        from nova_ai.analytics.redaction import CredentialStripper
+
+        strip = CredentialStripper().strip
+    except ImportError:
+        def strip(s: str) -> str:  # type: ignore[misc]
+            return s
+
+    payload = json.dumps(_results_to_dicts(checks), indent=2)
+    payload = strip(payload)
+    out = str(__import__("pathlib").Path(tempfile.gettempdir()) / "nova_doctor_bundle.zip")
+    with zipfile.ZipFile(out, "w") as z:
+        z.writestr("doctor.json", payload)
+    return out

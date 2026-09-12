@@ -4,7 +4,7 @@
   "version": "1.0.3",
   "description": "Use NOVA AI inline on any webpage — summarize, explain, ask, translate.",
   "permissions": ["activeTab", "contextMenus", "storage", "scripting"],
-  "host_permissions": ["http://localhost:8000/*"],
+  "host_permissions": ["http://127.0.0.1:8000/*", "http://localhost:8000/*", "ws://127.0.0.1:8000/*", "ws://localhost:8000/*"],
   "background": {
     "service_worker": "background.js"
   },

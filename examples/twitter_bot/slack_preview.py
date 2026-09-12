@@ -49,7 +49,7 @@ FACTS = [
     "NOVA AI is open source under Apache 2.0, because the tools for studying and building local-first AI should be available to everyone.",
     "NOVA AI supports 27 channel integrations including Slack, Discord, Telegram, WhatsApp. Adding a new channel is one file implementing BaseChannel with connect, send, and disconnect.",
     "NOVA AI supports multiple inference engines: Ollama, vLLM, SGLang, llama.cpp. nova init picks the right one for your hardware.",
-    "Install NOVA AI by running git clone https://github.com/Hamza35779/NOVA-AI.git then cd NOVA AI then uv sync. Use nova init to auto-detect hardware and configure the engine.",
+    "Install NOVA AI by running git clone https://github.com/Hamza35779/NOVA-AI.git then cd NOVA-AI then uv sync. Use nova init to auto-detect hardware and configure the engine.",
     "NOVA AI memory and RAG supports four backends: SQLite FTS5 for keyword search, FAISS for vector similarity, ColBERT for token-level matching, and BM25 for probabilistic retrieval.",
     "NOVA AI ships with nine example projects: deep_research, code_companion, messaging_hub, scheduled_ops, browser_assistant, security_scanner, daily_digest, doc_qa, and multi_model_router.",
 ]

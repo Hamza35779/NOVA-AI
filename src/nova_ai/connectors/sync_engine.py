@@ -66,9 +66,11 @@ class SyncEngine:
         if str(db_path) != ":memory:":
             db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self._conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=30.0)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL;")
+        self._conn.execute("PRAGMA busy_timeout=30000;")
+        self._conn.execute("PRAGMA foreign_keys=ON;")
         self._conn.execute(_CREATE_STATE_TABLE)
         self._conn.commit()
 
@@ -82,6 +84,21 @@ class SyncEngine:
         Resumes from the last saved cursor if one exists.  Documents are
         batched in groups of 100 before being handed to the pipeline; a
         checkpoint is saved after every batch and once more at the end.
+
+        The checkpointed cursor is refreshed after every successful batch by
+        polling ``connector.sync_status().cursor`` — connectors advance their
+        internal ``_last_cursor`` as they page through the source, so an
+        interrupted sync resumes from the last *completed* page instead of
+        replaying the whole stream.  Connectors that don't track a cursor
+        report ``None`` here; their checkpoints then fall back to the
+        ``since`` timestamp semantics (the value stays ``None`` and the
+        last_sync timestamp does the filtering).
+
+        On error the *last successful* cursor is kept, deliberately not the
+        connector's live one: mid-batch failures leave the live cursor ahead
+        of the ingested boundary, and checkpointing it would skip the
+        in-flight documents.  Replaying from the last good cursor is safe —
+        ingestion is idempotent (``INSERT OR IGNORE`` on the natural key).
 
         On error the checkpoint is updated with the error message and the
         exception is re-raised so callers can handle it.
@@ -103,6 +120,13 @@ class SyncEngine:
         items_ingested = 0
         current_cursor: Optional[str] = prior_cursor
 
+        def _latest_cursor() -> Optional[str]:
+            """Current cursor reported by the connector, if it tracks one."""
+            try:
+                return connector.sync_status().cursor
+            except Exception:  # noqa: BLE001 — progress polling is best-effort
+                return current_cursor
+
         try:
             doc_iter = connector.sync(since=since, cursor=prior_cursor)
 
@@ -113,6 +137,7 @@ class SyncEngine:
                 if len(batch) >= _BATCH_SIZE:
                     items_ingested += self._pipeline.ingest(batch)
                     batch = []
+                    current_cursor = _latest_cursor()
                     self._save_checkpoint(
                         connector_id,
                         prior_items + items_ingested,
@@ -122,8 +147,15 @@ class SyncEngine:
             # Ingest any remaining documents.
             if batch:
                 items_ingested += self._pipeline.ingest(batch)
+                current_cursor = _latest_cursor()
 
         except Exception as exc:
+            # Checkpoint the LAST SUCCESSFUL batch cursor, not the connector's
+            # live cursor: at failure time the live cursor is ahead of the
+            # ingested boundary (the in-flight batch was never ingested), and
+            # checkpointing it would skip those documents on resume (data
+            # loss — reproduced as 200/250 chunks). Replaying from the last
+            # good cursor is safe: ingestion is idempotent.
             self._save_checkpoint(
                 connector_id,
                 prior_items + items_ingested,
@@ -187,6 +219,17 @@ class SyncEngine:
             (connector_id, items_synced, cursor, now, error),
         )
         self._conn.commit()
+
+    def close(self) -> None:
+        """Close the state DB (required for Windows temp-dir cleanup, B4)."""
+        try:
+            self._conn.commit()
+        except Exception:
+            pass
+        try:
+            self._conn.close()
+        except Exception:
+            pass
 
 
 __all__ = ["SyncEngine"]

@@ -7,7 +7,7 @@ NOVA AI includes a launchd property list (plist) for running the API server as a
 Before installing the service, ensure that NOVA AI is installed and the `nova` command is available at `/usr/local/bin/nova`. If you installed via `uv` or `pip` with a different prefix, adjust the path in the plist accordingly.
 
 ```bash
-git clone https://github.com/Hamza35779/NOVA-AI.git && cd NOVA AI && uv sync --extra server
+git clone https://github.com/Hamza35779/NOVA-AI.git && cd NOVA-AI && uv sync --extra server
 which nova  # Verify the installation path
 ```
 

@@ -282,7 +282,7 @@ COMPARISON_HTML = """\
       with zero API costs.</div>
     <div class="code-block">
       <code>git clone https://github.com/Hamza35779/NOVA-AI.git
-&& cd NOVA AI && uv sync</code>
+&& cd NOVA-AI && uv sync</code>
       <button class="copy-btn" id="copy-btn">Copy</button>
     </div>
   </div>

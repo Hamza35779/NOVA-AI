@@ -84,7 +84,7 @@ To avoid wasted effort, note that PRs in these categories are unlikely to be mer
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync --extra dev
 ```
 

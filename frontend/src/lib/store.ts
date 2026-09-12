@@ -55,15 +55,43 @@ function loadConversations(): ConversationStore {
     const raw = localStorage.getItem(CONVERSATIONS_KEY);
     if (!raw) return { version: 1, conversations: {}, activeId: null };
     const parsed = JSON.parse(raw);
-    if (parsed.version === 1) return parsed;
+    // B6 fix: migrate instead of wiping. Unknown versions keep their
+    // conversations payload; only fall back to empty on corrupt data.
+    if (parsed && typeof parsed === 'object' && parsed.conversations) {
+      return {
+        version: 1,
+        conversations: parsed.conversations,
+        activeId: parsed.activeId ?? null,
+      };
+    }
     return { version: 1, conversations: {}, activeId: null };
   } catch {
     return { version: 1, conversations: {}, activeId: null };
   }
 }
 
+function pruneOldest(store: ConversationStore, maxKeep = 50): ConversationStore {
+  const entries = Object.values(store.conversations).sort((a, b) => b.updatedAt - a.updatedAt);
+  const kept = entries.slice(0, maxKeep);
+  const conversations: Record<string, Conversation> = {};
+  for (const c of kept) conversations[c.id] = c;
+  return { version: 1, conversations, activeId: kept.some((c) => c.id === store.activeId) ? store.activeId : null };
+}
+
 function saveConversations(store: ConversationStore): void {
-  localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(store));
+  try {
+    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(store));
+  } catch (e) {
+    // B5 fix: QuotaExceededError (>5MB) must not throw into callers.
+    // Prune oldest conversations and retry once, then give up silently.
+    try {
+      const pruned = pruneOldest(store);
+      localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(pruned));
+      console.warn('Conversation history pruned (storage quota exceeded)', e);
+    } catch {
+      console.warn('Could not persist conversations (storage quota exceeded)');
+    }
+  }
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system';

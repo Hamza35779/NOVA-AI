@@ -573,7 +573,9 @@ def serve(
                     logger.debug("Scheduler session store init failed: %s", exc)
 
             _sched_tool_executor = (
-                ToolExecutor(resolved_tools, bus) if resolved_tools else None
+                ToolExecutor(resolved_tools, bus, capability_policy=sec.capability_policy)
+                if resolved_tools
+                else None
             )
 
             system = NovaSystem(

@@ -578,6 +578,14 @@ async def _execute_local_tool(
         model=model,
         app_state=app_state,
     )
+    # interactive=True + auto-approve callback: managed agents run unattended
+    # (server-side), so there is no human to confirm with. The auto-approve
+    # callback satisfies ToolExecutor's confirmation gate — including the
+    # hard-required gate for shell_exec/code_interpreter, which now always
+    # route through it (previously code_interpreter skipped confirmation
+    # entirely because its spec lacked the flag). Operators who need those
+    # tools blocked for managed agents should remove them from the agent's
+    # tool list instead of relying on the confirmation layer.
     executor = ToolExecutor(
         tools=[tool_instance],
         bus=bus,

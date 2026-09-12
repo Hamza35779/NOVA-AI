@@ -665,7 +665,7 @@ def test_401_triggers_refresh_and_retries_with_new_token(tmp_path: Path) -> None
 
 
 def test_non_401_status_is_not_refreshed(tmp_path: Path) -> None:
-    """A 500 from Gmail must propagate — only 401 should trigger refresh."""
+    """A permanent 4xx (e.g. 403) must propagate — no refresh, no retry."""
     import httpx as _httpx
 
     from nova_ai.connectors import gmail as gmail_mod
@@ -673,7 +673,7 @@ def test_non_401_status_is_not_refreshed(tmp_path: Path) -> None:
     creds_path = _write_full_creds(tmp_path)
 
     def fake_get(url, *, headers, params, timeout):
-        return _FakeResponse(status_code=503, text="service unavailable")
+        return _FakeResponse(status_code=403, text="forbidden")
 
     fake_post = patch.object(
         gmail_mod.httpx,
@@ -688,6 +688,88 @@ def test_non_401_status_is_not_refreshed(tmp_path: Path) -> None:
             gmail_mod._call_with_refresh(
                 gmail_mod._gmail_api_get_message, creds_path, "msg-1"
             )
+
+
+def test_429_retries_with_retry_after_then_succeeds(tmp_path: Path) -> None:
+    """A 429 with Retry-After is retried instead of aborting the sync (#fix6).
+
+    Mirrors Slack's ``_slack_api_with_retry`` behaviour: the whole sync used
+    to die on the first rate-limited page because call_with_refresh only
+    handled 401."""
+    from nova_ai.connectors import gmail as gmail_mod
+
+    creds_path = _write_full_creds(tmp_path)
+
+    get_calls: list[int] = []
+
+    class _RateLimitedResponse(_FakeResponse):
+        def __init__(self, *, status_code: int, retry_after: str = "0"):
+            super().__init__(status_code=status_code)
+            self.headers = {"Retry-After": retry_after}
+
+    def fake_get(url, *, headers, params, timeout):
+        get_calls.append(len(get_calls) + 1)
+        if len(get_calls) <= 2:
+            return _RateLimitedResponse(status_code=429, retry_after="0")
+        return _FakeResponse(status_code=200, json_data={"id": "msg-1"})
+
+    with patch.object(gmail_mod.httpx, "get", side_effect=fake_get):
+        result = gmail_mod._call_with_refresh(
+            gmail_mod._gmail_api_get_message, creds_path, "msg-1"
+        )
+
+    assert len(get_calls) == 3  # two 429s then success
+    assert result == {"id": "msg-1"}
+
+
+def test_429_gives_up_after_max_retries(tmp_path: Path) -> None:
+    """Persistent 429 re-raises after the retry budget is exhausted."""
+    import httpx as _httpx
+
+    from nova_ai.connectors import google_auth
+
+    creds_path = _write_full_creds(tmp_path)
+
+    class _RateLimitedResponse(_FakeResponse):
+        def __init__(self):
+            super().__init__(status_code=429)
+            self.headers = {"Retry-After": "0"}
+
+    calls = {"n": 0}
+
+    def fake_api(token: str, url: str):
+        calls["n"] += 1
+        raise _httpx.HTTPStatusError(
+            "HTTP 429", request=None, response=_RateLimitedResponse()
+        )
+
+    with pytest.raises(_httpx.HTTPStatusError):
+        google_auth.call_with_refresh(fake_api, creds_path, "u")
+
+    assert calls["n"] == google_auth._MAX_RETRIES + 1
+
+
+def test_5xx_retried_then_succeeds(tmp_path: Path) -> None:
+    """Transient 503 responses are retried with backoff, not fatal."""
+    from nova_ai.connectors import gmail as gmail_mod
+
+    creds_path = _write_full_creds(tmp_path)
+
+    get_calls: list[int] = []
+
+    def fake_get(url, *, headers, params, timeout):
+        get_calls.append(len(get_calls) + 1)
+        if len(get_calls) == 1:
+            return _FakeResponse(status_code=503, text="service unavailable")
+        return _FakeResponse(status_code=200, json_data={"id": "msg-1"})
+
+    with patch.object(gmail_mod.httpx, "get", side_effect=fake_get):
+        result = gmail_mod._call_with_refresh(
+            gmail_mod._gmail_api_get_message, creds_path, "msg-1"
+        )
+
+    assert len(get_calls) == 2
+    assert result == {"id": "msg-1"}
 
 
 def test_refresh_raises_when_refresh_token_missing(tmp_path: Path) -> None:

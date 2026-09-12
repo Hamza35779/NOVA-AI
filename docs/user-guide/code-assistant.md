@@ -8,7 +8,7 @@ An orchestrator agent with code execution, file I/O, and shell access. It can wr
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync --extra dev
 nova init --preset code-assistant
 ```

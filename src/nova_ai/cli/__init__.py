@@ -38,6 +38,7 @@ from nova_ai.cli.operators_cmd import operators
 from nova_ai.cli.optimize_cmd import optimize_group
 from nova_ai.cli.oracle_cmd import oracle
 from nova_ai.cli.pearl_cmd import pearl
+from nova_ai.cli.plugin_cmd import plugin
 from nova_ai.cli.prove_cmd import prove
 from nova_ai.cli.quickstart_cmd import quickstart
 from nova_ai.cli.registry_cmd import registry
@@ -112,6 +113,7 @@ cli.add_command(model, "model")
 cli.add_command(memory, "memory")
 cli.add_command(mine, "mine")
 cli.add_command(pearl, "pearl")
+cli.add_command(plugin, "plugin")
 cli.add_command(telemetry, "telemetry")
 cli.add_command(bench, "bench")
 cli.add_command(channel, "channel")

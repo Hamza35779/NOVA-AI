@@ -15,7 +15,7 @@ ollama pull qwen3.5:4b
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync
 nova init --preset chat-simple
 ```

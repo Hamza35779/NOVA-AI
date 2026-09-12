@@ -7,7 +7,7 @@ set -euo pipefail
 #
 # Usage:
 #   git clone https://github.com/Hamza35779/NOVA-AI.git
-#   cd NOVA AI
+#   cd NOVA-AI
 #   ./scripts/quickstart.sh
 # ──────────────────────────────────────────────────────────────────────
 

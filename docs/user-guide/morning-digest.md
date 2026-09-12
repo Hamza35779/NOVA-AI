@@ -8,7 +8,7 @@ A personalized daily briefing that collects data from your connected services, s
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync --extra dev
 ```
 

@@ -6,7 +6,7 @@ to larger models.
 
 ## Requirements
 
-- NOVA AI installed (`git clone https://github.com/Hamza35779/NOVA-AI.git && cd NOVA AI && uv sync` or `uv sync --extra dev`)
+- NOVA AI installed (`git clone https://github.com/Hamza35779/NOVA-AI.git && cd NOVA-AI && uv sync` or `uv sync --extra dev`)
 - An inference engine running with multiple models available
 
 ## Usage

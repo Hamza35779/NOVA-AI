@@ -31,58 +31,70 @@ def test_live_obsidian_full_pipeline() -> None:
 
         # 1. Set up the full pipeline
         store = KnowledgeStore(db_path=str(tmp_path / "live.db"))
-        pipeline = IngestionPipeline(store=store, max_tokens=256)
-        engine = SyncEngine(
-            pipeline=pipeline,
-            state_db=str(tmp_path / "state.db"),
-        )
-        connector = ObsidianConnector(vault_path=str(DOCS_DIR))
+        try:
+            pipeline = IngestionPipeline(store=store, max_tokens=256)
+            engine = SyncEngine(
+                pipeline=pipeline,
+                state_db=str(tmp_path / "state.db"),
+            )
+            connector = ObsidianConnector(vault_path=str(DOCS_DIR))
 
-        # 2. Verify connection
-        assert connector.is_connected(), "Connector should see docs dir"
+            # 2. Verify connection
+            assert connector.is_connected(), "Connector should see docs dir"
 
-        # 3. Sync — this reads real files
-        items = engine.sync(connector)
-        print(f"\n  Synced {items} chunks from {DOCS_DIR}")
-        assert items > 0, "Should have indexed some chunks"
+            # 3. Sync — this reads real files
+            items = engine.sync(connector)
+            print(f"\n  Synced {items} chunks from {DOCS_DIR}")
+            assert items > 0, "Should have indexed some chunks"
 
-        # 4. Verify checkpoint
-        cp = engine.get_checkpoint("obsidian")
-        assert cp is not None
-        assert cp["items_synced"] > 0
-        print(f"  Checkpoint: {cp['items_synced']} items synced")
+            # 4. Verify checkpoint
+            cp = engine.get_checkpoint("obsidian")
+            assert cp is not None
+            assert cp["items_synced"] > 0
+            print(f"  Checkpoint: {cp['items_synced']} items synced")
 
-        # 5. Search via knowledge_search tool
-        tool = KnowledgeSearchTool(store=store)
+            # 5. Search via knowledge_search tool
+            tool = KnowledgeSearchTool(store=store)
 
-        # Search for architecture concepts (should be in docs/)
-        result = tool.execute(query="agent")
-        assert result.success, f"Search failed: {result.content}"
-        assert result.metadata["num_results"] > 0
-        print(f"  'agent' query: {result.metadata['num_results']} results")
+            # Search for architecture concepts (should be in docs/)
+            result = tool.execute(query="agent")
+            assert result.success, f"Search failed: {result.content}"
+            assert result.metadata["num_results"] > 0
+            print(f"  'agent' query: {result.metadata['num_results']} results")
 
-        # Search for engine/inference
-        result = tool.execute(query="inference engine")
-        assert result.success
-        print(f"  'inference engine' query: {result.metadata['num_results']} results")
+            # Search for engine/inference
+            result = tool.execute(query="inference engine")
+            assert result.success
+            print(f"  'inference engine' query: {result.metadata['num_results']} results")
 
-        # Search with source filter
-        result = tool.execute(query="agent", source="obsidian")
-        assert result.success
-        assert result.metadata["num_results"] > 0
+            # Search with source filter
+            result = tool.execute(query="agent", source="obsidian")
+            assert result.success
+            assert result.metadata["num_results"] > 0
 
-        # Search for nonexistent content
-        result = tool.execute(query="xyzzy999nonexistent")
-        assert result.success
-        assert "No relevant results" in result.content
+            # Search for nonexistent content
+            result = tool.execute(query="xyzzy999nonexistent")
+            assert result.success
+            assert "No relevant results" in result.content
 
-        # 6. Verify result quality — check that results have metadata
-        result = tool.execute(query="registry pattern")
-        if result.metadata["num_results"] > 0:
-            # Results should have source attribution
-            assert "[obsidian]" in result.content
-            print("  'registry pattern': found with attribution")
+            # 6. Verify result quality — check that results have metadata
+            result = tool.execute(query="registry pattern")
+            if result.metadata["num_results"] > 0:
+                # Results should have source attribution
+                assert "[obsidian]" in result.content
+                print("  'registry pattern': found with attribution")
 
-        print(
-            f"\n  SMOKE TEST PASSED — {items} chunks indexed, search working end-to-end"
-        )
+            print(
+                f"\n  SMOKE TEST PASSED — {items} chunks indexed, search working end-to-end"
+            )
+        finally:
+            # B4 fix: close store + engine so Windows can clean TemporaryDirectory
+            # (open SQLite handle otherwise raises PermissionError WinError 32).
+            try:
+                store.close()
+            except Exception:
+                pass
+            try:
+                engine.close()
+            except Exception:
+                pass

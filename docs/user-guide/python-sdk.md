@@ -13,7 +13,7 @@ The NOVA AI Python SDK provides a high-level interface for interacting with loca
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync
 ```
 

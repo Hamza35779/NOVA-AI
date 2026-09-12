@@ -44,7 +44,7 @@ NOVA AI is that stack. It is a framework for local-first personal AI, built arou
 
     ```bash
     git clone https://github.com/Hamza35779/NOVA-AI.git
-    cd NOVA AI
+    cd NOVA-AI
     ./scripts/quickstart.sh
     ```
 
@@ -60,7 +60,7 @@ NOVA AI is that stack. It is a framework for local-first personal AI, built arou
 
     ```bash
     git clone https://github.com/Hamza35779/NOVA-AI.git
-    cd NOVA AI
+    cd NOVA-AI
     ./scripts/quickstart.sh
     ```
 

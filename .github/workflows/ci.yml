@@ -122,7 +122,7 @@ jobs:
       - name: Run Windows-specific tests (hardware + CLI)
         shell: bash
         run: |
-          uv run pytest tests/hardware/test_hardware_profiles.py tests/cli/test_cli.py -v -m "not live and not cloud"
+          uv run pytest tests/hardware/test_hardware_profiles.py tests/cli/test_cli.py tests/connectors/test_sync_engine.py tests/engine/test_cloud.py -v -m "not live and not cloud and not hub and not slow"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

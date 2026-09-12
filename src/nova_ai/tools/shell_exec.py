@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from nova_ai.core.registry import ToolRegistry
 from nova_ai.core.types import ToolResult
@@ -19,9 +18,6 @@ _MAX_TIMEOUT = 300
 
 # Default timeout (seconds)
 _DEFAULT_TIMEOUT = 30
-
-# Environment variables always passed through
-_BASE_ENV_KEYS = ("PATH", "HOME", "USER", "LANG", "TERM")
 
 
 @ToolRegistry.register("shell_exec")
@@ -60,8 +56,10 @@ class ShellExecTool(BaseTool):
                         "type": "array",
                         "items": {"type": "string"},
                         "description": (
-                            "Additional environment variable names"
-                            " to pass through from the host."
+                            "Deprecated and ignored: requested variables are"
+                            " NOT passed through (the tool maintains a fixed"
+                            " safe-environment allowlist to prevent secret"
+                            " exfiltration)."
                         ),
                     },
                 },
@@ -110,18 +108,15 @@ class ShellExecTool(BaseTool):
                     success=False,
                 )
 
-        # Build sanitised environment
-        env: dict[str, str] = {}
-        for key in _BASE_ENV_KEYS:
-            val = os.environ.get(key)
-            if val is not None:
-                env[key] = val
+        # Build sanitised environment. `env_passthrough` is deliberately NOT
+        # honoured from tool arguments: the LLM deciding which host secrets
+        # to copy into a child process is the exfiltration vector
+        # (e.g. env_passthrough=["OPENAI_API_KEY"] + curl). The child gets
+        # the fixed safe-environment allowlist only; operators who need a
+        # specific var can set it in `security` config or a wrapper script.
+        from nova_ai.security.subprocess_sandbox import build_safe_env
 
-        env_passthrough: List[str] = params.get("env_passthrough") or []
-        for key in env_passthrough:
-            val = os.environ.get(key)
-            if val is not None:
-                env[key] = val
+        env = build_safe_env()
 
         try:
             from nova_ai._rust_bridge import get_rust_module

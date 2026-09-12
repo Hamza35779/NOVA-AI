@@ -18,10 +18,14 @@ modification.
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import sys
+
+try:
+    import fcntl  # Unix-only; guarded for Windows parity (B8)
+except ImportError:  # Windows
+    fcntl = None  # type: ignore[assignment]
 import threading
 import time
 import traceback
@@ -398,6 +402,14 @@ def _cell_lock(out_dir: Path, cell_name: str):
     """Exclusive flock on ``<cell>/.lock`` to prevent concurrent runner stomps."""
     lock_path = out_dir / ".lock"
     f = lock_path.open("a+")
+    if fcntl is None:
+        # Windows: no flock — best-effort single-instance guard via lock file
+        # existence is skipped; just yield (documented B8 parity fix).
+        try:
+            yield
+        finally:
+            f.close()
+        return
     try:
         fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:

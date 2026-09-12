@@ -8,7 +8,7 @@ A persistent operative agent that runs on a cron schedule, maintains state acros
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync --extra dev
 nova init --preset scheduled-monitor
 ```

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
 import urllib.parse
 from typing import Any
@@ -110,9 +109,11 @@ class HttpRequestTool(BaseTool):
             )
 
         headers = {
-            k: os.path.expandvars(v) if isinstance(v, str) else v
+            k: v if isinstance(v, str) else v
             for k, v in (params.get("headers") or {}).items()
         }
+        # NOTE: no os.path.expandvars on header values — prior code expanded
+        # "$VAR" from LLM-controlled headers, leaking host secrets to any URL.
         body = params.get("body")
         timeout = params.get("timeout", 30)
 

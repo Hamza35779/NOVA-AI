@@ -37,10 +37,10 @@ Pick your platform and start in seconds:
 
 | Platform | Quick Launch | Installation One-liner |
 |---|---|---|
-| **Windows (Setup EXE, no Python)** | Double-click `NOVA-AI-Setup-1.2.4.exe` — includes **Alt+Space Quick Capture** | [Latest Release](https://github.com/Hamza35779/NOVA-AI/releases) |
+| **Windows (Setup EXE, no Python)** | Double-click `NOVA-AI-Setup-1.2.5.exe` — includes **Alt+Space Quick Capture** | [Latest Release](https://github.com/Hamza35779/NOVA-AI/releases) |
 | **Windows (1-Click)** | Double-click `start.bat` | `irm https://hamza35779.github.io/NOVA-AI/install.ps1 \| iex` or run `install.bat` |
 | **Linux · macOS** | `./start.sh` | `curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh \| bash` |
-| **Docker** | `docker compose -f deploy/docker/docker-compose.yml up` | Containerized setup with local Ollama engine |
+| **Docker** | `cp deploy/docker/.env.example .env  # fill NOVA_AI_API_KEY` then `docker compose -f deploy/docker/docker-compose.yml --env-file .env up` | Containerized setup with local Ollama engine |
 | **Desktop GUI** | Download `.exe` / `.dmg` / `.AppImage` | [Latest Release](https://github.com/Hamza35779/NOVA-AI/releases) |
 
 ### Start Working with NOVA AI
@@ -116,7 +116,7 @@ See the [Skills User Guide](https://hamza35779.github.io/NOVA-AI/user-guide/skil
 
 ### Built-in Agents
 
-NOVA AI ships with eight built-in agents across three execution modes (on-demand, scheduled, continuous):
+NOVA AI ships with built-in agents across three execution modes (on-demand, scheduled, continuous):
 
 | Agent | Type | What it does |
 |-------|------|-------------|
@@ -218,7 +218,7 @@ Quick start for contributors:
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync --extra dev
 uv run pre-commit install
 uv run pytest tests/ -v

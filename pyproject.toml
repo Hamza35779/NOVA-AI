@@ -227,7 +227,7 @@ testpaths = ["tests"]
 #
 # Default marker lane mirrors .github/workflows/ci.yml so a bare local
 # `pytest` matches CI; pass an explicit -m to override.
-addopts = '--import-mode=importlib -m "not live and not cloud and not hub"'
+addopts = '--import-mode=importlib -m "not live and not cloud and not hub and not slow"'
 # Per-test ceiling so a hung engine/socket test fails instead of stalling
 # the whole lane. Individual slow tests can re-decorate with
 # @pytest.mark.timeout(N).

@@ -76,6 +76,25 @@ class TestCloudEngineListModels:
         engine = CloudEngine()
         assert engine.list_models() == []
 
+    def test_generate_xai_no_keys_clean_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: with XAI_API_KEY unset, _generate_xai used to raise a
+        bare AttributeError ('CloudEngine' object has no attribute
+        '_xai_client') instead of a clean EngineConnectionError."""
+        for var in _PROVIDER_KEY_VARS:
+            monkeypatch.delenv(var, raising=False)
+        EngineRegistry.register_value("cloud", CloudEngine)
+        engine = CloudEngine()
+        assert engine._xai_client is None
+        with pytest.raises(EngineConnectionError, match="xAI client not available"):
+            engine._generate_xai(
+                [Message(role=Role.USER, content="hi")],
+                model="grok-4",
+                temperature=0.5,
+                max_tokens=16,
+            )
+
 
 class TestCloudEngineGenerate:
     def test_generate_openai(self, monkeypatch: pytest.MonkeyPatch) -> None:

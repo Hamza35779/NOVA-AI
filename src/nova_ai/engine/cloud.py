@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Tuple
 
 import httpx
 
+from nova_ai.core.pricing import PRICING
+from nova_ai.core.pricing import estimate_cost as _canonical_estimate
 from nova_ai.core.registry import EngineRegistry
 from nova_ai.core.types import Message
 from nova_ai.engine._base import (
@@ -24,41 +26,6 @@ from nova_ai.engine._base import (
 from nova_ai.engine._stubs import StreamChunk
 
 logger = logging.getLogger(__name__)
-
-# Pricing per million tokens (input, output)
-PRICING: Dict[str, tuple[float, float]] = {
-    "gpt-5.6-sol": (15.00, 60.00),
-    "gpt-5.6": (15.00, 60.00),
-    "gpt-5.4": (15.00, 60.00),
-    "gpt-5": (10.00, 30.00),
-    "gpt-5-mini": (0.25, 2.00),
-    "gpt-4o": (2.50, 10.00),
-    "gpt-4o-mini": (0.15, 0.60),
-    "o3-mini": (1.10, 4.40),
-    "claude-opus-5": (15.00, 75.00),
-    "claude-sonnet-5": (3.00, 15.00),
-    "claude-opus-4-6": (5.00, 25.00),
-    "claude-sonnet-4-6": (3.00, 15.00),
-    "claude-opus-4-20250514": (15.00, 75.00),
-    "claude-sonnet-4-20250514": (3.00, 15.00),
-    "claude-haiku-4-5": (1.00, 5.00),
-    "gemini-3.7-pro": (2.50, 15.00),
-    "gemini-3.7-flash": (0.50, 3.00),
-    "gemini-3-pro": (2.00, 12.00),
-    "gemini-3-flash": (0.50, 3.00),
-    "gemini-2.5-pro": (1.25, 10.00),
-    "gemini-2.5-flash": (0.30, 2.50),
-    "grok-4.5": (5.00, 25.00),
-    "grok-4": (4.00, 20.00),
-    "grok-3": (3.00, 15.00),
-    "grok-2": (2.00, 10.00),
-    "MiniMax-M2.7": (0.30, 1.20),
-    "MiniMax-M2.7-highspeed": (0.60, 2.40),
-    "MiniMax-M2.5": (0.30, 1.20),
-    "MiniMax-M2.5-highspeed": (0.60, 2.40),
-    "deepseek-v4-flash": (0.27, 1.10),
-    "deepseek-v4-pro": (0.55, 2.19),
-}
 
 # Well-known model IDs per provider
 _OPENAI_MODELS = [
@@ -246,19 +213,8 @@ def _is_unsupported_temperature_error(exc: Exception) -> bool:
 
 
 def estimate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
-    """Estimate USD cost based on the hardcoded pricing table."""
-    # Try exact match first, then prefix match
-    prices = PRICING.get(model)
-    if prices is None:
-        for key, val in PRICING.items():
-            if model.startswith(key):
-                prices = val
-                break
-    if prices is None:
-        return 0.0
-    input_cost = (prompt_tokens / 1_000_000) * prices[0]
-    output_cost = (completion_tokens / 1_000_000) * prices[1]
-    return input_cost + output_cost
+    """Estimate USD cost (delegates to canonical core.pricing table)."""
+    return _canonical_estimate(model, prompt_tokens, completion_tokens)
 
 
 def _serialize_anthropic_block(block: Any) -> Dict[str, Any]:
@@ -372,6 +328,10 @@ class CloudEngine(InferenceEngine):
         self._minimax_client: Any = None
         self._deepseek_client: Any = None
         self._codex_client: Any = None
+        # xAI client must be initialised too — _generate_xai reads it
+        # unguarded, and a missing attribute crashed with a bare
+        # AttributeError instead of a clean "not configured" error.
+        self._xai_client: Any = None
         # Gemini thought_signatures: tool_call_id -> signature bytes
         self._thought_sigs: Dict[str, bytes] = {}
         self._init_clients()

@@ -5,7 +5,7 @@ chosen topics and produces a concise, structured summary.
 
 ## Requirements
 
-- NOVA AI installed (`git clone https://github.com/Hamza35779/NOVA-AI.git && cd NOVA AI && uv sync` or `uv sync --extra dev`)
+- NOVA AI installed (`git clone https://github.com/Hamza35779/NOVA-AI.git && cd NOVA-AI && uv sync` or `uv sync --extra dev`)
 - An inference engine running (Ollama, cloud API, vLLM, etc.)
 
 ## Usage

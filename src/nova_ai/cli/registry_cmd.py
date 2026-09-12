@@ -143,4 +143,35 @@ def show(registry_name: str, verbose: bool) -> None:
         console.print(f"[red]Error: {exc}[/red]")
 
 
+@registry.command("search")
+@click.argument("query")
+def registry_search(query: str) -> None:
+    """Search all registries for QUERY (plugin discovery stub)."""
+    console = Console(stderr=True)
+    _, aliases = _load_registry_map()
+    hits = []
+    for alias, cls in aliases.items():
+        try:
+            for key in cls.keys():
+                if query.lower() in key.lower():
+                    hits.append(f"{alias}:{key}")
+        except Exception:
+            continue
+    if not hits:
+        console.print(f"[dim]No registry entries match '{query}'.[/dim]")
+        return
+    for h in sorted(set(hits)):
+        console.print(f"  [cyan]{h}[/cyan]")
+
+
+@registry.command("install")
+@click.argument("name")
+def registry_install(name: str) -> None:
+    """Install a plugin stub (resolves entry-point or prints guidance)."""
+    console = Console(stderr=True)
+    console.print(f"[dim]Registry install for '{name}' — wire to PyPI/entry-points in Phase 2.[/dim]")
+    console.print("[dim]Scaffold locally with: nova plugin new --kind tool --name "
+                  f"{name}[/dim]")
+
+
 __all__ = ["registry"]

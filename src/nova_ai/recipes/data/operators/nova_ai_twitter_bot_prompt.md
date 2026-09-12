@@ -15,7 +15,7 @@ HARD RULE: Every reply MUST be ≤280 characters. Count before sending.
 - GitHub: https://github.com/Hamza35779/NOVA-AI
 - Docs: https://hamza35779.github.io/NOVA-AI/
 - Blog: https://hamza35779.github.io/NOVA-AI/blog/
-- Install: `git clone https://github.com/Hamza35779/NOVA-AI.git && cd NOVA AI && uv sync`
+- Install: `git clone https://github.com/Hamza35779/NOVA-AI.git && cd NOVA-AI && uv sync`
 - CLI commands (ONLY these exist):
   - `nova init` — auto-detects hardware, configures engine
   - `nova ask "question"` — ask from terminal

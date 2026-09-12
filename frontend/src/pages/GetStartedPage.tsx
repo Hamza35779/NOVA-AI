@@ -406,7 +406,7 @@ function SelfHostedView() {
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             Clone and install (Python 3.10+ required):
           </p>
-          <CodeBlock code={"git clone https://github.com/Hamza35779/NOVA-AI.git\ncd NOVA AI\nuv sync"} />
+          <CodeBlock code={"git clone https://github.com/Hamza35779/NOVA-AI.git\ncd NOVA-AI\nuv sync"} />
           <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
             Then get started:
           </p>
@@ -417,7 +417,7 @@ function SelfHostedView() {
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             Launch the API server to get the full UI in your browser:
           </p>
-          <CodeBlock code={"git clone https://github.com/Hamza35779/NOVA-AI.git\ncd NOVA AI\nuv sync --extra desktop\nnova serve --port 8000"} />
+          <CodeBlock code={"git clone https://github.com/Hamza35779/NOVA-AI.git\ncd NOVA-AI\nuv sync --extra desktop\nnova serve --port 8000"} />
           <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
             The chat, dashboard, energy profiling, and cost comparison all run
             locally on your machine.
@@ -428,7 +428,7 @@ function SelfHostedView() {
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             Deploy with Docker Compose for a zero-setup hosted instance:
           </p>
-          <CodeBlock code={"git clone https://github.com/Hamza35779/NOVA-AI.git\ncd NOVA AI\ndocker compose -f deploy/docker/docker-compose.yml up -d"} />
+          <CodeBlock code={"git clone https://github.com/Hamza35779/NOVA-AI.git\ncd NOVA-AI\ndocker compose -f deploy/docker/docker-compose.yml up -d"} />
           <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
             This starts both the API server and Ollama. The web UI is bundled and
             served automatically at port 8000.

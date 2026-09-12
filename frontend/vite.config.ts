@@ -44,9 +44,12 @@ export default defineConfig({
           markdown: ['react-markdown', 'rehype-highlight', 'remark-gfm'],
           charts: ['recharts'],
           router: ['react-router'],
+          katex: ['katex', 'rehype-katex', 'remark-math'],
+          light: ['zustand', 'clsx', 'tailwind-merge'],
         },
       },
     },
+    chunkSizeWarningLimit: 800,
   },
   server: {
     port: 5173,

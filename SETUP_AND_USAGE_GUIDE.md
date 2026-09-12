@@ -169,7 +169,12 @@ NOVA AI gives you full flexibility in choosing how to run models:
 5. Watch the live progress bar download directly from Hugging Face into `~/.nova_ai/models/`.
 6. Once complete, the model immediately appears in the chat model picker!
 
-> **Manual GGUF Import:** You can also drop any `.gguf` file downloaded from Hugging Face directly into `C:\Users\<YourUsername>\.nova_ai\models\`. NOVA AI will auto-detect it.
+> **Manual GGUF Import:** You can also drop any `.gguf` file downloaded from Hugging Face directly into your models folder. NOVA AI will auto-detect it.
+>
+> | OS | Models folder |
+> |----|---------------|
+> | Windows | `%USERPROFILE%\.nova_ai\models\` (e.g. `C:\Users\<YourUsername>\.nova_ai\models\`) |
+> | Linux / macOS | `~/.nova_ai/models/` |
 
 ---
 

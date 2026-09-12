@@ -46,7 +46,7 @@ structural scorer).
 ## Quickstart
 
 ```bash
-cd NOVA AI
+cd NOVA-AI
 source .env                                           # API keys
 
 # 1. Start vLLM in another shell (see your local launch recipe)

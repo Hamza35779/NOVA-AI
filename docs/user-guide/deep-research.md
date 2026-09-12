@@ -8,7 +8,7 @@ A multi-hop research agent that searches across your indexed documents, cross-re
 
 ```bash
 git clone https://github.com/Hamza35779/NOVA-AI.git
-cd NOVA AI
+cd NOVA-AI
 uv sync --extra dev
 nova init --preset deep-research
 ```

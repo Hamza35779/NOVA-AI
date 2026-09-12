@@ -1,39 +1,14 @@
 """Cloud-model pricing + per-family quirks for hybrid paradigm agents.
 
-Ported verbatim from ``hybrid-local-cloud-compute/prices.py``. Kept as a
-sibling to the agents rather than merged into ``engine/cloud.py``'s PRICING
-on purpose: the hybrid harness is the authoritative cost reference for the
-n=500 numbers in ``hybrid-local-cloud-compute/docs/results.md`` and we want
-the NOVA AI ports to charge identically.
+Canonical numbers live in ``nova_ai.core.pricing`` (B3 fix). This module
+re-exports them for backward compat; the old verbatim port had gpt-4o at
+mini pricing — now corrected.
 """
 
 from __future__ import annotations
 
-# USD per million tokens, (input, output). Local models = 0.
-PRICES: dict[str, tuple[float, float]] = {
-    "claude-opus-4-7": (5.00, 25.0),
-    "claude-sonnet-4-6": (3.00, 15.0),
-    "claude-haiku-4-5": (1.00, 5.00),
-    "claude-haiku-4-5-20251001": (1.00, 5.00),
-    "gpt-5.5": (5.00, 30.0),
-    "gpt-5": (1.25, 10.0),
-    "gpt-5-mini": (0.25, 2.00),
-    "gpt-5-mini-2025-08-07": (0.25, 2.00),
-    "gpt-4o": (0.15, 0.60),
-    # Gemini Developer API prices (USD per 1M tokens). Pro models use tiered
-    # pricing above 200K prompt tokens; GAIA prompts stay under that tier, so
-    # charge the low-context standard rate.
-    "gemini-3.1-pro-preview": (2.00, 12.0),
-    "gemini-3.1-pro-preview-customtools": (2.00, 12.0),
-    "gemini-2.5-pro": (1.25, 10.0),
-    "gemini-2.5-flash": (0.30, 2.50),
-    "gemini-2.5-flash-lite": (0.10, 0.40),
-    # OpenRouter slugs (used by toolorchestra paper-match pool).
-    # Prices are OpenRouter list (USD/1M tokens), 2026-05 snapshot.
-    "qwen/qwen-2.5-coder-32b-instruct": (0.08, 0.18),
-    "qwen/qwen3-32b": (0.10, 0.30),
-    "meta-llama/llama-3.3-70b-instruct": (0.13, 0.39),
-}
+from nova_ai.core.pricing import PRICING as PRICES  # noqa: F401 — re-export
+from nova_ai.core.pricing import estimate_cost as _canonical_cost
 
 # Models whose API rejects an explicit `temperature` param — callers should
 # omit it for any model whose name starts with one of these prefixes.
@@ -46,8 +21,7 @@ NO_TEMP_PREFIXES: tuple[str, ...] = (
 
 def cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     """USD cost for one call. Unknown models price at 0 (e.g. local vLLM)."""
-    pi, po = PRICES.get(model, (0.0, 0.0))
-    return (prompt_tokens / 1_000_000) * pi + (completion_tokens / 1_000_000) * po
+    return _canonical_cost(model, prompt_tokens, completion_tokens)
 
 
 def supports_temperature(model: str) -> bool:
