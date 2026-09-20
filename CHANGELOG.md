@@ -26,6 +26,15 @@ Wired into `install.bat`, `scripts/install/install.sh`, and `scripts/quickstart.
 
 ### Fixed
 
+**Batched knowledge-store ingest (~5–10× throughput).** `IngestionPipeline` used to
+commit after every chunk — one WAL fsync per row (≈6.6 ms/chunk on the audit bench).
+`KnowledgeStore` gained a nestable, thread-safe `batch()` context manager that suspends
+per-chunk commits and commits (or rolls back) once at the boundary; the pipeline now
+writes each document inside that batch with a safety commit every 256 documents. A
+mid-sync crash now leaves the store exactly at the last committed batch (atomic per
+batch) instead of a half-written document. Standalone `store()` callers keep the old
+per-chunk-commit behavior.
+
 **Runtime cloud model failover for `model="auto"`.** The complexity router picked the
 first *available* cloud model and stopped — a provider outage, rate limit, or bad key
 surfaced the raw error mid-task. `MultiEngine.generate` now walks the remaining
