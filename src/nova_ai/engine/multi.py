@@ -42,6 +42,12 @@ class MultiEngine(InferenceEngine):
     *auto_route_threshold* go to the first preferred cloud model actually
     available; everything else stays on the first local engine. The decision
     is attached to non-streaming results under ``result["_routing"]``.
+
+    Cloud escalations fail over at runtime: when the chosen cloud model's
+    call fails, the remaining preference-ordered candidates are tried, and
+    the best local model is the final fallback (all annotated in
+    ``_routing``). Explicit model names keep exact-model semantics — a
+    failed call surfaces as an error, never a silent substitution.
     """
 
     engine_id = "multi"
@@ -176,6 +182,15 @@ class MultiEngine(InferenceEngine):
                     reason="at_or_above_threshold",
                     model=candidate,
                 )
+                # Runtime failover (P1 reliability): surface the full ordered
+                # candidate list so generate() can walk it when a call fails,
+                # degrading to the best local model as a last resort.
+                decision["failover_candidates"] = [
+                    m
+                    for m in self._cloud_model_preference
+                    if m in available and m != candidate
+                ]
+                decision["local_fallback"] = self._auto_local_model()
                 return candidate, decision
 
         # Complex query but no preferred cloud model is configured/available.
@@ -216,6 +231,17 @@ class MultiEngine(InferenceEngine):
         **kwargs: Any,
     ) -> Dict[str, Any]:
         resolved_model, routing = self._maybe_resolve_auto(messages, model)
+        if routing is not None and routing.get("route") == "cloud":
+            return self._generate_with_failover(
+                messages,
+                resolved_model=resolved_model,
+                routing=routing,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+        # Single-shot dispatch: explicit models keep exact-model semantics
+        # (no silent substitution — a failed call is the user's signal).
         result = self._engine_for(resolved_model).generate(
             messages,
             model=resolved_model,
@@ -234,6 +260,89 @@ class MultiEngine(InferenceEngine):
                 routing.get("route"),
                 resolved_model,
             )
+        return result
+
+    def _generate_with_failover(
+        self,
+        messages: Sequence[Message],
+        *,
+        resolved_model: str,
+        routing: Dict[str, Any],
+        temperature: float,
+        max_tokens: int,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Cloud escalation with runtime failover across the preference list.
+
+        ``_resolve_auto`` picks the first *available* cloud model, but
+        availability (it is listed) says nothing about reachability (the
+        provider may be down, rate-limited, or mis-keyed). Walk the remaining
+        preference-ordered candidates on failure; if every cloud candidate
+        fails, degrade to the best local model rather than erroring — auto's
+        contract is "never fail just because cloud is unavailable". Every
+        substitution is recorded in ``result["_routing"]`` so callers and
+        traces can see exactly what ran.
+        """
+        candidates = [resolved_model, *routing.get("failover_candidates", [])]
+        local_fallback = routing.get("local_fallback") or ""
+        attempts: List[Dict[str, str]] = []
+        last_exc: Exception | None = None
+        chosen = resolved_model
+        result: Dict[str, Any] | None = None
+        for candidate in candidates:
+            try:
+                result = self._engine_for(candidate).generate(
+                    messages,
+                    model=candidate,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs,
+                )
+                chosen = candidate
+                break
+            except Exception as exc:  # noqa: BLE001 — failover wants any failure
+                attempts.append({"model": candidate, "error": str(exc)})
+                last_exc = exc
+                logger.warning(
+                    "Cloud generate failed on %r (%s); trying next candidate",
+                    candidate,
+                    exc,
+                )
+        if result is None:
+            if local_fallback:
+                try:
+                    result = self._engine_for(local_fallback).generate(
+                        messages,
+                        model=local_fallback,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        **kwargs,
+                    )
+                    chosen = local_fallback
+                    routing["route"] = "local"
+                    routing["reason"] = "cloud_failed_over_to_local"
+                except Exception:
+                    if last_exc is not None:
+                        raise last_exc
+                    raise
+            elif last_exc is not None:
+                raise last_exc
+            else:  # pragma: no cover — candidates is never empty
+                raise RuntimeError("no failover candidates available")
+        routing["model"] = chosen
+        routing["failed_over"] = chosen != resolved_model or routing.get(
+            "reason"
+        ) == "cloud_failed_over_to_local"
+        if attempts:
+            routing["attempts"] = attempts
+        result["_routing"] = routing
+        logger.info(
+            "Auto route: score=%.2f (%s) -> %s %r",
+            routing.get("complexity_score", -1.0),
+            routing.get("reason"),
+            routing.get("route"),
+            chosen,
+        )
         return result
 
     async def stream(

@@ -24,6 +24,17 @@ provider API keys in the user environment via `setx`/shell rc — never in `open
 `--local-only` mode locks opencode to the local provider and disables session sharing.
 Wired into `install.bat`, `scripts/install/install.sh`, and `scripts/quickstart.sh`.
 
+### Fixed
+
+**Runtime cloud model failover for `model="auto"`.** The complexity router picked the
+first *available* cloud model and stopped — a provider outage, rate limit, or bad key
+surfaced the raw error mid-task. `MultiEngine.generate` now walks the remaining
+preference-ordered cloud candidates on failure and, if every cloud candidate fails,
+degrades to the best local model (auto's contract is "never fail just because cloud is
+unavailable"). Every substitution is recorded in `result["_routing"]` (`failed_over`,
+`attempts`, final `model`) so traces show exactly what ran. Explicit model names keep
+exact-model semantics: a failed call surfaces as an error, never a silent substitution.
+
 **Global hotkey quick-capture popup.** Pressing `Alt+Space` on Windows (macOS keeps its
 native `Cmd+Shift+Space` NSPanel) opens a compact Raycast-style chat window from anywhere —
 frameless, always-on-top, skip-taskbar — that talks to the local backend over the
