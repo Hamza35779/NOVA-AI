@@ -174,6 +174,19 @@ else
   warn "Backend may still be starting..."
 fi
 
+# ── 9b. opencode companion (optional) ─────────────────────────────
+# Installs the opencode CLI when missing (no-op when present) and writes
+# ./opencode.json with the NOVA AI provider + MCP tools. Best-effort:
+# never fail quickstart when Node/npm or network is unavailable.
+if uv run nova opencode install &>/dev/null; then
+  ok "opencode CLI ready"
+else
+  warn "opencode install skipped (optional; run 'nova opencode install' later)"
+fi
+uv run nova opencode init &>/dev/null \
+  && ok "opencode wired to NOVA AI (./opencode.json)" \
+  || warn "opencode.json not written (run 'nova opencode init' later)"
+
 # ── 10. Start frontend ──────────────────────────────────────────────
 info "Starting frontend dev server on port 5173..."
 (cd frontend && npm run dev) &>/dev/null &

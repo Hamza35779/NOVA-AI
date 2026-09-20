@@ -607,6 +607,30 @@ install_symlinks() {
     ln -sf "$SCRIPTS_DIR/nova-uninstall.sh" "$HOME/.local/bin/nova-uninstall"
 }
 
+install_opencode_cli() {
+    # Optional companion: the opencode CLI wired to NOVA AI models/tools
+    # (`nova opencode init`). Best-effort by design — opencode is a
+    # companion, not a requirement, so this step always returns 0 and
+    # must never trip the ERR trap and fail the install.
+    if command -v opencode >/dev/null 2>&1; then
+        echo "    opencode already installed"
+        return 0
+    fi
+    if command -v npm >/dev/null 2>&1; then
+        npm install -g opencode-ai >/dev/null 2>&1 || true
+    elif command -v brew >/dev/null 2>&1; then
+        brew install anomalyco/tap/opencode >/dev/null 2>&1 || true
+    else
+        curl -fsSL https://opencode.ai/install | bash >/dev/null 2>&1 || true
+    fi
+    if command -v opencode >/dev/null 2>&1; then
+        echo "    opencode installed"
+    else
+        echo "    warning: opencode install skipped (optional; run 'nova opencode install' later)"
+    fi
+    return 0
+}
+
 # Tracks whether the user needs to source ~/.bashrc / ~/.zshrc / open a
 # new terminal before `nova` will resolve. Set only when ensure_path
 # actually modified the user's rc file.
@@ -682,6 +706,7 @@ step start_ollama       "Start Ollama daemon"   start_ollama
 step pull_default_model "Pull qwen3.5:2b"       pull_default_model
 step write_config       "Write config.toml"     write_config
 step install_symlinks   "Install symlinks"      install_symlinks
+step install_opencode_cli "Install opencode (optional)" install_opencode_cli
 step ensure_path        "Ensure PATH"           ensure_path
 step detach_bg_orchestrator "Detach background work" detach_bg_orchestrator
 

@@ -30,10 +30,12 @@ from nova_ai.cli.gateway_cmd import gateway
 from nova_ai.cli.host_cmd import host
 from nova_ai.cli.init_cmd import init
 from nova_ai.cli.integrations_cmd import integrations_group
+from nova_ai.cli.mcp_cmd import mcp
 from nova_ai.cli.memory_cmd import memory
 from nova_ai.cli.memory_wiki_cmd import memory_wiki_group
 from nova_ai.cli.mine_cmd import mine
 from nova_ai.cli.model import model
+from nova_ai.cli.opencode_cmd import opencode
 from nova_ai.cli.operators_cmd import operators
 from nova_ai.cli.optimize_cmd import optimize_group
 from nova_ai.cli.oracle_cmd import oracle
@@ -112,6 +114,8 @@ cli.add_command(serve, "serve")
 cli.add_command(model, "model")
 cli.add_command(memory, "memory")
 cli.add_command(mine, "mine")
+cli.add_command(mcp, "mcp")
+cli.add_command(opencode, "opencode")
 cli.add_command(pearl, "pearl")
 cli.add_command(plugin, "plugin")
 cli.add_command(telemetry, "telemetry")

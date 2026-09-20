@@ -130,6 +130,22 @@ NOVA AI ships with built-in agents across three execution modes (on-demand, sche
 | `native_openhands` | On-demand | CodeAct — generates and executes Python code |
 | `simple` | On-demand | Single-turn chat, no tools |
 
+### opencode Integration
+
+Use [opencode](https://opencode.ai) with NOVA AI in both directions — opencode gets your
+local Ollama models (as the `nova-ai` provider) **and** NOVA's tool registry via MCP, so
+coding-agent sessions run local-first:
+
+```bash
+nova opencode install   # fetch the opencode CLI when missing
+nova opencode init      # write/merge ./opencode.json (provider + MCP tools)
+nova serve              # start the backend (another terminal)
+nova opencode launch    # open opencode wired to NOVA AI
+```
+
+`nova opencode status` shows per-provider data residency (local vs cloud); `--local-only`
+locks opencode to local models and disables session sharing. Docs: [opencode Integration](https://hamza35779.github.io/NOVA-AI/user-guide/opencode/).
+
 ### Desktop Extras
 
 - **⚡ Quick Capture (Windows: `Alt+Space`, macOS: `Cmd+Shift+Space`)** — a Raycast-style chat popup from anywhere; the conversation syncs back to the main app automatically.

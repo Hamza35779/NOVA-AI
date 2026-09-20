@@ -107,15 +107,100 @@ def _sync_sources(registry: object, source: str = "") -> None:
         console.print("[dim]Tip: connect a source first with `nova connect <source>`.[/dim]")
 
 
+def _connect_opencode_wizard(
+    yes: bool = False, model: str = "", local_only: bool = False
+) -> None:
+    """Interactive ``nova connect opencode`` flow.
+
+    Mirrors the data-source options (API keys, Ollama): one guided place to
+    install opencode, wire ``opencode.json`` to NOVA AI, and pick the model
+    opencode talks to — interactive by default, ``--yes`` for scripted runs.
+    """
+    from nova_ai.opencode.config import (
+        current_default_model,
+        detect_opencode,
+        install_opencode,
+        opencode_version,
+        set_default_model,
+        write_project_config,
+    )
+
+    console = Console()
+    console.print("[bold]NOVA AI ↔ opencode integration[/bold]\n")
+
+    # 1/3 — CLI present?
+    exe = detect_opencode()
+    if exe:
+        console.print(f"[green][1/3] opencode CLI: {opencode_version(exe)}[/green]")
+    else:
+        console.print("[yellow][1/3] opencode CLI: not found[/yellow]")
+        if yes or click.confirm("Install opencode now?", default=True):
+            ok, message = install_opencode()
+            console.print(f"[green]{message}[/green]" if ok else f"[red]{message}[/red]")
+            if not ok:
+                console.print(
+                    "[yellow]Continuing without the CLI — the config below "
+                    "still works once you install it.[/yellow]"
+                )
+        else:
+            console.print("[dim]Skipped install.[/dim]")
+
+    # 2/3 — project config wired?
+    path, reachable, models = write_project_config(".", local_only=local_only)
+    console.print(
+        f"[green][2/3] {path}: NOVA provider + MCP tools wired "
+        f"(models: {', '.join(models)})[/green]"
+    )
+    if local_only:
+        console.print(
+            "[green]Local-only mode: cloud providers locked out, "
+            "sharing disabled.[/green]"
+        )
+    if not reachable:
+        console.print(
+            "[yellow]NOVA server unreachable — start `nova serve` and re-run "
+            "`nova connect opencode` to pick up live model IDs.[/yellow]"
+        )
+
+    # 3/3 — default model switch.
+    wanted = (model or "").strip()
+    if not wanted and not yes and reachable and len(models) > 1:
+        current = current_default_model()
+        if current:
+            console.print(f"Current opencode default: [cyan]{current}[/cyan]")
+        for i, mid in enumerate(models, 1):
+            console.print(f"  [{i}] nova-ai/{mid}")
+        pick = click.prompt("Default model (number, id, or Enter to keep)", default="")
+        if pick.strip():
+            try:
+                wanted = models[int(pick.strip()) - 1]
+            except (ValueError, IndexError):
+                wanted = pick.strip()
+    if wanted:
+        ok, message = set_default_model(wanted)
+        console.print(f"[green][3/3] {message}[/green]" if ok else f"[red]{message}[/red]")
+    else:
+        console.print("[green][3/3] default model: unchanged[/green]")
+
+    console.print("\n[bold]Next steps[/bold]")
+    console.print("  nova opencode launch              # TUI with NOVA models + tools")
+    console.print('  nova ask --agent opencode "..."   # drive opencode from NOVA AI')
+    console.print("  nova opencode model               # switch models anytime")
+
+
 def _connect_source(registry: object, source: str, path: str = "") -> None:
     """Route connector setup by auth_type."""
     console = Console()
+
+    if source == "opencode":
+        _connect_opencode_wizard()
+        return
 
     if not registry.contains(source):  # type: ignore[attr-defined]
         console.print(f"[red]Unknown source: {source}[/red]")
         console.print(
             "[yellow]Available sources: "
-            + ", ".join(registry.keys())  # type: ignore[attr-defined]
+            + ", ".join(list(registry.keys()) + ["opencode"])  # type: ignore[attr-defined]
             + "[/yellow]"
         )
         return
@@ -246,6 +331,21 @@ def _connect_source(registry: object, source: str, path: str = "") -> None:
     default="",
     help="Path for filesystem connectors (e.g., Obsidian vault).",
 )
+@click.option(
+    "--yes",
+    is_flag=True,
+    help="Assume yes for prompts (used by 'connect opencode').",
+)
+@click.option(
+    "--model",
+    default="",
+    help="Default model for 'connect opencode' (e.g., qwen3:8b).",
+)
+@click.option(
+    "--local-only",
+    is_flag=True,
+    help="Private mode for 'connect opencode' (no cloud providers, no sharing).",
+)
 @click.pass_context
 def connect(
     ctx: click.Context,
@@ -254,8 +354,11 @@ def connect(
     trigger_sync: bool,
     disconnect_source: str,
     path: str,
+    yes: bool,
+    model: str,
+    local_only: bool,
 ) -> None:
-    """Manage data source connections (Gmail, Obsidian, etc.)."""
+    """Manage connections (Gmail, Obsidian, opencode, etc.)."""
     # Lazy imports to avoid top-level side effects
     import nova_ai.connectors  # noqa: F401 — registers all connectors
     from nova_ai.core.registry import ConnectorRegistry
@@ -273,6 +376,9 @@ def connect(
         return
 
     if source:
+        if source == "opencode":
+            _connect_opencode_wizard(yes=yes, model=model, local_only=local_only)
+            return
         _connect_source(ConnectorRegistry, source, path=path)
         return
 

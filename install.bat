@@ -6,7 +6,14 @@ echo =======================================================
 echo              NOVA AI - Automated Installer
 echo =======================================================
 echo.
+echo This installer will:
+echo   1. Install Python dependencies
+echo   2. Install opencode CLI (if missing)
+echo   3. Configure opencode.json for NOVA AI
+echo   4. Verify the installation
+echo.
 
+:: Check Python installation
 where python >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Python is not found on PATH.
@@ -15,21 +22,62 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-echo [1/3] Setting up Python dependencies...
+echo.
+echo =======================================================
+echo  Step 1/4: Installing Python dependencies
+echo =======================================================
 python -m pip install --upgrade pip
 python -m pip install -e ".[server,tools-search,voice,screen]"
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] Failed to install Python dependencies.
+    pause
+    exit /b 1
+)
 
 echo.
-echo [2/3] Verifying installation...
+echo =======================================================
+echo  Step 2/4: Installing opencode CLI
+echo =======================================================
 set "PYTHONPATH=%~dp0src;%PYTHONPATH%"
+python -m nova_ai.cli opencode install
+if %ERRORLEVEL% NEQ 0 (
+    echo [WARN] opencode CLI install skipped.
+    echo You can install it manually later with:
+    echo   npm install -g opencode-ai
+    echo   OR: curl -fsSL https://opencode.ai/install ^| bash
+)
+
+echo.
+echo =======================================================
+echo  Step 3/4: Configuring opencode.json for NOVA AI
+echo =======================================================
+python -m nova_ai.cli opencode init
+if %ERRORLEVEL% NEQ 0 (
+    echo [WARN] opencode.json not written.
+    echo Run 'python -m nova_ai.cli opencode init' later.
+)
+
+echo.
+echo =======================================================
+echo  Step 4/4: Verifying installation
+echo =======================================================
 python -m nova_ai.cli doctor
 
 echo.
-echo [3/3] Done! You can now start NOVA AI by double-clicking 'start.bat'
-echo or running 'python -m nova_ai.cli chat' in this directory.
+echo =======================================================
+echo  Installation Complete!
+echo =======================================================
 echo.
-echo NOTE: Screen OCR (the 'screen' tool) needs the Tesseract engine.
-echo Install it from https://github.com/UB-Mannheim/tesseract/wiki and add
-echo it to PATH if you plan to use screen capture / OCR features.
+echo Quick start:
+echo   1. Start the backend:  python -m nova_ai.cli serve
+echo   2. Launch opencode:    python -m nova_ai.cli opencode launch
+echo   OR use start.bat for a menu of options.
+echo.
+echo For opencode model switching:
+echo   python -m nova_ai.cli opencode model --list
+echo   python -m nova_ai.cli opencode model
+echo.
+echo NOTE: Screen OCR needs Tesseract engine.
+echo Install from: https://github.com/UB-Mannheim/tesseract/wiki
 echo.
 pause

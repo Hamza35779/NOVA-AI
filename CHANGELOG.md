@@ -10,6 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+**opencode integration (`nova opencode`, `nova mcp`, `nova connect opencode`).** Two-way
+wiring with the [opencode](https://opencode.ai) terminal coding agent: (1) opencode uses
+NOVA AI models — `nova opencode init` registers NOVA's OpenAI-compatible server as the
+`nova-ai` provider in `opencode.json` with a live model list from `GET /v1/models`
+(fallback `qwen3:8b` when the server is down), merged non-destructively so user-managed
+providers/permissions survive; (2) opencode uses NOVA AI tools — the new `nova mcp serve`
+stdio transport exposes the NOVA tool registry as a local MCP (JSON-RPC 2.0) server.
+Companion commands: `nova opencode status` (CLI/server/config health + per-provider
+data-residency readout), `install` (npm/script/brew per OS), `model` (list/switch
+default), `launch` (TUI or headless), `setup` (guided wizard), and `set-key` (stores
+provider API keys in the user environment via `setx`/shell rc — never in `opencode.json`).
+`--local-only` mode locks opencode to the local provider and disables session sharing.
+Wired into `install.bat`, `scripts/install/install.sh`, and `scripts/quickstart.sh`.
+
 **Global hotkey quick-capture popup.** Pressing `Alt+Space` on Windows (macOS keeps its
 native `Cmd+Shift+Space` NSPanel) opens a compact Raycast-style chat window from anywhere —
 frameless, always-on-top, skip-taskbar — that talks to the local backend over the

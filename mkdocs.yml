@@ -191,6 +191,7 @@ nav:
       - Tools: user-guide/tools.md
       - Memory: user-guide/memory.md
       - External MCP Servers: user-guide/mcp-external-servers.md
+      - opencode Integration: user-guide/opencode.md
       - Scheduler: user-guide/scheduler.md
       - Telemetry: user-guide/telemetry.md
       - Evaluations: user-guide/evaluations.md
