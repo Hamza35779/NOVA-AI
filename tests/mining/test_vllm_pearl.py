@@ -5,8 +5,26 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-import docker.errors as docker_errors
 import pytest
+
+# The docker SDK is an optional dependency (the `mining-pearl-vllm` extra);
+# CI's default lane does not install it. The provider mocks the Docker client
+# entirely, so the real package is only needed for its exception *types*.
+# Import lazily and fall back to a stub so collection never fails when the
+# extra is absent (mirrors the importorskip convention used by the other
+# mining tests).
+try:
+    import docker.errors as docker_errors
+except ImportError:  # pragma: no cover - exercised on CI's default lane
+
+    class _DockerErrorsStub:
+        class NotFound(Exception):
+            pass
+
+        class APIError(Exception):
+            pass
+
+    docker_errors = _DockerErrorsStub()
 
 
 def test_vllm_pearl_detect_supported_on_h100(hopper_hw):

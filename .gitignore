@@ -71,6 +71,12 @@ get-pip.py
 # Junk from mocked-path tests that write to their mock's __repr__ as a path
 MagicMock/
 
+# Local audit / review working notes (session artifacts, not project docs)
+FORENSIC-AUDIT-*.md
+PROJECT_REVIEW_AND_IMPROVEMENTS.md
+PROJECT_IMPROVEMENTS_EXTENDED.md
+debug.log
+
 # MkDocs build output
 site/
 
