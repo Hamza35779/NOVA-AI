@@ -416,7 +416,9 @@ export function InputArea() {
               timestamp: Date.now(), level: 'info', category: 'tool',
               message: `Calling ${data.tool}(${data.arguments || ''})`,
             });
-          } catch {}
+          } catch {
+            // Tool-call start notification is best-effort.
+          }
         } else if (eventName === 'tool_call_end') {
           try {
             const data = JSON.parse(sseEvent.data);
@@ -433,7 +435,9 @@ export function InputArea() {
               activeToolCalls: [...toolCalls],
             });
             updateLastAssistant(convId, accumulatedContent, [...toolCalls]);
-          } catch {}
+          } catch {
+            // SSE frame handling is best-effort; skip malformed frames.
+          }
         } else {
           try {
             const data = JSON.parse(sseEvent.data);
@@ -456,7 +460,9 @@ export function InputArea() {
               }
             }
             if (data.choices?.[0]?.finish_reason === 'stop') break;
-          } catch {}
+          } catch {
+            // SSE frame handling is best-effort; skip malformed frames.
+          }
         }
       }
       }

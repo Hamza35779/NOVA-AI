@@ -77,7 +77,9 @@ function setStoredKey(storageKey: string, value: string): void {
   try {
     if (value) localStorage.setItem(storageKey, value);
     else localStorage.removeItem(storageKey);
-  } catch {}
+  } catch {
+  // Settings persistence: private-mode browsers throw; value stays in memory.
+  }
 }
 
 type Tab = 'installed' | 'catalogue' | 'cloud';
@@ -158,7 +160,9 @@ export function CommandPalette() {
     try {
       const m = await fetchModels();
       setModels(m);
-    } catch {}
+    } catch {
+    // Model list refresh is cosmetic; keep the stale list.
+    }
   };
 
   const handlePull = async (modelId: string) => {
@@ -197,7 +201,9 @@ export function CommandPalette() {
         const remaining = models.filter((m) => m.id !== modelId);
         if (remaining.length > 0) setSelectedModel(remaining[0].id);
       }
-    } catch {} finally {
+    } catch {
+      // Model deletion failure already surfaced upstream; reset UI state.
+    } finally {
       setDeleting(null);
     }
   };
@@ -218,7 +224,9 @@ export function CommandPalette() {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('save_cloud_key', { keyName: provider.envKey, keyValue: value });
-      } catch {}
+      } catch {
+        // Backend key save is best-effort; the server also reads env vars.
+      }
     }
 
     useAppStore.getState().addLogEntry({

@@ -727,7 +727,7 @@ function LaunchWizard({
     try {
       // Map friendly schedule presets to API schedule_type/schedule_value
       let apiScheduleType = wizard.scheduleType;
-      let apiScheduleValue = wizard.scheduleValue;
+      const apiScheduleValue = wizard.scheduleValue;
       if (wizard.scheduleType === 'daily' || wizard.scheduleType === 'weekly') {
         apiScheduleType = 'cron';
         // scheduleValue already holds the cron expression
@@ -3499,7 +3499,9 @@ export function AgentsPage() {
             message: `Agent "${agent.name}" failed: ${agent.summary_memory || 'Unknown error'}`,
           });
         }
-      } catch {}
+      } catch {
+        // Poll refresh: agent may still be mid-run; retry on next tick.
+      }
       await refresh();
     }, 3000);
   };
@@ -3540,7 +3542,9 @@ export function AgentsPage() {
         // toasts and threw the result away, so a detail header could stay
         // stuck on "running" after a tick finished on the backend.
         setManagedAgents(agents);
-      } catch {}
+      } catch {
+        // Poll refresh: transient backend hiccup; retry on next tick.
+      }
     }, 5000);
     return () => clearInterval(interval);
   }, [setManagedAgents]);

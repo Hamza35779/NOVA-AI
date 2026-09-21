@@ -93,7 +93,9 @@ function detectPlatform(): string {
           if (renderer && /apple m/i.test(renderer)) return 'mac-arm';
         }
       }
-    } catch {}
+    } catch {
+    // Platform detection failed; the default platform guess is fine.
+    }
     return 'mac-arm';
   }
   if (platform.includes('win') || ua.includes('windows')) return 'windows';

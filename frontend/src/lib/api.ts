@@ -40,7 +40,9 @@ const getSettingsApiUrl = (): string => {
       const parsed = JSON.parse(raw);
       if (parsed.apiUrl) return parsed.apiUrl.replace(/\/+$/, '');
     }
-  } catch {}
+  } catch {
+    // Corrupt settings blob: treat as unset rather than crashing startup.
+  }
   return '';
 };
 
@@ -64,7 +66,9 @@ export const getApiKey = (): string => {
       const parsed = JSON.parse(raw);
       if (parsed.apiKey) return String(parsed.apiKey);
     }
-  } catch {}
+  } catch {
+    // Corrupt settings blob: treat as unset rather than crashing startup.
+  }
   if (import.meta.env.VITE_NOVA_AI_API_KEY) {
     return import.meta.env.VITE_NOVA_AI_API_KEY as string;
   }
@@ -160,7 +164,7 @@ export async function pullModel(modelName: string): Promise<void> {
       await invoke('pull_ollama_model', { modelName });
       return;
     } catch (e: any) {
-      throw new Error(e?.message || e || 'Download failed');
+      throw new Error(e?.message || e || 'Download failed', { cause: e });
     }
   }
   const res = await apiFetch(`/v1/models/pull`, {
@@ -181,7 +185,7 @@ export async function deleteModel(modelName: string): Promise<void> {
       await invoke('delete_ollama_model', { modelName });
       return;
     } catch (e: any) {
-      throw new Error(e?.message || e || 'Delete failed');
+      throw new Error(e?.message || e || 'Delete failed', { cause: e });
     }
   }
   const res = await apiFetch(`/v1/models/${encodeURIComponent(modelName)}`, {
@@ -211,7 +215,7 @@ export async function preloadModel(modelName: string): Promise<void> {
     });
     if (!res.ok) throw new Error(`Preload failed: ${res.status}`);
   } catch (e: any) {
-    if (e.name === 'TimeoutError') throw new Error('Model load timed out (120s)');
+    if (e.name === 'TimeoutError') throw new Error('Model load timed out (120s)', { cause: e });
     throw e;
   }
 }
@@ -263,7 +267,9 @@ export async function fetchEnergy(): Promise<unknown> {
   if (isTauri()) {
     try {
       return await tauriInvoke('fetch_energy', { apiUrl: getBase() });
-    } catch {}
+    } catch {
+      // Tauri bridge unavailable/failed — fall through to the HTTP API.
+    }
   }
   const res = await apiFetch(`/v1/telemetry/energy`);
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
@@ -274,17 +280,22 @@ export async function fetchTelemetry(): Promise<unknown> {
   if (isTauri()) {
     try {
       return await tauriInvoke('fetch_telemetry', { apiUrl: getBase() });
-    } catch {}
+    } catch {
+      // Tauri bridge unavailable/failed — fall through to the HTTP API.
+    }
   }
   const res = await apiFetch(`/v1/telemetry/stats`);
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   return res.json();
 }
 
-export async function fetchTraces(limit: number = 50): Promise<unknown> {  if (isTauri()) {
+export async function fetchTraces(limit: number = 50): Promise<unknown> {
+  if (isTauri()) {
     try {
       return await tauriInvoke('fetch_traces', { apiUrl: getBase(), limit });
-    } catch {}
+    } catch {
+      // Tauri bridge unavailable/failed — fall through to the HTTP API.
+    }
   }
   const res = await apiFetch(`/v1/traces?limit=${limit}`);
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
@@ -318,7 +329,7 @@ export async function transcribeAudio(audioBlob: Blob, filename = 'recording.web
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(msg || 'Transcription failed');
+      throw new Error(msg || 'Transcription failed', { cause: err });
     }
   }
   const formData = new FormData();
@@ -1074,7 +1085,7 @@ export async function getInferenceSource(): Promise<InferenceSource> {
       const { invoke } = await import('@tauri-apps/api/core');
       return await invoke<InferenceSource>('get_inference_source');
     } catch (e: any) {
-      throw new Error(e?.message ?? e ?? 'Failed to read inference source');
+      throw new Error(e?.message ?? e ?? 'Failed to read inference source', { cause: e });
     }
   }
   return { kind: 'ollama' };
@@ -1096,7 +1107,7 @@ export async function setInferenceSource(
   } catch (e: any) {
     // Surface the backend's actionable error strings (e.g. "A server URL is
     // requiredâ€¦", "Could not store the API keyâ€¦") as proper Error instances.
-    throw new Error(e?.message ?? e ?? 'Failed to save inference source');
+    throw new Error(e?.message ?? e ?? 'Failed to save inference source', { cause: e });
   }
 }
 

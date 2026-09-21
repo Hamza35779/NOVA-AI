@@ -51,7 +51,9 @@ function ApiKeyInput({ storageKey, placeholder }: { storageKey: string; placehol
   const [saved, setSaved] = useState(false);
   const save = (v: string) => {
     setValue(v);
-    try { if (v) localStorage.setItem(storageKey, v); else localStorage.removeItem(storageKey); } catch {}
+    try { if (v) localStorage.setItem(storageKey, v); else localStorage.removeItem(storageKey); } catch {
+      // Storage unavailable (private mode): keep value in memory only.
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -233,7 +235,9 @@ export function SettingsPage() {
             useAppStore.getState().loadConversations();
             showSaved();
           }
-        } catch {}
+        } catch {
+                    // Storage unavailable; setting stays in memory.
+                  }
       };
       reader.readAsText(file);
     };
@@ -472,7 +476,9 @@ export function SettingsPage() {
                 onClick={() => {
                   const next = !memoryEnabled;
                   setMemoryEnabled(next);
-                  try { localStorage.setItem('nova_ai-memory-enabled', String(next)); } catch {}
+                  try { localStorage.setItem('nova_ai-memory-enabled', String(next)); } catch {
+                    // Storage unavailable; setting stays in memory.
+                  }
                   showSaved();
                 }}
                 className="relative w-11 h-6 rounded-full transition-colors cursor-pointer"
@@ -495,7 +501,9 @@ export function SettingsPage() {
                 value={memoryBackend}
                 onChange={(e) => {
                   setMemoryBackend(e.target.value);
-                  try { localStorage.setItem('nova_ai-memory-backend', e.target.value); } catch {}
+                  try { localStorage.setItem('nova_ai-memory-backend', e.target.value); } catch {
+                    // Storage unavailable; setting stays in memory.
+                  }
                   showSaved();
                 }}
                 className="text-sm px-3 py-1.5 rounded-lg outline-none cursor-pointer"
@@ -522,7 +530,9 @@ export function SettingsPage() {
                 onChange={(e) => {
                   const v = parseInt(e.target.value);
                   setMemoryTopK(v);
-                  try { localStorage.setItem('nova_ai-memory-top-k', String(v)); } catch {}
+                  try { localStorage.setItem('nova_ai-memory-top-k', String(v)); } catch {
+                    // Storage unavailable; setting stays in memory.
+                  }
                   showSaved();
                 }}
                 className="w-32 cursor-pointer accent-[var(--color-accent)]"
@@ -538,7 +548,9 @@ export function SettingsPage() {
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);
                   setMemoryMinScore(v);
-                  try { localStorage.setItem('nova_ai-memory-min-score', String(v)); } catch {}
+                  try { localStorage.setItem('nova_ai-memory-min-score', String(v)); } catch {
+                    // Storage unavailable; setting stays in memory.
+                  }
                   showSaved();
                 }}
                 className="w-32 cursor-pointer accent-[var(--color-accent)]"
@@ -554,7 +566,9 @@ export function SettingsPage() {
                 onChange={(e) => {
                   const v = parseInt(e.target.value);
                   setMemoryMaxTokens(v);
-                  try { localStorage.setItem('nova_ai-memory-max-tokens', String(v)); } catch {}
+                  try { localStorage.setItem('nova_ai-memory-max-tokens', String(v)); } catch {
+                    // Storage unavailable; setting stays in memory.
+                  }
                   showSaved();
                 }}
                 className="w-32 cursor-pointer accent-[var(--color-accent)]"

@@ -22,7 +22,9 @@ export default function NotificationBell() {
           description: data.message,
           icon: data.urgency === 'high' ? '🔴' : data.urgency === 'normal' ? '🟡' : '⚪',
         });
-      } catch (e) {}
+      } catch {
+      // Notification dispatch failure is non-fatal.
+      }
     };
 
     return () => {

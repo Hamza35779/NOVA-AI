@@ -54,7 +54,9 @@ export function ChatArea() {
       await setActivePersonaAPI(id);
       const chosen = personas.find(p => p.id === id);
       toast.success(`Active Persona: ${chosen?.name || id}`);
-    } catch {}
+    } catch {
+      // Persona activation is cosmetic; ignore backend absence.
+    }
   };
 
   useEffect(() => {
