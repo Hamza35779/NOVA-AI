@@ -97,6 +97,9 @@ docs/plans/
 docs/superpowers/
 .superpowers/
 
+# Personal launcher scripts (per-machine, not part of the project)
+claude.bat
+
 # Claude Code project instructions (per-developer)
 CLAUDE.md
 .claude/

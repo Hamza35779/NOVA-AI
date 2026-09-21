@@ -334,14 +334,16 @@ AI-powered bot for messaging platforms with multi-turn conversation support.
 
 ## 9. Roadmap
 
-### Current Status (v1.2.4)
+### Current Status (v1.2.5)
 
 - ✅ Five-primitive architecture implemented
-- ✅ 8+ agent types registered (incl. `self_healing_react`)
+- ✅ 9 agent types registered (incl. `self_healing_react`)
 - ✅ 58+ built-in tools
-- ✅ 5 memory backends
-- ✅ Smart model router with complexity scoring
+- ✅ 5 memory backends (batched ingestion, ~5–10× ingest throughput)
+- ✅ Smart model router with complexity scoring + runtime cloud failover
 - ✅ MCP client/server integration
+- ✅ opencode two-way integration (NOVA as provider + MCP tool registry)
+- ✅ Lazy CLI loading (startup 3.3s → 0.35s) with bounded doctor probes
 - ✅ Desktop app (Tauri) with auto-update
 - ✅ Self-contained Windows installer
 - ✅ Quick Capture global-hotkey popup (Windows + macOS)

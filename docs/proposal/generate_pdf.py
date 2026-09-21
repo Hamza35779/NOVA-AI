@@ -1,6 +1,9 @@
 """Generate NOVA AI Technical Proposal PDF using fpdf2."""
 
+from pathlib import Path
+
 from fpdf import FPDF
+
 
 class NovaPDF(FPDF):
     def __init__(self):
@@ -51,7 +54,6 @@ class NovaPDF(FPDF):
         self.set_fill_color(240, 240, 250)
         self.set_font("ArialMono", "", 9)
         self.set_text_color(60, 60, 60)
-        x = self.get_x()
         self.multi_cell(0, 5, text, fill=True)
         self.ln(3)
         self.set_text_color(50, 50, 50)
@@ -104,7 +106,7 @@ pdf.ln(15)
 pdf.set_font("Helvetica", "", 11)
 pdf.set_text_color(80, 80, 80)
 info = [
-    ("Version", "1.2.4"),
+    ("Version", "1.2.5"),
     ("License", "Apache 2.0"),
     ("Repository", "github.com/Hamza35779/NOVA-AI"),
     ("Documentation", "hamza35779.github.io/NOVA-AI"),
@@ -126,11 +128,12 @@ pdf.body(
     "performance extensions and a TypeScript/Tauri desktop frontend. It provides a modular, "
     "extensible stack organized around five core primitives — Intelligence, Engine, Agentic Logic, "
     "Memory, and Learning — connected through trace-driven feedback loops.\n\n"
-    "The framework ships with 8+ agent types, 58+ built-in tools, 5 memory backends, multiple "
+    "The framework ships with 9 agent types, 58+ built-in tools, 5 memory backends, multiple "
     "inference engine backends (Ollama, vLLM, SGLang, llama.cpp, Cloud), full MCP (Model Context "
     "Protocol) integration, and a comprehensive CLI with a web-based workstation UI. It is designed "
     "to run AI agents locally by default, calling cloud APIs only when query complexity warrants it, "
-    "with per-query cost tracking and automatic fallback."
+    "with per-query cost tracking, automatic fallback, and secrets redaction before any cloud "
+    "transmission."
 )
 
 # === 2. SYSTEM ARCHITECTURE ===
@@ -552,6 +555,21 @@ pdf.body(
     "Each channel implements the BaseChannel ABC and registers via @ChannelRegistry.register()."
 )
 
+pdf.subsection("9.7 opencode Integration & CLI Performance (v1.2.5)")
+pdf.body(
+    "Two-way wiring with the opencode terminal coding agent: nova opencode init registers "
+    "NOVA's OpenAI-compatible server as the nova-ai provider in opencode.json with a live "
+    "model list, and nova mcp serve exposes the NOVA tool registry over the MCP stdio "
+    "transport, so coding-agent sessions run local-first with per-provider data-residency "
+    "reporting and a --local-only lock.\n\n"
+    "CLI latency work in the same release: nova now lazy-loads its ~50 command modules "
+    "(startup 3.3s to 0.35s), nova doctor bounds every engine health probe at 8 seconds "
+    "and probes concurrently, and model=auto routing fails over across cloud providers at "
+    "runtime — degrading to the best local model instead of failing when cloud is "
+    "unavailable. Knowledge-store ingestion is batched into per-batch transactions "
+    "(~5-10x ingest throughput)."
+)
+
 # === 10. PERFORMANCE BENCHMARKS ===
 pdf.section_title("10", "Performance Benchmarks")
 
@@ -581,6 +599,6 @@ pdf.body(
 )
 
 # === OUTPUT ===
-output_path = r"D:\My Softwares\Friday AI\NOVA AI\docs\proposal\NOVA_AI_Technical_Proposal.pdf"
+output_path = str(Path(__file__).resolve().parent / "NOVA_AI_Technical_Proposal.pdf")
 pdf.output(output_path)
 print(f"PDF saved to: {output_path}")

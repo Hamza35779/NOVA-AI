@@ -280,10 +280,11 @@ Add new engines, agents, tools, channels, or memory backends by implementing the
 
 # Roadmap
 
-## Current Status (v1.2.4)
+## Current Status (v1.2.5)
 
-✅ Five-primitive architecture · ✅ 8+ agent types · ✅ 58+ tools
-✅ 5 memory backends · ✅ Smart router · ✅ MCP integration
+✅ Five-primitive architecture · ✅ 9 agent types · ✅ 58+ tools
+✅ 5 memory backends · ✅ Smart router + cloud failover · ✅ MCP integration
+✅ opencode integration · ✅ Lazy CLI (0.35s startup)
 ✅ Desktop app · ✅ Windows installer · ✅ 15+ channels
 ✅ Quick Capture popup (Alt+Space) · ✅ Self-healing dev-watch · ✅ Digest notifications
 ✅ Trace-driven learning · ✅ Skill synthesis · ✅ Training pipelines

@@ -1,10 +1,12 @@
 """Generate NOVA AI Technical Presentation PPTX using python-pptx."""
 
+from pathlib import Path
+
 from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches, Pt
 
 prs = Presentation()
 prs.slide_width = Inches(13.333)
@@ -427,14 +429,15 @@ set_bg(slide)
 add_text(slide, 0.8, 0.4, 11.7, 0.8, "Roadmap",
          font_size=32, color=ACCENT, bold=True)
 
-add_text(slide, 0.8, 1.3, 5.5, 0.6, "Current (v1.2.4)", font_size=20, color=ACCENT2, bold=True)
+add_text(slide, 0.8, 1.3, 5.5, 0.6, "Current (v1.2.5)", font_size=20, color=ACCENT2, bold=True)
 add_bullet_list(slide, 0.8, 2.0, 5.5, 4, [
     "Five-primitive architecture",
-    "8+ agent types (incl. self-healing)",
+    "9 agent types (incl. self-healing)",
     "58+ built-in tools",
-    "5 memory backends",
-    "Smart model router",
-    "MCP integration",
+    "5 memory backends (batched ingest)",
+    "Smart router + runtime cloud failover",
+    "MCP integration + opencode wiring",
+    "Lazy CLI (startup 3.3s to 0.35s)",
     "Desktop app (Tauri)",
     "Quick Capture popup (Alt+Space)",
     "dev-watch self-healing diagnostics",
@@ -444,7 +447,7 @@ add_bullet_list(slide, 0.8, 2.0, 5.5, 4, [
     "Trace-driven learning",
     "Skill synthesis (SkillForge)",
     "SFT/GRPO/DPO training",
-], font_size=14, color=LIGHT)
+], font_size=16, color=LIGHT)
 
 add_text(slide, 7, 1.3, 5.5, 0.6, "Planned", font_size=20, color=ACCENT3, bold=True)
 add_bullet_list(slide, 7, 2.0, 5.5, 4, [
@@ -480,6 +483,6 @@ add_text(slide, 1, 6.2, 11.3, 0.6,
          font_size=14, color=DIM, alignment=PP_ALIGN.CENTER)
 
 # === SAVE ===
-output_path = r"D:\My Softwares\Friday AI\NOVA AI\docs\proposal\NOVA_AI_Technical_Presentation.pptx"
+output_path = str(Path(__file__).resolve().parent / "NOVA_AI_Technical_Presentation.pptx")
 prs.save(output_path)
 print(f"PPTX saved to: {output_path}")
