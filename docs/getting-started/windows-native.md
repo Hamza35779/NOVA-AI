@@ -42,6 +42,50 @@ The installer will:
 7. Prompt to register the scheduled-task service (skip with
    `-SkipService`).
 
+## Walkthrough: Windows + Ollama
+
+The simplest fully-local setup on a Windows PC or laptop.
+
+### 1. Install Ollama
+
+Download the installer from [ollama.com](https://ollama.com) and run it.
+It registers a background service automatically. Verify in a **new**
+PowerShell:
+
+```powershell
+ollama --version
+```
+
+### 2. Pull a model
+
+```powershell
+ollama pull qwen3:8b     # 16 GB RAM machines
+# or on 8 GB machines:
+ollama pull qwen2.5:3b
+```
+
+NVIDIA GPUs are used automatically when the driver + CUDA runtime are
+present (`nvidia-smi` should print your card).
+
+### 3. Install NOVA AI
+
+Either the one-liner above, or the no-Python desktop installer
+(`NOVA-AI-Setup-1.2.5.exe` from the
+[releases page](https://github.com/Hamza35779/NOVA-AI/releases)) which
+ships its own backend. For the source install:
+
+```powershell
+uv run nova init
+uv run nova ask "Say hello"
+```
+
+### 4. Try the desktop extras
+
+- `nova serve` + the desktop app, or the Setup EXE — both give you the
+  **Alt+Space Quick Capture** popup from anywhere.
+- `nova dev-watch -c "pytest -q"` — build diagnostics with fix
+  suggestions if you develop on this machine.
+
 ## Run it
 
 ```powershell

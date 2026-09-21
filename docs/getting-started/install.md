@@ -8,6 +8,7 @@
 | **Linux** | `curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh \| bash` | [Linux install](linux.md) |
 | **WSL2 on Windows** | `curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh \| bash` (run inside Ubuntu) | [WSL2 install](wsl2.md) |
 | **Native Windows** | `irm https://hamza35779.github.io/NOVA-AI/install.ps1 \| iex` | [Native Windows install](windows-native.md) |
+| **Raspberry Pi 5** | `curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh \| bash` | [Linux install](linux.md#walkthrough-raspberry-pi-5-cpu-only) |
 | **Desktop GUI** | Download from the [latest release](https://github.com/Hamza35779/NOVA-AI/releases) | — |
 
 The bash and PowerShell installers do the same thing on their respective hosts. The rest of this page documents the bash installer in detail; the [native Windows guide](windows-native.md) is the equivalent reference for PowerShell.

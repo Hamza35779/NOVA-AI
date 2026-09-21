@@ -147,6 +147,9 @@ nav:
   - Getting Started:
       - Installation: getting-started/installation.md
       - macOS Guide: getting-started/macos.md
+      - Linux Guide: getting-started/linux.md
+      - WSL2 Guide: getting-started/wsl2.md
+      - Native Windows Guide: getting-started/windows-native.md
       - Quick Start: getting-started/quickstart.md
       - Code Snippets: getting-started/snippets.md
       - Configuration: getting-started/configuration.md
@@ -164,6 +167,7 @@ nav:
       - Scheduled Personal Ops: tutorials/scheduled-ops.md
       - Messaging Hub: tutorials/messaging-hub.md
       - Code Companion: tutorials/code-companion.md
+      - Adding Custom Tools: tutorials/custom-tools.md
   - Architecture:
       - Overview: architecture/overview.md
       - Intelligence: architecture/intelligence.md

@@ -78,9 +78,7 @@ site/
 frontend/node_modules/
 frontend/dist/
 
-# Desktop
-desktop/node_modules/
-desktop/dist/
+# Frontend build output served by the FastAPI app
 src/nova_ai/server/static/
 
 # Desktop (Tauri)
@@ -147,7 +145,7 @@ oj-debug.*.json
 # Tauri sidecar binaries — fetched on demand by
 # frontend/src-tauri/scripts/download-ollama.sh (also used by desktop.yml CI).
 # A committed copy would add ~75MB to every clone for zero benefit.
-desktop/src-tauri/binaries/
+frontend/src-tauri/binaries/
 
 # TypeScript incremental build cache
 frontend/tsconfig.tsbuildinfo

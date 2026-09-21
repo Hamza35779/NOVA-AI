@@ -11,11 +11,15 @@ These are the areas where active development is happening and contributions are 
 - **Federated memory** — memory backends that synchronize across devices
 - **LLM-guided spec search:** Frontier-driven harness learning — a frontier model analyzes your traces and proposes config improvements. See [user guide](../user-guide/llm-guided-spec-search.md) and [architecture](../architecture/learning.md#llm-guided-spec-search-frontier-driven-harness-learning).
 
-### Recently shipped (v1.2.4)
+### Recently shipped (v1.2.5)
 
 - **Quick Capture global-hotkey popup** — `Alt+Space` on Windows (`Cmd+Shift+Space` on macOS) opens a Raycast-style chat popup whose conversation syncs with the main app
 - **`nova dev-watch` self-healing build diagnostics** — failure classification + fix suggestions from the self-healing agent, with a live Build Diagnostics panel on the Dashboard (`/api/devwatch/runs`)
+- **Dev-watch run persistence** — runs are mirrored to `~/.nova_ai/devwatch.db` (SQLite, pruned to 500) so the Build Diagnostics panel survives server restarts; the ring rehydrates on startup
 - **Morning digest desktop notifications** — notification on digest storage across scheduler/CLI/server paths, plus native Windows audio playback in `nova digest`
+- **"Adding Custom Tools" tutorial** — end-to-end `BaseTool` walkthrough (weather example) with testing and security checklist
+- **Per-platform install walkthroughs** — Ubuntu + NVIDIA + vLLM, Raspberry Pi 5, Apple Silicon + Ollama, Windows + Ollama
+- **`desktop/` stub removed** — the real Tauri project lives in `frontend/src-tauri/`; the duplicate root (an untracked sidecar binary + a stale copy of `overlay.html`) is gone
 
 ---
 
@@ -162,5 +166,5 @@ The desktop shell (Tauri 2) and developer tooling make NOVA AI pleasant to live 
 | Digest desktop notification + Windows audio | **Shipped** | Done — notifier hook in `MorningDigestAgent.run()` covering all delivery paths (soft-fail); `nova digest` plays `.wav` via winsound and `.mp3` via the default media player. |
 | Quick-capture tool calling | **Design Needed** | The popup currently streams plain chat. Extend it to invoke tools (clipboard, screen, memory) from the compact surface. |
 | Windows GNU/MSVC build matrix | **Design Needed** | The repo pins `x86_64-pc-windows-gnu` (see `frontend/src-tauri/.cargo/config.toml`) with a windres cpp wrapper for space-containing paths. CI should verify both GNU and MSVC targets plus a space-free-path build. |
-| Dev-watch server persistence | **Ready** | `/api/devwatch/runs` keeps an in-memory ring (50 runs); persist to SQLite so history survives server restarts. **Good first issue.** |
+| Dev-watch server persistence | **Shipped** | Done — runs are mirrored to `~/.nova_ai/devwatch.db` (SQLite, WAL, pruned to 500 rows) alongside the in-memory ring; the ring rehydrates on server startup so the Dashboard panel survives restarts. |
 | Quick-capture on Linux | **Research-Stage** | The hotkey window currently ships on Windows (Tauri WebviewWindow) and macOS (native NSPanel). Evaluate a Linux equivalent (global shortcut + always-on-top window on X11/Wayland). |

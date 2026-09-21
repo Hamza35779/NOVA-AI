@@ -10,6 +10,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+**Dev-watch run persistence.** `/api/devwatch/runs` previously kept an
+in-memory ring of 50 runs, so the Dashboard's Build Diagnostics panel
+reset on every server restart. Runs are now mirrored to
+`~/.nova_ai/devwatch.db` (SQLite, WAL, pruned to 500 rows) and the ring
+rehydrates from it at startup. Persistence is best-effort: a broken
+store never blocks recording or serving runs.
+
+### Added
+
+**"Adding Custom Tools" tutorial and per-platform install walkthroughs.**
+New end-to-end tutorial (`docs/tutorials/custom-tools.md`) walking through a
+complete `BaseTool` implementation — a weather lookup tool with registration,
+standalone execution, mocked tests, agent wiring via CLI and SDK, and a
+security checklist. The platform guides gained full walkthroughs: Ubuntu +
+NVIDIA + vLLM and Raspberry Pi 5 (Linux), Apple Silicon + Ollama with a
+RAM-to-model table (macOS), and Windows + Ollama (native Windows).
+
+### Removed
+
+**`desktop/` stub directory.** The real Tauri project lives in
+`frontend/src-tauri/`; the duplicate root held only a stale copy of
+`overlay.html` (byte-identical to the live one) plus an untracked sidecar
+binary. Nothing in CI, scripts, or code referenced it.
+
+## [1.2.5] - 2026-09-21
+
+### Added
+
 **Lazy CLI loading + bounded `nova doctor` probes (startup 3.3s → 0.35s, doctor 107s → ~23s).**
 Three changes to CLI latency and reliability. (1) `nova` now uses a `LazyGroup`:
 the ~50 command modules (previously imported eagerly on every invocation — the
@@ -90,7 +118,7 @@ covering the scheduler, CLI, and server delivery paths, soft-fail so a broken no
 never block digest delivery. `nova digest` also gained Windows audio playback: `.wav` via
 built-in `winsound`, everything else via the OS default media player.
 
-**Windows setup installer refreshed.** `NOVA-AI-Setup-1.2.4.exe` rebuilt over the PyInstaller
+**Windows setup installer refreshed.** `NOVA-AI-Setup-1.2.5.exe` rebuilt over the PyInstaller
 ONEDIR backend with all three features above; the release asset was replaced in place.
 
 ### Developer environment (Windows)

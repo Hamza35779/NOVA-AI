@@ -287,6 +287,15 @@ def create_app(
         # Restore SendBlue channel bindings from database on startup so
         # incoming webhooks keep working after a server restart.
         _restore_sendblue_bindings(app)
+        # Rehydrate the dev-watch run ring from SQLite so the Dashboard's
+        # Build Diagnostics panel survives restarts. Best-effort: a broken
+        # store must never block startup.
+        try:
+            from nova_ai.server import devwatch_router
+
+            devwatch_router.warm_store()
+        except Exception as exc:
+            soft_fail(logger, exc, "optional server subsystem")
         yield
         # --- shutdown ---
         bridge = getattr(app.state, "analytics_bridge", None)
