@@ -33,6 +33,93 @@ class CheckResult:
 # -- Individual checks -------------------------------------------------------
 
 
+def _bounded_health(engine: Any, timeout_s: float = 8.0) -> bool:
+    """Call ``engine.health()`` with a hard wall-clock bound.
+
+    Why not trust the engine's own HTTP timeout: httpx/httpcore timeouts do
+    NOT cover DNS resolution — ``socket.getaddrinfo`` is a blocking C call
+    outside the socket timeout's control. On a machine whose DNS black-holes
+    (corporate firewalls, offline boxes with a stale resolver), a probe to an
+    unreachable engine host hangs for the OS-level TCP timeout (minutes).
+    Reproduced: `nova doctor` froze >120s with zero output while
+    ``_OpenAICompatibleEngine.health(timeout=2.0)`` sat inside
+    ``socket.create_connection``.
+
+    The probe runs in a daemon thread; on expiry the calling check continues
+    immediately ("Unreachable") and the abandoned thread dies whenever the
+    OS finally unblocks the socket. Daemon threads keep interpreter shutdown
+    clean.
+    """
+    import threading
+
+    result: list[bool] = [False]
+
+    def _probe() -> None:
+        try:
+            result[0] = bool(engine.health())
+        except Exception:  # noqa: BLE001 — a raising probe means "unreachable"
+            result[0] = False
+
+    thread = threading.Thread(target=_probe, daemon=True)
+    thread.start()
+    thread.join(timeout_s)
+    if thread.is_alive():
+        logger.warning(
+            "Engine %s health probe exceeded %.0fs — treating as unreachable",
+            getattr(engine, "engine_id", type(engine).__name__),
+            timeout_s,
+        )
+    return result[0]
+
+
+def _bounded_health_map(
+    engines: Dict[str, Any], timeout_s: float = 8.0
+) -> Dict[str, bool]:
+    """Probe many engines concurrently with the same hard bound.
+
+    ``_check_engines``/``_check_models`` must probe every registered engine
+    (~13 on a default install). Sequentially, 8s bounds on unreachable hosts
+    compound — a measured 107s doctor run. Probing in parallel caps the
+    whole sweep at ~one bound instead of N×bound.
+    """
+    import threading
+
+    results: Dict[str, bool] = {}
+    lock = threading.Lock()
+
+    def _probe(key: str, engine: Any) -> None:
+        ok = _bounded_health(engine, timeout_s=timeout_s)
+        with lock:
+            results[key] = ok
+
+    threads = [
+        threading.Thread(target=_probe, args=(key, engine), daemon=True)
+        for key, engine in engines.items()
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout_s + 2.0)  # child bound + small scheduling margin
+    # Any thread still alive past its own bound recorded nothing — default False.
+    for key in engines:
+        results.setdefault(key, False)
+    return results
+
+
+def _make_engines(config: Any) -> Dict[str, Any]:
+    """Instantiate every registered engine, skipping failures quietly."""
+    from nova_ai.core.registry import EngineRegistry
+    from nova_ai.engine import _discovery
+
+    engines: Dict[str, Any] = {}
+    for key in sorted(EngineRegistry.keys()):
+        try:
+            engines[key] = _discovery._make_engine(key, config)
+        except Exception as exc:  # noqa: BLE001 — optional engine config
+            soft_fail(logger, exc, "optional CLI step")
+    return engines
+
+
 def _check_python_version() -> CheckResult:
     """Check that Python version is >= 3.10."""
     ver = sys.version_info
@@ -84,27 +171,26 @@ def _get_config() -> Any:
 
 
 def _check_engines() -> List[CheckResult]:
-    """Probe each registered engine for health."""
+    """Probe each registered engine for health (concurrently, bounded)."""
     results: List[CheckResult] = []
 
     _ensure_engines_imported()
 
     from nova_ai.core.registry import EngineRegistry
-    from nova_ai.engine import _discovery
 
     config = _get_config()
 
+    engines = _make_engines(config)
+    health = _bounded_health_map(engines)
     for key in sorted(EngineRegistry.keys()):
-        try:
-            engine = _discovery._make_engine(key, config)
-            if engine.health():
-                results.append(CheckResult(f"Engine: {key}", "ok", "Reachable"))
-            else:
-                results.append(CheckResult(f"Engine: {key}", "warn", "Unreachable"))
-        except Exception as exc:
+        if key not in engines:
             results.append(
-                CheckResult(f"Engine: {key}", "warn", f"Unreachable ({exc})")
+                CheckResult(f"Engine: {key}", "warn", "Failed to initialize")
             )
+        elif health.get(key):
+            results.append(CheckResult(f"Engine: {key}", "ok", "Reachable"))
+        else:
+            results.append(CheckResult(f"Engine: {key}", "warn", "Unreachable"))
 
     if not results:
         results.append(CheckResult("Engines", "warn", "No engines registered"))
@@ -113,40 +199,42 @@ def _check_engines() -> List[CheckResult]:
 
 
 def _check_models() -> List[CheckResult]:
-    """List models from healthy engines."""
+    """List models from healthy engines (probes concurrent, bounded)."""
     results: List[CheckResult] = []
 
     _ensure_engines_imported()
 
     from nova_ai.core.registry import EngineRegistry
-    from nova_ai.engine import _discovery
 
     config = _get_config()
 
+    engines = _make_engines(config)
+    health = _bounded_health_map(engines)
     for key in sorted(EngineRegistry.keys()):
+        engine = engines.get(key)
+        if engine is None or not health.get(key):
+            continue
         try:
-            engine = _discovery._make_engine(key, config)
-            if engine.health():
-                models = engine.list_models()
-                if models:
-                    model_list = ", ".join(models[:5])
-                    suffix = f" (+{len(models) - 5} more)" if len(models) > 5 else ""
-                    results.append(
-                        CheckResult(
-                            f"Models: {key}",
-                            "ok",
-                            f"{model_list}{suffix}",
-                        )
+            models = engine.list_models()
+            if models:
+                model_list = ", ".join(models[:5])
+                suffix = f" (+{len(models) - 5} more)" if len(models) > 5 else ""
+                results.append(
+                    CheckResult(
+                        f"Models: {key}",
+                        "ok",
+                        f"{model_list}{suffix}",
                     )
-                else:
-                    results.append(
-                        CheckResult(
-                            f"Models: {key}",
-                            "warn",
-                            "No models available",
-                            details="Pull a model (e.g. `ollama pull qwen3.5:2b`).",
-                        )
+                )
+            else:
+                results.append(
+                    CheckResult(
+                        f"Models: {key}",
+                        "warn",
+                        "No models available",
+                        details="Pull a model (e.g. `ollama pull qwen3.5:2b`).",
                     )
+                )
         except Exception as exc:
             soft_fail(logger, exc, "optional CLI step")
             continue
@@ -173,7 +261,6 @@ def _check_default_model() -> CheckResult:
     _ensure_engines_imported()
 
     from nova_ai.core.registry import EngineRegistry
-    from nova_ai.engine import _discovery
 
     preferred = config.intelligence.preferred_engine or config.engine.default
     check_order = []
@@ -181,10 +268,13 @@ def _check_default_model() -> CheckResult:
         check_order.append(preferred)
     check_order += [k for k in sorted(EngineRegistry.keys()) if k != preferred]
 
+    engines = _make_engines(config)
     for key in check_order:
+        engine = engines.get(key)
+        if engine is None:
+            continue
         try:
-            engine = _discovery._make_engine(key, config)
-            if engine.health():
+            if _bounded_health(engine):
                 models = engine.list_models()
                 if default_model in models:
                     return CheckResult(
@@ -244,7 +334,10 @@ def _check_speech_backend() -> CheckResult:
                 details="Install desktop dependencies with `uv sync --extra desktop`.",
             )
 
-        if backend.health():
+        # Local speech backends may legitimately load a model on first health
+        # check — allow more headroom than the network probes, but still bound
+        # it so a wedged model load cannot hang the whole doctor run.
+        if _bounded_health(backend, timeout_s=30.0):
             return CheckResult(
                 "Speech backend",
                 "ok",
@@ -358,7 +451,9 @@ def _check_port_free(port: int = 8000) -> CheckResult:
         return CheckResult(f"Port {port}", "ok", "free")
     except OSError:
         return CheckResult(
-            f"Port {port}", "warn", "in use",
+            f"Port {port}",
+            "warn",
+            "in use",
             details=f"Stop stale server or run `nova serve --port {port + 1}`.",
         )
     finally:
@@ -380,6 +475,7 @@ def _check_dirs_writable() -> CheckResult:
         probe.unlink(missing_ok=True)
         try:
             import keyring  # noqa: F401
+
             kr = "keyring available"
         except ImportError:
             kr = "keyring missing (file fallback)"
@@ -414,9 +510,18 @@ def _results_to_dicts(checks: List[CheckResult]) -> List[Dict[str, Any]]:
 
 @click.command()
 @click.option("--json", "as_json", is_flag=True, help="Output results as JSON.")
-@click.option("--fix", "auto_fix", is_flag=True, help="Auto-fix: create dirs, pull starter model.")
-@click.option("--bundle", "bundle", is_flag=True, help="Write redacted diagnostics bundle for GitHub issues.")
-@click.option("--check-all", "check_all", is_flag=True, help="Alias: run all checks (default).")
+@click.option(
+    "--fix", "auto_fix", is_flag=True, help="Auto-fix: create dirs, pull starter model."
+)
+@click.option(
+    "--bundle",
+    "bundle",
+    is_flag=True,
+    help="Write redacted diagnostics bundle for GitHub issues.",
+)
+@click.option(
+    "--check-all", "check_all", is_flag=True, help="Alias: run all checks (default)."
+)
 def doctor(as_json: bool, auto_fix: bool, bundle: bool, check_all: bool) -> None:
     """Run diagnostic checks on your NOVA AI installation."""
     del check_all  # default behavior; flag kept for docs parity
@@ -527,12 +632,15 @@ def _write_bundle(checks: List[CheckResult]) -> str:
 
         strip = CredentialStripper().strip
     except ImportError:
+
         def strip(s: str) -> str:  # type: ignore[misc]
             return s
 
     payload = json.dumps(_results_to_dicts(checks), indent=2)
     payload = strip(payload)
-    out = str(__import__("pathlib").Path(tempfile.gettempdir()) / "nova_doctor_bundle.zip")
+    out = str(
+        __import__("pathlib").Path(tempfile.gettempdir()) / "nova_doctor_bundle.zip"
+    )
     with zipfile.ZipFile(out, "w") as z:
         z.writestr("doctor.json", payload)
     return out

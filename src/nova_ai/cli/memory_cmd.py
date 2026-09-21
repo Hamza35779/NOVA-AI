@@ -167,6 +167,25 @@ def search(
     console.print(table)
 
 
+@memory.command("status")
+@click.option(
+    "--backend",
+    "-b",
+    default=None,
+    help="Override the default memory backend.",
+)
+@click.pass_context
+def status_alias(ctx: click.Context, backend: str | None) -> None:
+    """Show memory store statistics (alias of `nova memory stats`).
+
+    The README has documented `nova memory status` since v1.0; the command
+    was actually named `stats`, so the documented form failed with "No such
+    command". Registered here as a first-class alias (shows in --help) so
+    both spellings work.
+    """
+    ctx.invoke(stats, backend=backend)
+
+
 @memory.command()
 @click.option(
     "--backend",

@@ -10,6 +10,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+**Lazy CLI loading + bounded `nova doctor` probes (startup 3.3s → 0.35s, doctor 107s → ~23s).**
+Three changes to CLI latency and reliability. (1) `nova` now uses a `LazyGroup`:
+the ~50 command modules (previously imported eagerly on every invocation — the
+digest command alone pulled the whole hybrid-agent stack) load only on first
+use, and `--help`/`--version` render from a static short-help table without
+importing anything; `--version` reads distribution metadata directly (a click
+8.5 regression had silently broken `version_option(callback=...)`, printing the
+`0.0.0+unknown` placeholder). (2) `import nova_ai` defers the ~1.4s SDK import
+and the ~260ms `importlib.metadata` lookup via PEP 562 `__getattr__`. (3)
+`nova doctor` wraps every engine health probe in a hard 8s wall-clock bound —
+httpx timeouts do not cover DNS resolution, so one black-holed host could stall
+the whole run for minutes — and probes all engines concurrently instead of
+sequentially (a measured 107s sweep). Also: `nova memory status` now exists as
+a first-class alias of `nova memory stats` (the README documented `status` but
+only `stats` was registered).
+
+### Added
+
 **opencode integration (`nova opencode`, `nova mcp`, `nova connect opencode`).** Two-way
 wiring with the [opencode](https://opencode.ai) terminal coding agent: (1) opencode uses
 NOVA AI models — `nova opencode init` registers NOVA's OpenAI-compatible server as the

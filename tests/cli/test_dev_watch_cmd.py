@@ -57,9 +57,7 @@ def _proc(returncode: int, stdout: str = "", stderr: str = "") -> SimpleNamespac
 
 class TestRunOnce:
     def test_passing_run(self) -> None:
-        with patch.object(
-            subprocess, "run", return_value=_proc(0, stdout="ok\n")
-        ):
+        with patch.object(subprocess, "run", return_value=_proc(0, stdout="ok\n")):
             run = _run_once("pytest -q", "off", 60, True, Console())
         assert run.status == "pass"
         assert run.returncode == 0
@@ -76,12 +74,15 @@ class TestRunOnce:
         assert run.suggestion == ""
 
     def test_failing_run_consults_healer(self) -> None:
-        with patch.object(
-            subprocess, "run", return_value=_proc(1, stdout="NameError: x")
-        ), patch(
-            "nova_ai.cli.dev_watch_cmd._consult_healer",
-            return_value="Rename x to y in foo.py:12",
-        ) as consult:
+        with (
+            patch.object(
+                subprocess, "run", return_value=_proc(1, stdout="NameError: x")
+            ),
+            patch(
+                "nova_ai.cli.dev_watch_cmd._consult_healer",
+                return_value="Rename x to y in foo.py:12",
+            ) as consult,
+        ):
             run = _run_once("pytest -q", "suggest", 60, True, Console())
         assert run.status == "fail"
         assert run.suggestion == "Rename x to y in foo.py:12"
@@ -91,22 +92,24 @@ class TestRunOnce:
 
     def test_zero_exit_embedded_error_consults_as_error_output(self) -> None:
         output = "Traceback (most recent call last):\n  File ..."
-        with patch.object(
-            subprocess, "run", return_value=_proc(0, stdout=output)
-        ), patch(
-            "nova_ai.cli.dev_watch_cmd._consult_healer",
-            return_value="fix syntax",
-        ) as consult:
+        with (
+            patch.object(subprocess, "run", return_value=_proc(0, stdout=output)),
+            patch(
+                "nova_ai.cli.dev_watch_cmd._consult_healer",
+                return_value="fix syntax",
+            ) as consult,
+        ):
             run = _run_once("pytest -q", "suggest", 60, True, Console())
         assert run.status == "fail"
         assert consult.call_args.args[2] == "error_output"
 
     def test_healer_failure_is_soft(self) -> None:
-        with patch.object(
-            subprocess, "run", return_value=_proc(1, stdout="boom")
-        ), patch(
-            "nova_ai.cli.dev_watch_cmd._consult_healer",
-            side_effect=RuntimeError("no engine"),
+        with (
+            patch.object(subprocess, "run", return_value=_proc(1, stdout="boom")),
+            patch(
+                "nova_ai.cli.dev_watch_cmd._consult_healer",
+                side_effect=RuntimeError("no engine"),
+            ),
         ):
             run = _run_once("pytest -q", "suggest", 60, True, Console())
         assert run.status == "fail"
@@ -124,9 +127,7 @@ class TestRunOnce:
         assert "timed out" in run.output
 
     def test_command_not_found(self) -> None:
-        with patch.object(
-            subprocess, "run", side_effect=FileNotFoundError("nope")
-        ):
+        with patch.object(subprocess, "run", side_effect=FileNotFoundError("nope")):
             run = _run_once("definitely-missing-cmd", "off", 60, True, Console())
         assert run.status == "fail"
         assert "command not found" in run.output
@@ -141,7 +142,8 @@ class TestCliWiring:
     def test_registered(self) -> None:
         from nova_ai.cli import cli
 
-        assert "dev-watch" in cli.commands
+        # LazyGroup: commands appear in list_commands() before first import.
+        assert "dev-watch" in cli.list_commands(None)
 
     def test_help_smoke(self, runner) -> None:  # type: ignore[no-untyped-def]
         from nova_ai.cli import cli
@@ -153,9 +155,7 @@ class TestCliWiring:
     def test_single_run_pass(self, runner) -> None:  # type: ignore[no-untyped-def]
         from nova_ai.cli import cli
 
-        with patch.object(
-            subprocess, "run", return_value=_proc(0, stdout="fine")
-        ):
+        with patch.object(subprocess, "run", return_value=_proc(0, stdout="fine")):
             result = runner.invoke(cli, ["dev-watch", "-c", "pytest -q"])
         assert result.exit_code == 0
         assert "PASS" in result.output
@@ -164,11 +164,12 @@ class TestCliWiring:
         from nova_ai.cli import cli
 
         failing = _proc(2, stderr="error: module not found")
-        with patch.object(
-            subprocess, "run", return_value=failing
-        ), patch(
-            "nova_ai.cli.dev_watch_cmd._consult_healer",
-            return_value="Install the missing module.",
+        with (
+            patch.object(subprocess, "run", return_value=failing),
+            patch(
+                "nova_ai.cli.dev_watch_cmd._consult_healer",
+                return_value="Install the missing module.",
+            ),
         ):
             result = runner.invoke(
                 cli, ["dev-watch", "-c", "pytest -q", "--on-failure", "suggest"]

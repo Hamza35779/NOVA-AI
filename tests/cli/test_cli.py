@@ -62,6 +62,40 @@ class TestCLI:
         assert result.exit_code == 0
         assert nova_ai.__version__ in result.output
 
+    def test_version_is_not_the_placeholder(self) -> None:
+        """Regression: click 8.5 dropped version_option(callback=...), so the
+        CLI silently printed the static '0.0.0+unknown' fallback instead of
+        the real distribution version. The eager-flag implementation must
+        report the installed metadata version."""
+        result = CliRunner().invoke(cli, ["--version"])
+        assert result.exit_code == 0
+        assert "0.0.0+unknown" not in result.output
+
+    def test_all_lazy_commands_resolve(self) -> None:
+        """Every entry in the lazy command map must import cleanly.
+
+        LazyGroup.get_command swallows import errors (by design — an optional
+        dependency must not kill the CLI), which makes map drift invisible:
+        a renamed command module would just silently vanish from `nova`.
+        """
+        from nova_ai.cli import _COMMAND_MAP, LazyGroup
+
+        assert isinstance(cli, LazyGroup)
+        missing: list[str] = []
+        for name in list(_COMMAND_MAP):  # snapshot: resolving mutates the map
+            cmd = cli.get_command(None, name)
+            if cmd is None:
+                missing.append(name)
+        assert not missing, f"lazy commands failed to import: {sorted(missing)}"
+
+    def test_lazy_commands_listed_in_help(self) -> None:
+        """--help must render all lazy commands via the static short-help
+        table without importing any command module."""
+        result = CliRunner().invoke(cli, ["--help"])
+        assert result.exit_code == 0
+        for name in ("chat", "ask", "serve", "doctor", "router", "memory"):
+            assert name in result.output
+
     def test_ask_requires_query(self) -> None:
         result = CliRunner().invoke(cli, ["ask"])
         assert result.exit_code != 0

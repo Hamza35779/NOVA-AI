@@ -1,69 +1,224 @@
-"""Command-line interface for NOVA AI (Click-based)."""
+"""Command-line interface for NOVA AI (Click-based).
+
+Command modules are loaded **lazily**: the eager imports used to cost ~3.3s
+before Click even parsed ``--help`` (the digest command alone pulls the
+whole hybrid-agent stack → ``openai``). With :class:`LazyGroup`, a command
+module is only imported when its subcommand is actually invoked; ``--help``
+and ``--version`` are nearly instant.
+"""
 
 from __future__ import annotations
 
+import importlib
+from typing import Any, Optional
+
 import click
 
-import nova_ai
-from nova_ai.cli._bootstrap import bootstrap_cmd
-from nova_ai.cli.add_cmd import add
-from nova_ai.cli.agent_cmd import agent
-from nova_ai.cli.ask import ask
-from nova_ai.cli.bench_cmd import bench
-from nova_ai.cli.canvas_cmd import canvas_group
-from nova_ai.cli.channel_cmd import channel
-from nova_ai.cli.channels_cmd import channels
-from nova_ai.cli.chat_cmd import chat
-from nova_ai.cli.clip_cmd import clip
-from nova_ai.cli.compose_cmd import compose
-from nova_ai.cli.config_cmd import config
-from nova_ai.cli.connect_cmd import connect
-from nova_ai.cli.conversation_cmd import conversation
-from nova_ai.cli.daemon_cmd import restart, start, status, stop
-from nova_ai.cli.dev_watch_cmd import dev_watch
-from nova_ai.cli.digest_cmd import digest
-from nova_ai.cli.doctor_cmd import doctor
-from nova_ai.cli.eval_cmd import eval_group
-from nova_ai.cli.feedback_cmd import feedback_group
-from nova_ai.cli.forge_cmd import forge
-from nova_ai.cli.gateway_cmd import gateway
-from nova_ai.cli.host_cmd import host
-from nova_ai.cli.init_cmd import init
-from nova_ai.cli.integrations_cmd import integrations_group
-from nova_ai.cli.mcp_cmd import mcp
-from nova_ai.cli.memory_cmd import memory
-from nova_ai.cli.memory_wiki_cmd import memory_wiki_group
-from nova_ai.cli.mine_cmd import mine
-from nova_ai.cli.model import model
-from nova_ai.cli.opencode_cmd import opencode
-from nova_ai.cli.operators_cmd import operators
-from nova_ai.cli.optimize_cmd import optimize_group
-from nova_ai.cli.oracle_cmd import oracle
-from nova_ai.cli.pearl_cmd import pearl
-from nova_ai.cli.plugin_cmd import plugin
-from nova_ai.cli.prove_cmd import prove
-from nova_ai.cli.quickstart_cmd import quickstart
-from nova_ai.cli.registry_cmd import registry
-from nova_ai.cli.router_cmd import router_cmd
-from nova_ai.cli.scan_cmd import scan
-from nova_ai.cli.scheduler_cmd import scheduler
-from nova_ai.cli.screen_cmd import screen_group
-from nova_ai.cli.self_update_cmd import self_update
-from nova_ai.cli.serve import serve
-from nova_ai.cli.skill_cmd import skill
-from nova_ai.cli.telemetry_cmd import telemetry
-from nova_ai.cli.tool_cmd import tool
-from nova_ai.cli.train_cmd import train
-from nova_ai.cli.vault_cmd import vault
-from nova_ai.cli.voice_cmd import voice
-from nova_ai.cli.workflow_cmd import workflow
+
+class LazyGroup(click.Group):
+    """A Click group that resolves subcommands by import on first use.
+
+    ``commands`` maps command names to ``(module_name, attribute)`` pairs
+    relative to ``nova_ai.cli``. Nothing is imported at decoration time, so
+    ``nova --help`` / ``--version`` skip ~50 command modules entirely. A
+    miss falls back to :meth:`click.Group.get_command` (still supporting
+    any commands registered eagerly, e.g. deep-research-setup).
+    """
+
+    def __init__(
+        self,
+        *args: Any,
+        command_map: Optional[dict[str, tuple[str, str]]] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._command_map: dict[str, tuple[str, str]] = command_map or {}
+
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return sorted({*super().list_commands(ctx), *self._command_map})
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
+        """Import-on-demand for commands in the map; pass through otherwise."""
+        if cmd_name in self._command_map:
+            module_name, attr = self._command_map.pop(cmd_name)
+            try:
+                module = importlib.import_module(f"nova_ai.cli.{module_name}")
+            except Exception as exc:  # noqa: BLE001 — never kill the CLI on a
+                # broken optional command; mirror the deep-research guard.
+                import logging
+
+                logging.getLogger(__name__).debug(
+                    "command %s unavailable: %s", cmd_name, exc
+                )
+                return None
+            cmd = getattr(module, attr)
+            # Cache on the group so repeat lookups skip the import machinery.
+            # NOTE: del-then-add, never add-then-del: add_command writes into
+            # self.commands while list_commands()/format_commands() iterate
+            # _command_map — mutating both dicts mid-iteration raised
+            # "dictionary changed size during iteration" under --help.
+            self.add_command(cmd, cmd_name)
+            return cmd
+        return super().get_command(ctx, cmd_name)
+
+    def format_commands(self, ctx: click.Context, formatter: Any) -> None:
+        """Render the command list without importing lazy commands.
+
+        Click's default ``MultiCommand.format_commands`` resolves every
+        subcommand via ``get_command`` (importing ~50 modules) just to read
+        ``short_help``. Lazy commands instead use the static ``_SHORT_HELP``
+        table — only explicitly-invoked commands are ever imported.
+        """
+        commands = self.list_commands(ctx)
+        if not commands:
+            return
+        limit = formatter.width - 6 - max(len(cmd) for cmd in commands)
+        rows: list[tuple[str, str]] = []
+        for subcommand in commands:
+            help_text = self._short_help_for(ctx, subcommand, limit)
+            if help_text is not None:
+                rows.append((subcommand, help_text))
+        if not rows:
+            return
+        with formatter.section("Commands"):
+            formatter.write_dl(rows)
+
+    def _short_help_for(
+        self, ctx: click.Context, cmd_name: str, limit: int
+    ) -> Optional[str]:
+        """Short help for *cmd_name* without importing it, when possible."""
+        if cmd_name in self._command_map:
+            static = _SHORT_HELP.get(cmd_name)
+            if static:
+                return static[:limit]
+            return f"Run `nova {cmd_name} --help`."
+        cmd = super().get_command(ctx, cmd_name)
+        if cmd is None:
+            return None
+        return (cmd.short_help or "")[:limit]
+
+
+def _lazy_version(ctx: click.Context, _param: Any, value: Any) -> Any:
+    """Version callback that avoids importing ``nova_ai`` (pulls the SDK).
+
+    Reads the installed distribution metadata directly; falls back to a
+    static string on lookup failure (import-time cost of ``nova_ai``
+    dominates CLI startup, and ``--version`` must be instant).
+    """
+    if not value or ctx.resilient_parsing:
+        return value
+    try:
+        from importlib.metadata import version as _pkg_version
+
+        click.echo(f"nova, version {_pkg_version('nova-ai-pro')}")
+    except Exception:  # noqa: BLE001 — version must never crash the CLI
+        click.echo("nova, version 0.0.0+unknown")
+    ctx.exit()
+
+
+# name → (module under nova_ai.cli, attribute)
+_COMMAND_MAP: dict[str, tuple[str, str]] = {
+    "init": ("init_cmd", "init"),
+    "ask": ("ask", "ask"),
+    "chat": ("chat_cmd", "chat"),
+    "serve": ("serve", "serve"),
+    "model": ("model", "model"),
+    "memory": ("memory_cmd", "memory"),
+    "mine": ("mine_cmd", "mine"),
+    "mcp": ("mcp_cmd", "mcp"),
+    "opencode": ("opencode_cmd", "opencode"),
+    "pearl": ("pearl_cmd", "pearl"),
+    "plugin": ("plugin_cmd", "plugin"),
+    "telemetry": ("telemetry_cmd", "telemetry"),
+    "bench": ("bench_cmd", "bench"),
+    "channel": ("channel_cmd", "channel"),
+    "channels": ("channels_cmd", "channels"),
+    "scheduler": ("scheduler_cmd", "scheduler"),
+    "doctor": ("doctor_cmd", "doctor"),
+    "agents": ("agent_cmd", "agent"),
+    "workflow": ("workflow_cmd", "workflow"),
+    "skill": ("skill_cmd", "skill"),
+    "start": ("daemon_cmd", "start"),
+    "stop": ("daemon_cmd", "stop"),
+    "restart": ("daemon_cmd", "restart"),
+    "status": ("daemon_cmd", "status"),
+    "vault": ("vault_cmd", "vault"),
+    "add": ("add_cmd", "add"),
+    "operators": ("operators_cmd", "operators"),
+    "eval": ("eval_cmd", "eval_group"),
+    "host": ("host_cmd", "host"),
+    "quickstart": ("quickstart_cmd", "quickstart"),
+    "optimize": ("optimize_cmd", "optimize_group"),
+    "feedback": ("feedback_cmd", "feedback_group"),
+    "compose": ("compose_cmd", "compose"),
+    "gateway": ("gateway_cmd", "gateway"),
+    "tool": ("tool_cmd", "tool"),
+    "train": ("train_cmd", "train"),
+    "prove": ("prove_cmd", "prove"),
+    "forge": ("forge_cmd", "forge"),
+    "conversation": ("conversation_cmd", "conversation"),
+    "oracle": ("oracle_cmd", "oracle"),
+    "registry": ("registry_cmd", "registry"),
+    "config": ("config_cmd", "config"),
+    "scan": ("scan_cmd", "scan"),
+    "connect": ("connect_cmd", "connect"),
+    "digest": ("digest_cmd", "digest"),
+    "dev-watch": ("dev_watch_cmd", "dev_watch"),
+    "router": ("router_cmd", "router_cmd"),
+    "voice": ("voice_cmd", "voice"),
+    "clip": ("clip_cmd", "clip"),
+    "screen": ("screen_cmd", "screen_group"),
+    "canvas": ("canvas_cmd", "canvas_group"),
+    "memory-wiki": ("memory_wiki_cmd", "memory_wiki_group"),
+    "integrations": ("integrations_cmd", "integrations_group"),
+    "self-update": ("self_update_cmd", "self_update"),
+    "_bootstrap": ("_bootstrap", "bootstrap_cmd"),
+    # Formerly eager "guarded import" fallbacks: deep_research_setup_cmd
+    # alone cost ~0.9s (it pulls the connectors stack) on every CLI run.
+    # LazyGroup.get_command keeps the guarded behavior — an import failure
+    # logs at debug and the command is simply unavailable.
+    "deep-research-setup": ("deep_research_setup_cmd", "deep_research_setup"),
+    "research": ("deep_research_setup_cmd", "deep_research_setup"),
+    "auth": ("auth_cmd", "auth"),
+    "tunnel": ("tunnel_cmd", "tunnel"),
+}
+
+
+def _print_version(ctx: click.Context, _param: Any, value: bool) -> None:
+    """Eager-flag ``--version`` handler (replaces click.version_option).
+
+    click 8.5 dropped the ``callback=`` parameter of ``version_option``, so
+    the previous wiring silently degraded to printing the static
+    "0.0.0+unknown" placeholder on every invocation ("nova --version" and
+    "pip show" disagreed). An eager flag option invokes a callback on all
+    supported click versions and keeps the metadata lookup off the import
+    path ("--version" stays instant).
+    """
+    if not value or ctx.resilient_parsing:
+        return
+    try:
+        from importlib.metadata import version as _pkg_version
+
+        click.echo(f"nova, version {_pkg_version('nova-ai-pro')}")
+    except Exception:  # noqa: BLE001 — version must never crash the CLI
+        click.echo("nova, version 0.0.0+unknown")
+    ctx.exit()
 
 
 @click.group(
+    cls=LazyGroup,
+    command_map=_COMMAND_MAP,
     help="NOVA AI — modular AI assistant backend",
     invoke_without_command=True,
 )
-@click.version_option(version=nova_ai.__version__, prog_name="nova")
+@click.option(
+    "--version",
+    is_flag=True,
+    expose_value=False,
+    is_eager=True,
+    callback=_print_version,
+    help="Show the version and exit.",
+)
 @click.option("--verbose", is_flag=True, default=False, help="Enable debug logging")
 @click.option("--quiet", is_flag=True, default=False, help="Suppress non-error output")
 @click.pass_context
@@ -107,90 +262,70 @@ def cli(ctx: click.Context, verbose: bool, quiet: bool) -> None:
         check_and_route(ctx)
 
 
-cli.add_command(init, "init")
-cli.add_command(ask, "ask")
-cli.add_command(chat, "chat")
-cli.add_command(serve, "serve")
-cli.add_command(model, "model")
-cli.add_command(memory, "memory")
-cli.add_command(mine, "mine")
-cli.add_command(mcp, "mcp")
-cli.add_command(opencode, "opencode")
-cli.add_command(pearl, "pearl")
-cli.add_command(plugin, "plugin")
-cli.add_command(telemetry, "telemetry")
-cli.add_command(bench, "bench")
-cli.add_command(channel, "channel")
-cli.add_command(channels, "channels")
-cli.add_command(scheduler, "scheduler")
-cli.add_command(doctor, "doctor")
-cli.add_command(agent, "agents")
-cli.add_command(workflow, "workflow")
-cli.add_command(skill, "skill")
-cli.add_command(start, "start")
-cli.add_command(stop, "stop")
-cli.add_command(restart, "restart")
-cli.add_command(status, "status")
-cli.add_command(vault, "vault")
-cli.add_command(add, "add")
-cli.add_command(operators, "operators")
-cli.add_command(eval_group, "eval")
-cli.add_command(host, "host")
-cli.add_command(quickstart, "quickstart")
-cli.add_command(optimize_group, "optimize")
-cli.add_command(feedback_group, "feedback")
-cli.add_command(compose, "compose")
-cli.add_command(gateway, "gateway")
-cli.add_command(tool, "tool")
-cli.add_command(train, "train")
-cli.add_command(prove, "prove")
-cli.add_command(forge, "forge")
-cli.add_command(conversation, "conversation")
-cli.add_command(oracle, "oracle")
-cli.add_command(registry, "registry")
-cli.add_command(config, "config")
-cli.add_command(scan, "scan")
-cli.add_command(connect, "connect")
-cli.add_command(digest, "digest")
-cli.add_command(dev_watch, "dev-watch")
-cli.add_command(router_cmd, "router")
-cli.add_command(voice, "voice")
-cli.add_command(clip, "clip")
-cli.add_command(screen_group, "screen")
-cli.add_command(canvas_group, "canvas")
-cli.add_command(memory_wiki_group, "memory-wiki")
-cli.add_command(integrations_group, "integrations")
-# deep-research setup pulls the ingestion pipeline (embeddings/numpy). Guard it
-# so a broken or slow numpy on Windows — which can raise at IMPORT time, not
-# just ImportError (#404) — can never take down the whole CLI, including
-# `nova serve`. Invoking `nova deep-research-setup` without the deps still
-# errors clearly on demand.
-try:
-    from nova_ai.cli.deep_research_setup_cmd import deep_research_setup
-
-    cli.add_command(deep_research_setup, "deep-research-setup")
-    cli.add_command(deep_research_setup, "research")
-except Exception as _dr_exc:
-    import logging as _logging
-
-    _logging.getLogger(__name__).debug("deep-research command unavailable: %s", _dr_exc)
-cli.add_command(self_update, "self-update")
-cli.add_command(bootstrap_cmd, "_bootstrap")
-
-# Gateway CLI commands (lazy import to avoid pulling starlette)
-try:
-    from nova_ai.cli.auth_cmd import auth
-
-    cli.add_command(auth, "auth")
-except ImportError:
-    pass
-
-try:
-    from nova_ai.cli.tunnel_cmd import tunnel
-
-    cli.add_command(tunnel, "tunnel")
-except ImportError:
-    pass
+# Static short-help for lazy commands: rendered in `nova --help` without
+# importing any command module. Extracted from each command's help docstring
+# (first line); keep in sync when adding a command to _COMMAND_MAP.
+_SHORT_HELP: dict[str, str] = {
+    "init": "Detect hardware and generate ~/.nova_ai/config.toml",
+    "ask": "Ask Nova a question",
+    "chat": "Start an interactive multi-turn chat session",
+    "serve": "Start the OpenAI-compatible API server",
+    "model": "Manage language models",
+    "memory": "Manage the memory store",
+    "mine": "Configure and run Pearl mining",
+    "mcp": "Serve or inspect NOVA AI tools via MCP (e.g. for opencode)",
+    "opencode": "Integrate opencode (AI coding agent) with NOVA AI models + tools",
+    "pearl": "Access Pearl node, wallet, and RPC tools",
+    "plugin": "Scaffold NOVA AI plugins",
+    "telemetry": "Query and manage inference telemetry data",
+    "bench": "Run inference benchmarks",
+    "channel": "Manage messaging channels",
+    "channels": "Manage messaging channels (iMessage/SMS via SendBlue, Slack)",
+    "scheduler": "Manage scheduled tasks",
+    "doctor": "Run diagnostic checks on your NOVA AI installation",
+    "agents": "Manage persistent agents — create, inspect, chat, bind channels",
+    "workflow": "Manage workflows — list, run, status",
+    "skill": "Manage reusable skills",
+    "start": "Start the NOVA AI server as a background daemon",
+    "stop": "Stop the running NOVA AI server daemon",
+    "restart": "Restart the NOVA AI server daemon",
+    "status": "Show status of the NOVA AI server daemon",
+    "vault": "Manage encrypted credentials",
+    "add": "Add an MCP server configuration",
+    "operators": "Manage operators — persistent, scheduled autonomous agents",
+    "eval": "Evaluation framework — benchmark models, agents, and learning",
+    "host": "Download (if needed) and serve a model locally",
+    "quickstart": "Guided 5-step setup for new users",
+    "optimize": "LLM-driven configuration optimization",
+    "feedback": "Trace feedback management",
+    "compose": "Compose, run, benchmark, and deploy NOVA AI configurations",
+    "gateway": "Manage the NOVA AI multi-channel gateway",
+    "tool": "Manage tools — list, inspect",
+    "train": "Self-training: fine-tune a model from your own usage traces",
+    "prove": "Prove whether a new model actually beats the incumbent on your traces",
+    "forge": "Forge skills from your repeated multi-step tool workflows",
+    "conversation": "Conversation trees: forks, sibling answers, preference pairs",
+    "oracle": "Fleet Oracle: pooled, anonymized performance answers",
+    "registry": "Inspect registered components — list registries, show entries",
+    "config": "Inspect configuration — show loaded settings, hardware, and config files",
+    "scan": "Audit your environment for privacy and security risks",
+    "connect": "Manage connections (Gmail, Obsidian, opencode, etc.)",
+    "digest": "Display and play the morning digest",
+    "dev-watch": "Watch a build/test command and self-diagnose failures",
+    "router": "Smart Model Router commands",
+    "voice": "Start a voice conversation with Nova",
+    "clip": "Clipboard AI — quickly summarize, translate, or explain clipboard content",
+    "screen": "Screen perception and OCR tools",
+    "canvas": "Manage interactive Canvas visual artifacts",
+    "memory-wiki": "Manage structured Memory Wiki knowledge base",
+    "integrations": "Manage app integrations, software connectors, and MCP servers (like Claude Desktop)",
+    "self-update": "Upgrade NOVA AI to the latest release. Detects how you installed (pip, uv tool, editable git) and runs the right command. Use --check to only print the upgrade command without running it",
+    "_bootstrap": "Internal helper used by install.sh — not for direct user invocation",
+    "deep-research-setup": "Configure local deep-research sources (Obsidian vault, docs)",
+    "research": "Run multi-hop deep research with citations",
+    "auth": "Manage authentication credentials for connectors",
+    "tunnel": "Expose the local API server via a Cloudflare Tunnel",
+}
 
 
 def main() -> None:
@@ -207,4 +342,4 @@ def main() -> None:
     cli()
 
 
-__all__ = ["cli", "main"]
+__all__ = ["LazyGroup", "cli", "main"]
