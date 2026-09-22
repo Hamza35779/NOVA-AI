@@ -236,28 +236,52 @@ def pull(model_name: str, engine: str | None) -> None:
         ).rstrip("/")
         if not ollama_pull(host, model_name, console):
             sys.exit(1)
-    elif engine in ("llamacpp", "mlx"):
+    elif engine == "llamacpp":
         spec = find_model_spec(model_name)
         if not spec:
             console.print(f"[red]Model not in catalog:[/red] {model_name}")
             sys.exit(1)
-        if engine == "llamacpp":
-            repo = spec.metadata.get("hf_repo", "")
-            gguf = spec.metadata.get("gguf_file", "")
-            if not repo or not gguf:
-                console.print(f"[red]No GGUF download info for {model_name}[/red]")
-                sys.exit(1)
-            console.print(f"Downloading [cyan]{gguf}[/cyan] from {repo}...")
-            if not hf_download(repo, gguf, console):
-                sys.exit(1)
-        else:  # mlx
-            mlx_repo = spec.metadata.get("mlx_repo", "")
-            if not mlx_repo:
-                console.print(f"[red]No MLX repo info for {model_name}[/red]")
-                sys.exit(1)
-            console.print(f"Downloading [cyan]{mlx_repo}[/cyan]...")
-            if not hf_download(mlx_repo, None, console):
-                sys.exit(1)
+        repo = spec.metadata.get("hf_repo", "")
+        gguf = spec.metadata.get("gguf_file", "")
+        # Catalog entries can name an Ollama registry tag directly (added
+        # when the HF repo named by the catalog does not host a pullable
+        # GGUF, e.g. granite4.0-*). Prefer the registry when present.
+        registry_tag = spec.metadata.get("ollama_registry_tag", "")
+        if not repo or not gguf:
+            if registry_tag:
+                console.print(
+                    f"[cyan]{model_name}[/cyan] is served by the Ollama "
+                    f"registry as [cyan]{registry_tag}[/cyan]; pulling it."
+                )
+                ollama_host = (
+                    config.engine.ollama_host
+                    or os.environ.get("OLLAMA_HOST")
+                    or "http://localhost:11434"
+                ).rstrip("/")
+                if not ollama_pull(ollama_host, registry_tag, console):
+                    sys.exit(1)
+                console.print(
+                    f"[yellow]Note:[/yellow] pulled as {registry_tag!r} - "
+                    f"pass that name when generating with this model."
+                )
+                return
+            console.print(f"[red]No GGUF download info for {model_name}[/red]")
+            sys.exit(1)
+        console.print(f"Downloading [cyan]{gguf}[/cyan] from {repo}...")
+        if not hf_download(repo, gguf, console):
+            sys.exit(1)
+    elif engine == "mlx":
+        spec = find_model_spec(model_name)
+        if not spec:
+            console.print(f"[red]Model not in catalog:[/red] {model_name}")
+            sys.exit(1)
+        mlx_repo = spec.metadata.get("mlx_repo", "")
+        if not mlx_repo:
+            console.print(f"[red]No MLX repo info for {model_name}[/red]")
+            sys.exit(1)
+        console.print(f"Downloading [cyan]{mlx_repo}[/cyan]...")
+        if not hf_download(mlx_repo, None, console):
+            sys.exit(1)
     elif engine in ("vllm", "sglang"):
         console.print(
             f"[cyan]{model_name}[/cyan] will download automatically when "

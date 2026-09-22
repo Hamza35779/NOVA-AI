@@ -15,7 +15,7 @@ import logging
 import threading
 from typing import Any, Dict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -33,6 +33,52 @@ router = APIRouter(prefix="/api/models/gguf", tags=["gguf_hub"])
 
 # Active download tracking: task_id -> progress dict
 _downloads: Dict[str, Dict[str, Any]] = {}
+
+
+def _available_ram_gb() -> float | None:
+    """Return available RAM in GB, or None when it cannot be determined.
+
+    Mirrors HardwareInspector's psutil-first strategy without pulling the
+    full hardware snapshot (which probes GPUs and can be slow).
+    """
+    try:
+        import psutil  # type: ignore[import-untyped]
+
+        return round(psutil.virtual_memory().available / 1024**3, 2)
+    except ImportError:
+        pass
+    import platform
+
+    system = platform.system()
+    try:
+        if system == "Windows":
+            import ctypes
+
+            class _MemStatus(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            stat = _MemStatus()
+            stat.dwLength = ctypes.sizeof(_MemStatus)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+            return round(stat.ullAvailPhys / 1024**3, 2)
+        if system == "Linux":
+            with open("/proc/meminfo", encoding="ascii") as fh:
+                for line in fh:
+                    if line.startswith("MemAvailable:"):
+                        return round(int(line.split()[1]) / 1024**2, 2)
+    except Exception:  # noqa: BLE001 — RAM is advisory, never fatal
+        return None
+    return None
 
 
 class DownloadRequest(BaseModel):
@@ -113,6 +159,24 @@ async def start_download(body: DownloadRequest) -> Dict[str, Any]:
     # Already downloaded?
     if get_model_path(model_id) is not None:
         return {"task_id": task_id, "model_id": model_id, "status": "already_installed"}
+
+    # Refuse downloads that cannot possibly run on this machine: min_ram_gb
+    # was catalog metadata nobody read (audit 2026-09-23). Gate on *free*
+    # RAM, not total — a "have 16GB, need 6GB" box mid-training elsewhere
+    # should still be allowed to download. Non-fatal when RAM is unknown.
+    entry = next((m for m in GGUF_CATALOG if m["id"] == model_id), None)
+    if entry:
+        min_ram = entry.get("min_ram_gb")
+        if min_ram:
+            free_ram = _available_ram_gb()
+            if free_ram is not None and free_ram < min_ram:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{model_id} needs ~{min_ram} GB RAM but only "
+                        f"{free_ram:.1f} GB is available on this machine."
+                    ),
+                )
 
     # Already in progress?
     existing = _downloads.get(task_id)

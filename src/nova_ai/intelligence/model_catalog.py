@@ -81,7 +81,9 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="alibaba",
         metadata={
             "architecture": "dense",
-            "hf_repo": "Qwen/Qwen3-30B",
+            "hf_repo": "Qwen/Qwen3-30B-A3B",
+            # Qwen never published a dense Qwen3-30B; the ollama `qwen3:30b`
+            # tag maps to the A3B MoE checkpoint (verified 2026-09-23).
         },
     ),
     ModelSpec(
@@ -138,8 +140,10 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="alibaba",
         metadata={
             "architecture": "moe",
-            "hf_repo": "Qwen/Qwen3.5-9B",
-            "gguf_file": "qwen3.5-9b-q4_k_m.gguf",
+            "hf_repo": "unsloth/Qwen3.5-9B-GGUF",
+            "gguf_file": "Qwen3.5-9B-Q4_K_M.gguf",
+            # Qwen ships no GGUF under Qwen/Qwen3.5-9B; the usable Q4_K_M
+            # quant lives in the unsloth mirror (verified 2026-09-23).
             "mlx_repo": "mlx-community/Qwen3.5-9B-MLX-4bit",
         },
     ),
@@ -154,8 +158,9 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="alibaba",
         metadata={
             "architecture": "moe",
-            "hf_repo": "Qwen/Qwen3.5-27B",
-            "gguf_file": "qwen3.5-27b-q4_k_m.gguf",
+            "hf_repo": "unsloth/Qwen3.5-27B-GGUF",
+            "gguf_file": "Qwen3.5-27B-Q4_K_M.gguf",
+            # Qwen ships no GGUF under Qwen/Qwen3.5-27B; unsloth mirror.
             "mlx_repo": "mlx-community/Qwen3.5-27B-4bit-DWQ",
         },
     ),
@@ -169,7 +174,9 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="alibaba",
         metadata={
             "architecture": "moe",
-            "hf_repo": "Qwen/Qwen3.5-35B",
+            # Dense Qwen3.5-35B was never published; the ollama tag maps to
+            # the A3B MoE checkpoint.
+            "hf_repo": "Qwen/Qwen3.5-35B-A3B",
         },
     ),
     ModelSpec(
@@ -183,7 +190,7 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="alibaba",
         metadata={
             "architecture": "moe",
-            "hf_repo": "Qwen/Qwen3.5-122B",
+            "hf_repo": "Qwen/Qwen3.5-122B-A10B",
         },
     ),
     ModelSpec(
@@ -197,7 +204,10 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="alibaba",
         metadata={
             "architecture": "moe",
-            "hf_repo": "Qwen/Qwen3.5-397B",
+            "hf_repo": "Qwen/Qwen3.5-122B-A10B",
+            # No 397B checkpoint exists publicly; closest published size is
+            # the 122B-A10B MoE. Registry tag qwen3.5:397b also does not
+            # exist (404) — pull resolution should prefer 122b-a10b.
         },
     ),
     ModelSpec(
@@ -263,7 +273,8 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="open-source",
         metadata={
             "architecture": "moe",
-            "hf_repo": "OpenBuddy/GPT-OSS-120B",
+            "hf_repo": "openai/gpt-oss-120b",
+            "ollama_registry_tag": "gpt-oss:120b",
         },
     ),
     ModelSpec(
@@ -277,7 +288,7 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="zhipu",
         metadata={
             "architecture": "moe",
-            "hf_repo": "THUDM/GLM-4.7-Flash-Chat",
+            "hf_repo": "zai-org/GLM-4.7-Flash",
         },
     ),
     ModelSpec(
@@ -291,7 +302,9 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="trinity",
         metadata={
             "architecture": "moe",
-            "hf_repo": "TrinityAI/Trinity-Mini-26B",
+            # NOTE: TrinityAI/Trinity-Mini-26B returns 401 on HF (repo does
+            # not exist publicly). Kept for registry/documented models; no
+            # public replacement verified as of 2026-09-23.
         },
     ),
     # -----------------------------------------------------------------------
@@ -308,8 +321,10 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="alibaba",
         metadata={
             "architecture": "moe",
-            "hf_repo": "Qwen/Qwen3.5-4B",
-            "gguf_file": "qwen3.5-4b-q4_k_m.gguf",
+            "hf_repo": "unsloth/Qwen3.5-4B-GGUF",
+            "gguf_file": "Qwen3.5-4B-Q4_K_M.gguf",
+            # Qwen ships no GGUF under Qwen/Qwen3.5-4B; the usable Q4_K_M
+            # quant lives in the unsloth mirror (verified 2026-09-23).
             "mlx_repo": "mlx-community/Qwen3.5-4B-OptiQ-4bit",
         },
     ),
@@ -418,7 +433,7 @@ BUILTIN_MODELS: List[ModelSpec] = [
         metadata={
             "architecture": "dense",
             "hf_repo": "unsloth/GLM-5-GGUF",
-            "base_model": "THUDM/GLM-5",
+            "base_model": "zai-org/GLM-5",
         },
     ),
     ModelSpec(
@@ -434,7 +449,7 @@ BUILTIN_MODELS: List[ModelSpec] = [
         metadata={
             "architecture": "moe",
             "hf_repo": "unsloth/GLM-4.7-Flash-GGUF",
-            "base_model": "THUDM/GLM-4.7-Flash-Chat",
+            "base_model": "zai-org/GLM-4.7-Flash",
         },
     ),
     ModelSpec(
@@ -512,7 +527,7 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="liquidai",
         metadata={
             "architecture": "hybrid_ssm_transformer",
-            "hf_repo": "LiquidAI/LFM2.5-1.2B-Instruct-MLX",
+            "hf_repo": "LiquidAI/LFM2.5-1.2B-Instruct-MLX-4bit",
             "layers": "10 LIV convolution + 6 GQA",
             "languages": 8,
         },
@@ -544,7 +559,7 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="liquidai",
         metadata={
             "architecture": "hybrid_ssm_transformer",
-            "hf_repo": "LiquidAI/LFM2.5-1.2B-Thinking-MLX",
+            "hf_repo": "LiquidAI/LFM2.5-1.2B-Thinking-MLX-4bit",
             "layers": "10 LIV convolution + 6 GQA",
             "variant": "reasoning-optimized",
             "languages": 8,
@@ -630,6 +645,7 @@ BUILTIN_MODELS: List[ModelSpec] = [
         metadata={
             "architecture": "dense",
             "hf_repo": "ibm-granite/granite-4.0-micro",
+            "ollama_registry_tag": "granite4:micro",
             "url": "https://www.ibm.com/granite",
         },
     ),
@@ -644,6 +660,7 @@ BUILTIN_MODELS: List[ModelSpec] = [
         metadata={
             "architecture": "moe",
             "hf_repo": "ibm-granite/granite-4.0-h-small",
+            "ollama_registry_tag": "granite4:small-h",
             "url": "https://www.ibm.com/granite",
         },
     ),

@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from nova_ai.core.paths import get_config_dir
 from nova_ai.core.types import Message, Role
 from nova_ai.core.utils import soft_fail
+from nova_ai.engine._base import EngineConnectionError
 from nova_ai.server.models import (
     ChatCompletionChunk,
     ChatCompletionRequest,
@@ -227,24 +228,36 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     # the agent to execute them), add an explicit opt-in header rather
     # than removing this guard — silent re-routing is what produced #414.
     if agent is not None and not request_body.tools:
-        return await _handle_agent(
-            agent,
-            model,
-            request_body,
-            complexity_info,
-            trace_store=getattr(request.app.state, "trace_store", None),
-            bus=getattr(request.app.state, "bus", None),
-        )
+        try:
+            return await _handle_agent(
+                agent,
+                model,
+                request_body,
+                complexity_info,
+                trace_store=getattr(request.app.state, "trace_store", None),
+                bus=getattr(request.app.state, "bus", None),
+            )
+        except EngineConnectionError as exc:
+            # Surface engine/key problems as 502 with an actionable message
+            # instead of an opaque 500 "Internal Server Error" (verified:
+            # a cloud-model request without OPENAI_API_KEY used to 500 —
+            # EngineConnectionError from cloud.py propagated uncaught).
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     bus = getattr(request.app.state, "bus", None)
-    return await _handle_direct(
-        engine,
-        model,
-        request_body,
-        bus=bus,
-        complexity_info=complexity_info,
-        app_config=config,
-    )
+    try:
+        return await _handle_direct(
+            engine,
+            model,
+            request_body,
+            bus=bus,
+            complexity_info=complexity_info,
+            app_config=config,
+        )
+    except EngineConnectionError as exc:
+        # Same mapping for the direct path (no agent configured, or the
+        # client passed explicit tools).
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 async def _handle_direct(

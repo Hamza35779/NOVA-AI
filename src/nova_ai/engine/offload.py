@@ -424,7 +424,9 @@ class OffloadPlanner:
 
         notes_parts = []
         if ctx < context_length:
-            notes_parts.append(f"context reduced {context_length}→{ctx} to avoid OOM")
+            notes_parts.append(
+                f"context reduced {context_length}->{ctx} to avoid OOM"
+            )
         if plan_gpu_layers not in (-1, 0) and offload_pct:
             notes_parts.append(f"partial offload ~{offload_pct}% of weights to GPU")
         if plan_gpu_layers == 0:

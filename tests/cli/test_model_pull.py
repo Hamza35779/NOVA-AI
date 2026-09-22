@@ -66,7 +66,9 @@ class TestPullCliMultiEngine:
         mock_run.assert_called_once()
         call_args = mock_run.call_args[0][0]
         assert "huggingface-cli" in call_args
-        assert "qwen3.5-9b-q4_k_m.gguf" in call_args
+        # Qwen ships no GGUF for Qwen3.5; the catalog points at the
+        # unsloth mirror (file verified 200 on HF, 2026-09-23).
+        assert "Qwen3.5-9B-Q4_K_M.gguf" in call_args
 
     def test_pull_mlx_uses_huggingface_cli(self) -> None:
         from nova_ai.cli import cli

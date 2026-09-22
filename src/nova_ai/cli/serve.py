@@ -717,6 +717,33 @@ def serve(
             "authenticated requests to your instance."
         )
 
+    # Pre-flight port check. uvicorn swallows bind failures and exits with
+    # code 3 after printing a raw WinError 10048 / EADDRINUSE traceback;
+    # probing first lets us give an actionable message instead (audit
+    # FP-C: users saw only "only one usage of each socket address").
+    # Deliberately NO SO_REUSEADDR: on Windows it would let this probe
+    # succeed even while another process holds the port.
+    import socket as _socket
+
     import uvicorn
+
+    _probe = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    try:
+        _probe.bind((bind_host or "127.0.0.1", bind_port))
+    except OSError:
+        console.print(
+            f"[red bold]Port {bind_port} is already in use.[/red bold] "
+            f"Another process (NOVA itself, or e.g. Ollama when using "
+            f"port {bind_port}) is listening on it.\n"
+            f"  Fix: run [cyan]nova serve --port <other>[/cyan], or stop "
+            f"the process holding the port:\n"
+            f"    Windows: [cyan]netstat -ano | findstr :{bind_port}[/cyan] "
+            f"then [cyan]taskkill /PID <pid> /F[/cyan]\n"
+            f"    macOS/Linux: [cyan]lsof -ti :{bind_port}[/cyan] then "
+            f"[cyan]kill <pid>[/cyan]"
+        )
+        raise SystemExit(1) from None
+    finally:
+        _probe.close()
 
     uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")

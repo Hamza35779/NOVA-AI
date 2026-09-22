@@ -73,10 +73,10 @@ GGUF_CATALOG: List[Dict[str, Any]] = [
         "id": "qwen2.5-7b",
         "name": "Qwen 2.5 7B (Q4)",
         "repo_id": "Qwen/Qwen2.5-7B-Instruct-GGUF",
-        "filename": "qwen2.5-7b-instruct-q4_k_m.gguf",
+        "filename": "qwen2.5-7b-instruct-q3_k_m.gguf",
         "category": "general",
         "params": "7B",
-        "size_gb": 4.7,
+        "size_gb": 3.6,
         "min_ram_gb": 6,
         "description": "Best all-rounder for daily use, writing, and analysis.",
         "recommended": True,
@@ -108,7 +108,7 @@ GGUF_CATALOG: List[Dict[str, Any]] = [
     {
         "id": "phi4-mini",
         "name": "Phi-4 Mini 3.8B (Q4)",
-        "repo_id": "bartowski/Phi-4-mini-instruct-GGUF",
+        "repo_id": "unsloth/Phi-4-mini-instruct-GGUF",
         "filename": "Phi-4-mini-instruct-Q4_K_M.gguf",
         "category": "reasoning",
         "params": "3.8B",
@@ -398,7 +398,7 @@ class GGUFEngine(InferenceEngine):
 
         raise FileNotFoundError(
             f"Model not found: {model!r}. "
-            f"Download it first via the Model Hub or: nova model download {model}"
+            f"Download it first via the Model Hub or: nova model pull {model}"
         )
 
     def generate(
