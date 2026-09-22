@@ -156,8 +156,10 @@ frontend/src-tauri/binaries/
 # TypeScript incremental build cache
 frontend/tsconfig.tsbuildinfo
 
-# PyInstaller build debris
+# PyInstaller build debris — but keep the Windows release spec, which is
+# referenced by deploy/windows/nova-ai-setup.iss and installation docs.
 *.spec
+!nova-ai-windows-x64.spec
 
 # GitHub API debug dumps (gh jobs listing pulled during local debugging)
 jobs.json
