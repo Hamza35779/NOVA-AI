@@ -302,9 +302,13 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="trinity",
         metadata={
             "architecture": "moe",
-            # NOTE: TrinityAI/Trinity-Mini-26B returns 401 on HF (repo does
-            # not exist publicly). Kept for registry/documented models; no
-            # public replacement verified as of 2026-09-23.
+            # NOTE: the originally-documented TrinityAI/Trinity-Mini-26B repo
+            # returns 401 on HF (never published publicly). These download
+            # targets point at a verified public MoE mirror of the same size
+            # class (30B-A3B, verified 2026-09-23 with a byte-range probe).
+            "hf_repo": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF",
+            "gguf_file": "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf",
+            "quantization": "GGUF Q4_K_M",
         },
     ),
     # -----------------------------------------------------------------------
@@ -582,6 +586,7 @@ BUILTIN_MODELS: List[ModelSpec] = [
             "hf_repo": (
                 "TeichAI/GLM-4.7-Flash-Claude-Opus-4.5-High-Reasoning-Distill-GGUF"
             ),
+            "gguf_file": "glm-4.7-flash-claude-4.5-opus.q4_k_m.gguf",
             "teacher": "Claude Opus 4.5",
             "quantization": "GGUF Q4_K_M / Q8_0",
             "license": "apache-2.0",
@@ -597,9 +602,14 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="teichai",
         metadata={
             "architecture": "dense",
-            "hf_repo": "TeichAI/Qwen3-14B-GPT-5.2-Distill-GGUF",
-            "teacher": "GPT-5.2",
-            "quantization": "GGUF Q4_K_M / Q8_0",
+            # NOTE: the originally-documented TeichAI/Qwen3-14B-GPT-5.2-Distill-GGUF
+            # returns 401 on HF (repo removed). Repointed to the same org's
+            # Qwen3-14B Claude Sonnet 4.5 distill (verified 2026-09-23,
+            # byte-range probe: HTTP 206, 9.0 GB, GGUF magic bytes).
+            "hf_repo": "TeichAI/Qwen3-14B-Claude-Sonnet-4.5-Reasoning-Distill-GGUF",
+            "gguf_file": "Qwen3-14B-claude-sonnet-4.5-high-reasoning-distill-Q4_K_M.gguf",
+            "teacher": "Claude Sonnet 4.5",
+            "quantization": "GGUF Q4_K_M",
             "license": "apache-2.0",
         },
     ),
@@ -613,9 +623,16 @@ BUILTIN_MODELS: List[ModelSpec] = [
         provider="teichai",
         metadata={
             "architecture": "dense",
-            "hf_repo": "TeichAI/Nemotron-Cascade-14B-Claude-Opus-Distill-GGUF",
+            # NOTE: the originally-documented TeichAI/Nemotron-Cascade-14B-Claude-Opus-Distill-GGUF
+            # returns 401 on HF (repo removed). Repointed to the same org's
+            # Nemotron-Cascade-14B-Thinking Opus distill (verified 2026-09-23;
+            # q4_k_m file present in the repo tree).
+            "hf_repo": (
+                "TeichAI/Nemotron-Cascade-14B-Thinking-Claude-4.5-Opus-High-Reasoning-Distill-GGUF"
+            ),
+            "gguf_file": "Nemotron-Cascade-14B-Thinking-Claude-4.5-Opus-Distill.q4_k_m.gguf",
             "teacher": "Claude 4.5 Opus",
-            "quantization": "GGUF Q4_K_M / Q8_0",
+            "quantization": "GGUF Q4_K_M",
             "license": "apache-2.0",
         },
     ),

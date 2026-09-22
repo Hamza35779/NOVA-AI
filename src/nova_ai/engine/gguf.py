@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -329,7 +330,18 @@ class GGUFEngine(InferenceEngine):
             if model_path in self._models:
                 return self._models[model_path]
 
-            from llama_cpp import Llama  # type: ignore[import-untyped]
+            try:
+                from llama_cpp import Llama  # type: ignore[import-untyped]
+            except ImportError as exc:
+                raise RuntimeError(
+                    "llama-cpp-python is not installed (required for GGUF "
+                    "inference). Install it with: pip install llama-cpp-python "
+                    "--prefer-binary. On Windows, if PyPI has no wheel for your "
+                    "Python version, download a prebuilt CPU wheel from "
+                    "https://github.com/abetlen/llama-cpp-python/releases "
+                    "(e.g. v0.3.19 win_amd64 cp312) and install the .whl file "
+                    "directly."
+                ) from exc
 
             env_ctx = os.environ.get("NOVA_GGUF_CTX")
             env_layers = os.environ.get("NOVA_GGUF_GPU_LAYERS")
@@ -421,20 +433,37 @@ class GGUFEngine(InferenceEngine):
             for d in messages_to_dicts(list(messages))
         ]
 
+        start = time.perf_counter()
         response = llm.create_chat_completion(
             messages=chat_messages,
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        gen_seconds = time.perf_counter() - start
 
         content = response["choices"][0]["message"]["content"]
         usage = response.get("usage", {})
+        # llama-cpp-python reports timings in milliseconds (Ollama uses ns);
+        # normalize to seconds with the same keys OllamaEngine exposes so
+        # tok/s observability works uniformly across engines.
+        timings = response.get("timings", {})
+        prompt_eval_s = float(timings.get("prompt_ms", 0)) / 1000.0
+        eval_s = float(timings.get("predicted_ms", 0)) / 1000.0
+        if eval_s <= 0:
+            # Older builds don't return timings; fall back to wall-clock.
+            eval_s = gen_seconds
         return {
             "content": content,
             "usage": {
                 "prompt_tokens": usage.get("prompt_tokens", 0),
                 "completion_tokens": usage.get("completion_tokens", 0),
                 "total_tokens": usage.get("total_tokens", 0),
+            },
+            "ttft": prompt_eval_s,
+            "engine_timing": {
+                "total_duration": gen_seconds,
+                "prompt_eval_duration": prompt_eval_s,
+                "eval_duration": eval_s,
             },
         }
 
