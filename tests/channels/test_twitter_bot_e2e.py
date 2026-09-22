@@ -462,10 +462,17 @@ class TestMentionPolling:
 
 
 class TestEnvVarExpansion:
-    """Verify the http_request tool expands $ENV_VARS in headers."""
+    """Verify http_request does NOT expand $ENV_VARS in headers.
 
-    def test_github_token_expanded(self):
-        """$GITHUB_TOKEN in Authorization header should be expanded."""
+    Env-var expansion was deliberately removed (see the NOTE in
+    src/nova_ai/tools/http_request.py): headers come from LLM tool calls,
+    so expanding ``$VAR`` leaked host secrets to any URL the model chose.
+    The literal must pass through untouched both with and without the env
+    var set.
+    """
+
+    def test_github_token_not_expanded(self):
+        """$GITHUB_TOKEN in Authorization header must stay literal (no leak)."""
         tool = HttpRequestTool()
 
         mock_rust = MagicMock()
@@ -502,11 +509,14 @@ class TestEnvVarExpansion:
 
         assert result.success is True
         actual_headers = mock_req.call_args[1]["headers"]
-        assert actual_headers["Authorization"] == "Bearer ghp_test123"
+        # Expansion is disabled by design — the raw header value must be sent.
+        assert actual_headers["Authorization"] == "Bearer $GITHUB_TOKEN"
         assert actual_headers["Accept"] == "application/vnd.github+json"
+        # The real secret must never appear anywhere in the outgoing call.
+        assert "ghp_test123" not in str(mock_req.call_args)
 
     def test_unexpanded_var_without_env(self):
-        """$GITHUB_TOKEN without env var set should remain as literal."""
+        """$GITHUB_TOKEN without env var set also stays literal."""
         tool = HttpRequestTool()
 
         mock_rust = MagicMock()
@@ -825,7 +835,9 @@ class TestGitHubIssueCreation:
         actual_call = mock_req.call_args
         assert actual_call[0][0] == "POST"
         assert "api.github.com" in actual_call[0][1]
-        assert actual_call[1]["headers"]["Authorization"] == "Bearer ghp_testtoken123"
+        # No env expansion — literal token placeholder is sent (by design).
+        assert actual_call[1]["headers"]["Authorization"] == "Bearer $GITHUB_TOKEN"
+        assert "ghp_testtoken123" not in str(actual_call)
 
         body = actual_call[1]["content"]
         parsed_body = json.loads(body)

@@ -1,12 +1,96 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "NOVA AI config",
+  "description": "Top-level sections of ~/.nova_ai/config.toml, mirrored from the NovaConfig dataclass tree in src/nova_ai/core/config/sections.py. The authoritative schema is the dataclass itself: unknown keys are ignored at load time (see docs/getting-started/configuration.md), and `nova config set key value` validates keys against the same tree. Regenerate with: python scripts/gen-config-schema.py",
   "type": "object",
   "properties": {
-    "engine": { "type": "object" },
-    "model": { "type": "object" },
-    "server": { "type": "object" },
-    "memory": { "type": "object" }
+    "installed_at": {
+      "type": "object"
+    },
+    "installer_version": {
+      "type": "object"
+    },
+    "engine": {
+      "type": "object"
+    },
+    "intelligence": {
+      "type": "object"
+    },
+    "learning": {
+      "type": "object"
+    },
+    "tools": {
+      "type": "object"
+    },
+    "agent": {
+      "type": "object"
+    },
+    "server": {
+      "type": "object"
+    },
+    "telemetry": {
+      "type": "object"
+    },
+    "analytics": {
+      "type": "object"
+    },
+    "traces": {
+      "type": "object"
+    },
+    "channel": {
+      "type": "object"
+    },
+    "security": {
+      "type": "object"
+    },
+    "sandbox": {
+      "type": "object"
+    },
+    "scheduler": {
+      "type": "object"
+    },
+    "workflow": {
+      "type": "object"
+    },
+    "sessions": {
+      "type": "object"
+    },
+    "a2a": {
+      "type": "object"
+    },
+    "operators": {
+      "type": "object"
+    },
+    "speech": {
+      "type": "object"
+    },
+    "optimize": {
+      "type": "object"
+    },
+    "agent_manager": {
+      "type": "object"
+    },
+    "memory_files": {
+      "type": "object"
+    },
+    "system_prompt": {
+      "type": "object"
+    },
+    "compression": {
+      "type": "object"
+    },
+    "skills": {
+      "type": "object"
+    },
+    "digest": {
+      "type": "object"
+    },
+    "proactive": {
+      "type": "object"
+    },
+    "mining": {
+      "type": "object"
+    }
   },
   "additionalProperties": true
 }

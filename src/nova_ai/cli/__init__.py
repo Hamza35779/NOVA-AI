@@ -14,6 +14,14 @@ from typing import Any, Optional
 
 import click
 
+# Lazy commands that must not appear in --help / completion listings.
+# They stay invocable by name (resolution goes through get_command, not
+# list_commands), matching click's hidden=True semantics for eager commands.
+# _bootstrap is an install.sh-internal helper; click's hidden=True on the
+# command object is not enough here because format_commands() renders static
+# _SHORT_HELP entries without importing the command (so it can't see the flag).
+_HIDDEN_LAZY_COMMANDS = frozenset({"_bootstrap"})
+
 
 class LazyGroup(click.Group):
     """A Click group that resolves subcommands by import on first use.
@@ -35,7 +43,10 @@ class LazyGroup(click.Group):
         self._command_map: dict[str, tuple[str, str]] = command_map or {}
 
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return sorted({*super().list_commands(ctx), *self._command_map})
+        return sorted(
+            {*super().list_commands(ctx), *self._command_map}
+            - _HIDDEN_LAZY_COMMANDS
+        )
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
         """Import-on-demand for commands in the map; pass through otherwise."""

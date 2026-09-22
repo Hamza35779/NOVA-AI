@@ -73,6 +73,16 @@ async def _send_request(writer: asyncio.StreamWriter, request: dict[str, Any]) -
     await writer.drain()
 
 
+async def _send_jsonrpc(
+    writer: asyncio.StreamWriter,
+    method: str,
+    params: dict[str, Any],
+    request_id: int,
+) -> None:
+    """Build a JSON-RPC envelope and write it in one call."""
+    await _send_request(writer, _make_request(method, params, request_id))
+
+
 async def _open_gateway_connection(
     host: str,
     port: int,
@@ -135,7 +145,7 @@ async def _mine_one_round(
 ) -> bool:
     """Get work, mine, submit. Return True if the gateway accepted the proof."""
     # 1. Ask the gateway for work.
-    await _send_request(writer, _make_request("getMiningInfo", {}, request_id))
+    await _send_jsonrpc(writer, "getMiningInfo", {}, request_id)
     info_response = await _read_response(reader)
     if "error" in info_response:
         logger.warning("getMiningInfo error: %s", info_response["error"])
@@ -160,8 +170,8 @@ async def _mine_one_round(
             "target": target,
         },
     }
-    await _send_request(
-        writer, _make_request("submitPlainProof", submit_params, request_id + 1)
+    await _send_jsonrpc(
+        writer, "submitPlainProof", submit_params, request_id + 1
     )
     submit_response = await _read_response(reader)
     if "error" in submit_response:

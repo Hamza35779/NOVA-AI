@@ -8,10 +8,19 @@ from __future__ import annotations
 
 import statistics as stats_mod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
 from nova_ai.core.types import StepType, Trace, TraceStep
 from nova_ai.traces.store import TraceStore
+
+
+class _StepBucket(TypedDict):
+    """Per-step-type accumulators collected during a single summary scan."""
+
+    durations: List[float]
+    energies: List[float]
+    input_tokens: List[int]
+    output_tokens: List[int]
 
 
 @dataclass(slots=True)
@@ -97,17 +106,41 @@ class TraceAnalyzer:
         if not traces:
             return TraceSummary()
 
-        total_steps = sum(len(t.steps) for t in traces)
+        total_steps, step_dist, step_data, total_energy, generate_energy = (
+            self._collect_step_data(traces)
+        )
+        sts_map = self._build_step_type_stats(step_data)
+
         evaluated = [t for t in traces if t.outcome is not None]
         successes = [t for t in evaluated if t.outcome == "success"]
 
+        return TraceSummary(
+            total_traces=len(traces),
+            total_steps=total_steps,
+            avg_steps_per_trace=total_steps / len(traces) if traces else 0.0,
+            avg_latency=_avg([t.total_latency_seconds for t in traces]),
+            avg_tokens=_avg([float(t.total_tokens) for t in traces]),
+            success_rate=len(successes) / len(evaluated) if evaluated else 0.0,
+            step_type_distribution=step_dist,
+            total_energy_joules=total_energy,
+            total_generate_energy_joules=generate_energy,
+            step_type_stats=sts_map,
+        )
+
+    @staticmethod
+    def _collect_step_data(
+        traces: List[Trace],
+    ) -> tuple[int, Dict[str, int], Dict[str, _StepBucket], float, float]:
+        """Single pass over all traces bucketing per-step-type measurements."""
+        total_steps = 0
         step_dist: Dict[str, int] = {}
         total_energy = 0.0
         generate_energy = 0.0
-        step_data: Dict[str, Dict[str, list]] = {}
+        step_data: Dict[str, _StepBucket] = {}
 
         for t in traces:
             for s in t.steps:
+                total_steps += 1
                 key = _step_type_str(s)
                 step_dist[key] = step_dist.get(key, 0) + 1
 
@@ -130,6 +163,13 @@ class TraceAnalyzer:
                     s.output.get("completion_tokens", 0)
                 )
 
+        return total_steps, step_dist, step_data, total_energy, generate_energy
+
+    @staticmethod
+    def _build_step_type_stats(
+        step_data: Dict[str, _StepBucket],
+    ) -> Dict[str, StepTypeStats]:
+        """Compute the per-step-type aggregates from collected buckets."""
         sts_map: Dict[str, StepTypeStats] = {}
         for key, data in step_data.items():
             durations = data["durations"]
@@ -154,19 +194,7 @@ class TraceAnalyzer:
                 max_output_tokens=max(out_tok) if out_tok else 0.0,
                 std_output_tokens=stats_mod.stdev(out_tok) if len(out_tok) > 1 else 0.0,
             )
-
-        return TraceSummary(
-            total_traces=len(traces),
-            total_steps=total_steps,
-            avg_steps_per_trace=total_steps / len(traces) if traces else 0.0,
-            avg_latency=_avg([t.total_latency_seconds for t in traces]),
-            avg_tokens=_avg([float(t.total_tokens) for t in traces]),
-            success_rate=len(successes) / len(evaluated) if evaluated else 0.0,
-            step_type_distribution=step_dist,
-            total_energy_joules=total_energy,
-            total_generate_energy_joules=generate_energy,
-            step_type_stats=sts_map,
-        )
+        return sts_map
 
     def per_route_stats(
         self,

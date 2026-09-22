@@ -3,8 +3,19 @@
 `configs/nova_ai/config.toml` is the local-first default (Ollama / qwen).
 Eval-specific examples (A100 / vLLM / cloud) live under `configs/examples/`.
 
-Schema: `configs/schema.json` (validated by `tests/test_config_schema.py`).
-Unknown TOML keys warn instead of silently dropping — see `core/config/loader.py`.
+Schema: `configs/schema.json` lists the valid top-level sections (mirrored from the
+`NovaConfig` dataclass tree; regenerate with `python scripts/gen-config-schema.py`,
+validated by `tests/test_config_schema.py`).
+
+> **Known limitation:** the TOML loader (`core/config/loader.py`) silently ignores
+> unknown sections/keys — a typo like `[intelligeence]` or `temprature` is dropped
+> without a warning. `nova config set` *does* validate strictly (typos are rejected
+> with the list of valid fields). Prefer `nova config set` for programmatic edits,
+> and verify hand edits with `nova config show loaded`.
+
+The eval-specific config for A100 / vLLM runs is `configs/nova_ai/config.toml`.
+Per-preset starter configs referenced by `nova init --preset` live in `configs/nova_ai/examples/`
+(smoke-tested by `tests/core/test_preset_configs.py`).
 
 ## Using a config
 

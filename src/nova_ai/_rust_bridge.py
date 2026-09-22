@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 from typing import TYPE_CHECKING, List
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import types as _types
@@ -54,15 +57,14 @@ RUST_AVAILABLE: bool = _detect_rust()
 # ---------------------------------------------------------------------------
 
 
-def scan_result_from_json(json_str: str) -> object:
-    """Convert a Rust scanner JSON string to a Python ``ScanResult``."""
-    from nova_ai.security.types import (
-        ScanFinding,
-        ScanResult,
-        ThreatLevel,
-    )
+def _findings_from_data(data: dict) -> List[object]:
+    """Build a list of ``ScanFinding`` from a decoded Rust scanner payload.
 
-    data = json.loads(json_str)
+    Shared by :func:`scan_result_from_json` and
+    :func:`injection_result_from_json` so the field mapping lives in one place.
+    """
+    from nova_ai.security.types import ScanFinding, ThreatLevel
+
     findings: List[ScanFinding] = []
     for f in data.get("findings", []):
         findings.append(
@@ -77,7 +79,15 @@ def scan_result_from_json(json_str: str) -> object:
                 description=f.get("description", ""),
             )
         )
-    return ScanResult(findings=findings)
+    return findings
+
+
+def scan_result_from_json(json_str: str) -> object:
+    """Convert a Rust scanner JSON string to a Python ``ScanResult``."""
+    from nova_ai.security.types import ScanResult
+
+    data = json.loads(json_str)
+    return ScanResult(findings=_findings_from_data(data))
 
 
 def injection_result_from_json(json_str: str) -> object:
@@ -85,23 +95,10 @@ def injection_result_from_json(json_str: str) -> object:
     from nova_ai.security.injection_scanner import (
         InjectionScanResult,
     )
-    from nova_ai.security.types import ScanFinding, ThreatLevel
+    from nova_ai.security.types import ThreatLevel
 
     data = json.loads(json_str)
-    findings: List[ScanFinding] = []
-    for f in data.get("findings", []):
-        findings.append(
-            ScanFinding(
-                pattern_name=f.get("pattern_name", ""),
-                matched_text=f.get("matched_text", ""),
-                threat_level=ThreatLevel(
-                    f.get("threat_level", "low").lower(),
-                ),
-                start=f.get("start", 0),
-                end=f.get("end", 0),
-                description=f.get("description", ""),
-            )
-        )
+    findings = _findings_from_data(data)
 
     threat_raw = data.get("threat_level", "low").lower()
     try:
@@ -146,14 +143,24 @@ def retrieval_results_from_json(json_str: str) -> list:
 
 
 def optimization_store_from_rust(path: str = ":memory:") -> object | None:
-    """Get a Rust-backed OptimizationStore, or None if Rust unavailable."""
+    """Get a Rust-backed OptimizationStore, or None if Rust unavailable.
+
+    Returns ``None`` only when the module genuinely lacks the
+    ``OptimizationStore`` symbol. Real construction failures (bad path,
+    corrupt DB) are logged with context and re-raised so callers can react
+    instead of silently degrading.
+    """
     mod = get_rust_module()
-    if mod is None:
+    if mod is None or not hasattr(mod, "OptimizationStore"):
+        logger.debug("nova_ai_rust.OptimizationStore unavailable; returning None")
         return None
     try:
         return mod.OptimizationStore(path)
     except Exception:
-        return None
+        logger.exception(
+            "failed to construct Rust OptimizationStore(path=%r)", path
+        )
+        raise
 
 
 def trial_result_from_json(json_str: str) -> dict:

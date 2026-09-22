@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -88,10 +89,15 @@ class WorkflowEngine:
                     success = False
                     break
             else:
-                # Parallel execution
-                with concurrent.futures.ThreadPoolExecutor(
+                # Parallel execution. The pool is NOT used as a context manager:
+                # its __exit__ joins every worker unconditionally, which would
+                # let one hung node block past ``default_node_timeout``. Instead
+                # we join explicitly with a deadline and cancel the rest on
+                # timeout or on the first failing node.
+                pool = concurrent.futures.ThreadPoolExecutor(
                     max_workers=min(len(stage), self._max_parallel),
-                ) as pool:
+                )
+                try:
                     futures = {
                         pool.submit(
                             self._execute_node,
@@ -104,11 +110,20 @@ class WorkflowEngine:
                         ): nid
                         for nid in stage
                     }
+                    deadline = time.monotonic() + self._default_node_timeout
                     for future in concurrent.futures.as_completed(futures):
                         nid = futures[future]
+                        remaining = deadline - time.monotonic()
                         try:
-                            step = future.result(
-                                timeout=self._default_node_timeout,
+                            step = future.result(timeout=max(remaining, 0.0))
+                        except concurrent.futures.TimeoutError:
+                            step = WorkflowStepResult(
+                                node_id=nid,
+                                success=False,
+                                output=(
+                                    "Node timed out after "
+                                    f"{self._default_node_timeout}s"
+                                ),
                             )
                         except Exception as exc:
                             step = WorkflowStepResult(
@@ -121,6 +136,13 @@ class WorkflowEngine:
                         step_results[nid] = step
                         if not step.success:
                             success = False
+                            # Short-circuit: cancel nodes still queued and stop
+                            # consuming results from this stage.
+                            for pending in futures:
+                                pending.cancel()
+                            break
+                finally:
+                    pool.shutdown(wait=False, cancel_futures=True)
 
             if not success:
                 break
@@ -168,7 +190,7 @@ class WorkflowEngine:
             elif node.node_type == NodeType.CONDITION:
                 result = self._run_condition_node(node, outputs, step_results or {})
             elif node.node_type == NodeType.TRANSFORM:
-                result = self._run_transform_node(node, outputs)
+                result = self._run_transform_node(node, outputs, graph)
             elif node.node_type == NodeType.LOOP:
                 result = self._run_loop_node(node, outputs, system, graph)
             else:
@@ -280,12 +302,13 @@ class WorkflowEngine:
         Supported syntax (matches :meth:`WorkflowBuilder.add_condition` docs):
           "node_id.success"                 — "true" when that step succeeded
           "node_id.output contains 'text'"  — substring test on that node's output
-          free-form expression over ``outputs`` (dict of node_id → output text)
+          "node_id.output == 'text'"        — exact match on that node's output
+          "node_id.output != 'text'"        — negated exact match
 
-        The old implementation eval()'d the raw expression with only
-        ``outputs`` in scope, so the documented ``a.success`` form raised
-        NameError and *every* condition evaluated to "false". Unparseable
-        expressions still fail safe to "false" rather than raising.
+        The old implementation eval()'d the raw expression, so the documented
+        ``a.success`` form raised NameError and *every* condition evaluated to
+        "false". All forms are now parsed explicitly; anything unrecognised
+        fails safe to "false" rather than raising.
         """
         expr = (node.condition_expr or "").strip()
         if not expr:
@@ -301,41 +324,66 @@ class WorkflowEngine:
             output=result,
         )
 
-    @staticmethod
+    # Explicit, non-eval condition grammar. Anything that does not match one
+    # of these patterns is rejected (fails safe to "false").
+    _RE_COND_CONTAINS = re.compile(r"(\w+)\.output\s+contains\s+'([^']*)'")
+    _RE_COND_EQ = re.compile(r"(\w+)\.output\s*[!=]=\s*'([^']*)'")
+    _RE_COND_SUCCESS = re.compile(r"(\w+)\.success")
+
+    @classmethod
     def _eval_condition(
+        cls,
         expr: str,
         outputs: Dict[str, str],
         steps: Dict[str, WorkflowStepResult],
     ) -> str:
-        """Evaluate one condition expression, returning "true"/"false"."""
-        import re
+        """Evaluate one condition expression, returning "true"/"false".
 
-        m = re.fullmatch(r"(\w+)\.output\s+contains\s+'([^']*)'", expr)
+        Parses the documented forms explicitly — no ``eval()`` is used, so
+        arbitrary Python in a workflow file cannot be executed.
+        """
+        m = cls._RE_COND_CONTAINS.fullmatch(expr)
         if m:
             needle = m.group(2)
             return "true" if needle in outputs.get(m.group(1), "") else "false"
 
-        m = re.fullmatch(r"(\w+)\.success", expr)
+        m = cls._RE_COND_EQ.fullmatch(expr)
+        if m:
+            actual = outputs.get(m.group(1), "")
+            expected = m.group(2)
+            matched = actual == expected
+            if "!=" in expr:
+                matched = not matched
+            return "true" if matched else "false"
+
+        m = cls._RE_COND_SUCCESS.fullmatch(expr)
         if m:
             step = steps.get(m.group(1))
             return "true" if step is not None and step.success else "false"
 
-        # Legacy free-form: eval over the outputs mapping, no builtins.
-        try:
-            value = str(eval(expr, {"__builtins__": {}}, {"outputs": outputs}))  # noqa: S307
-        except Exception:
-            return "false"
-        return "true" if value.lower() == "true" else "false"
+        # Unrecognised / legacy free-form expression: fail safe.
+        return "false"
 
     def _run_transform_node(
         self,
         node: WorkflowNode,
         outputs: Dict[str, str],
+        graph: Optional[WorkflowGraph] = None,
     ) -> WorkflowStepResult:
-        """Apply a text transformation."""
+        """Apply a text transformation over this node's predecessors' outputs.
+
+        Only upstream outputs are combined (like :meth:`_get_node_input`),
+        so parallel branches feeding other nodes don't leak in. Falls back to
+        the input value when the node has no predecessors.
+        """
         expr = node.transform_expr
-        preds = [outputs.get(p, "") for p in outputs if p != "_input"]
-        combined = "\n\n".join(preds) if preds else ""
+        if graph is not None:
+            preds = [outputs.get(p, "") for p in graph.predecessors(node.id)]
+            preds = [p for p in preds if p]
+            combined = "\n\n".join(preds) if preds else outputs.get("_input", "")
+        else:
+            preds = [outputs.get(p, "") for p in outputs if p != "_input"]
+            combined = "\n\n".join(preds) if preds else ""
         if expr == "concatenate":
             return WorkflowStepResult(node_id=node.id, output=combined)
         if expr == "first_line":

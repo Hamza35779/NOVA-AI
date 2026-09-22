@@ -39,11 +39,37 @@ def _ollama_up() -> bool:
         return False
 
 
+def _ollama_embed_ok() -> bool:
+    """Check that the server actually serves ``/api/embed``.
+
+    A reachable daemon is not sufficient: older Ollama builds predate the
+    ``/api/embed`` endpoint and answer it with 404 (the socket check above
+    then passes but every :class:`OllamaEmbedder` call fails with an
+    HTTPStatusError mid-test). Probe the endpoint itself with an empty
+    input — the same request shape :class:`OllamaEmbedder` issues.
+    """
+    if not _ollama_up():
+        return False
+    try:
+        import httpx
+
+        resp = httpx.post(
+            f"http://{_OLLAMA_HOST}:{_OLLAMA_PORT}/api/embed",
+            json={"model": "nomic-embed-text", "input": []},
+            timeout=5.0,
+        )
+        # 400 with a body is fine (bad model name etc.) — only 404/405 mean
+        # the endpoint itself is absent from this build.
+        return resp.status_code not in (404, 405)
+    except Exception:
+        return False
+
+
 ollama_required = pytest.mark.skipif(
-    not _ollama_up(),
+    not _ollama_embed_ok(),
     reason=(
-        "Requires Ollama with nomic-embed-text "
-        "(start `ollama serve` then `ollama pull nomic-embed-text`)"
+        "Requires Ollama with the /api/embed endpoint and nomic-embed-text "
+        "pulled (start `ollama serve` then `ollama pull nomic-embed-text`)"
     ),
 )
 
@@ -280,8 +306,8 @@ class TestDedupeChunks:
 @pytest.fixture(scope="module")
 def indexed_backend():
     """DenseMemory populated from the fixture corpus once per module."""
-    if not _ollama_up():
-        pytest.skip("Ollama not reachable")
+    if not _ollama_embed_ok():
+        pytest.skip("Ollama /api/embed unavailable (unreachable or old build)")
 
     backend = DenseMemory()
     md_files = sorted(_FIXTURE_DIR.glob("*.md"))

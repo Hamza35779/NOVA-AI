@@ -90,8 +90,8 @@ turns.
 ## Customization Tips
 
 - **Add more tools** -- append tool names to the `tools` list in
-  `research.toml` or pass them on the command line. See `nova agent info
-  orchestrator` for the full tool catalog.
+  `research.toml` or pass them on the command line. See `nova tool list` for
+  the full tool catalog.
 - **Adjust temperature** -- lower values (0.2) produce more focused reports;
   higher values (0.8) encourage broader exploration.
 - **Swap the agent** -- replace `orchestrator` with `native_react` for a

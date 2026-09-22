@@ -196,6 +196,10 @@ class TestOpenHandsPipeline:
             engine,
             "test-model",
             tools=[CodeInterpreterTool()],
+            interactive=True,
+            # code_interpreter is an execution tool: ToolExecutor blocks it
+            # without a confirmation callback (see tools/_stubs.py).
+            confirm_callback=lambda _prompt: True,
         )
         result = agent.run("What is 2+2?")
 

@@ -11,6 +11,18 @@ from nova_ai.core.registry import AgentRegistry
 from nova_ai.core.types import Conversation, Message, Role, ToolResult
 from nova_ai.tools._stubs import BaseTool, ToolSpec
 
+
+def _auto_approve(_prompt: str) -> bool:
+    """Confirm-callback used by tool-execution tests.
+
+    code_interpreter is an execution tool: ToolExecutor always requires a
+    confirmation callback for it (non-interactive runs without one are
+    blocked — see tools/_stubs.py::ToolExecutor). The server and CLI wire
+    ``lambda _p: True`` in the same way (agent_manager/streaming.py,
+    cli/ask.py), so tests that exercise code execution paths do too.
+    """
+    return True
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -142,6 +154,8 @@ class TestNativeOpenHandsAgent:
             engine,
             "test-model",
             tools=[_CodeInterpreterStub()],
+            interactive=True,
+            confirm_callback=_auto_approve,
         )
         result = agent.run("What is 2+2?")
         assert result.content == "The result is 4."
@@ -162,6 +176,8 @@ class TestNativeOpenHandsAgent:
             engine,
             "test-model",
             tools=[_CodeInterpreterStub()],
+            interactive=True,
+            confirm_callback=_auto_approve,
         )
         result = agent.run("Two calculations")
         assert result.turns == 3
@@ -180,6 +196,8 @@ class TestNativeOpenHandsAgent:
             "test-model",
             tools=[_CodeInterpreterStub()],
             max_turns=3,
+            interactive=True,
+            confirm_callback=_auto_approve,
         )
         result = agent.run("Keep coding")
         assert result.turns == 3
@@ -211,6 +229,8 @@ class TestNativeOpenHandsAgent:
             "test-model",
             tools=[_CodeInterpreterStub()],
             bus=bus,
+            interactive=True,
+            confirm_callback=_auto_approve,
         )
         agent.run("Run code")
         event_types = [e.event_type for e in bus.history]

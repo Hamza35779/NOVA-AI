@@ -20,5 +20,7 @@ default_model = "qwen3.5:4b"       # Fast and lightweight
 default_agent = "simple"            # Single-turn, no tools
 
 [server]
-host = "0.0.0.0"
+# Loopback by default. For LAN access set host = "0.0.0.0" AND run
+# `nova auth create-key` — the server refuses a non-loopback bind without one.
+host = "127.0.0.1"
 port = 8000

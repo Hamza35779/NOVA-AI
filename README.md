@@ -264,7 +264,7 @@ NOVA AI features a comprehensive CLI suite (`nova` or `python -m nova_ai.cli` or
 | `nova status` | Check status of the running background daemon | `nova status` |
 | `nova restart` | Restart the running server daemon | `nova restart` |
 | `nova stop` | Terminate the server background daemon | `nova stop` |
-| `nova tunnel` | Expose local API securely to the internet via Cloudflare Tunnel | `nova tunnel start` |
+| `nova tunnel` | Expose local API securely to the internet via Cloudflare Tunnel | `nova tunnel --port 8000` (starts; `nova tunnel status` inspects config) |
 
 ### 3. 🧠 Models & Smart Routing
 | Command | Description | Example |
@@ -284,6 +284,7 @@ NOVA AI features a comprehensive CLI suite (`nova` or `python -m nova_ai.cli` or
 | `nova canvas list` | List interactive Canvas charts, HTML, and SVG artifacts | `nova canvas list` |
 | `nova scheduler list` | View and manage scheduled tasks and cron jobs | `nova scheduler list` |
 | `nova add <mcp-server>` | Connect external Model Context Protocol (MCP) servers | `nova add filesystem` |
+| `nova tool list` | List registered tools with descriptions | `nova tool list` |
 
 ### 5. 📚 Long-Term Memory & Deep Research
 | Command | Description | Example |
@@ -291,7 +292,7 @@ NOVA AI features a comprehensive CLI suite (`nova` or `python -m nova_ai.cli` or
 | `nova memory status` | Inspect SQLite vector store and indexed chunk counts | `nova memory status` |
 | `nova memory search "<q>"` | Semantic search over indexed personal knowledge base | `nova memory search "project plan"` |
 | `nova memory-wiki show <topic>`| Display structured markdown knowledge-base articles | `nova memory-wiki show profile` |
-| `nova research "<topic>"` | Multi-hop autonomous deep research with cited sources | `nova research "Latest advancements in LLM reasoning"` |
+| `nova research` | Auto-detect local sources, ingest, and launch Deep Research chat (use `nova ask --research "<topic>"` for one-shot cited research) | `nova ask --research "Latest advancements in LLM reasoning"` |
 
 ### 6. ⚙️ Diagnostics, Config & Benchmarking
 | Command | Description | Example |
@@ -301,7 +302,7 @@ NOVA AI features a comprehensive CLI suite (`nova` or `python -m nova_ai.cli` or
 | `nova init` | Auto-detect GPU hardware and create `~/.nova_ai/config.toml` | `nova init --preset deep-research` |
 | `nova config show` | Print loaded configuration hierarchy and settings | `nova config show` |
 | `nova config set <k> <v>` | Modify a configuration property in TOML | `nova config set engine.default ollama` |
-| `nova bench` | Measure inference latency, tokens/sec, and energy consumption | `nova bench --models llama3` |
+| `nova bench` | Measure inference latency, tokens/sec, and energy consumption | `nova bench run --model llama3` |
 | `nova self-update` | Upgrade NOVA AI to the latest release | `nova self-update` |
 
 ---

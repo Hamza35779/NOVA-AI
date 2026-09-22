@@ -144,7 +144,8 @@ enabled = true
 # viewport_height = 720
 
 [server]
-host = "0.0.0.0"
+# Loopback default; 0.0.0.0 requires NOVA_AI_API_KEY (`nova auth create-key`).
+host = "127.0.0.1"
 port = 8000
 agent = "orchestrator"
 

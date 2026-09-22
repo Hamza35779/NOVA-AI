@@ -108,7 +108,7 @@ db_path = "~/.nova_ai/traces.db"
 [server]
 # Bind to loopback by default so the API is not exposed to the local network.
 # To serve other devices on your LAN, set host = "0.0.0.0" AND set an API key
-# (NOVA_AI_API_KEY / `nova auth generate-key`) — startup refuses a
+# (NOVA_AI_API_KEY / `nova auth create-key`) — startup refuses a
 # non-loopback bind without a key. The "server" security profile also flips
 # this to 0.0.0.0 intentionally.
 host = "127.0.0.1"

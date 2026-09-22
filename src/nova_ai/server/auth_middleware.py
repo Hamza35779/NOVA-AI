@@ -81,7 +81,7 @@ def check_bind_safety(host: str, *, api_key: str) -> None:
     if not is_loop and not api_key:
         logger.error(
             "Binding to %s requires NOVA_AI_API_KEY to be set. "
-            "Run: nova auth generate-key",
+            "Run: nova auth create-key",
             host,
         )
         sys.exit(1)

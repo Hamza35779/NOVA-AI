@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any, List, Optional, Tuple
+from collections import deque
+from typing import Any, Deque, Optional, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
@@ -99,7 +100,10 @@ class VoiceSession:
         self.max_turns = max(0, int(max_turns))
         self.silence_threshold = silence_threshold
         self.history_turns = max(0, int(history_turns))
-        self.history: List[Tuple[str, str]] = []
+        # Bounded so an all-day session (max_turns=0) cannot grow without limit.
+        # Keeps a couple of turns of headroom over what the prompt actually uses.
+        max_history = max(self.history_turns * 2, 2)
+        self.history: Deque[Tuple[str, str]] = deque(maxlen=max_history)
         self.wake_word = wake_word
         self.wake_word_timeout = wake_word_timeout
 

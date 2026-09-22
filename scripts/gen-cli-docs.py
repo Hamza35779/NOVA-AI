@@ -16,7 +16,16 @@ OUT = ROOT / "docs" / "cli"
 
 
 def _run(*args: str) -> str:
-    return subprocess.run(list(args), capture_output=True, text=True, check=True).stdout
+    # encoding="utf-8" is required: the CLI help text contains non-ASCII
+    # characters (em-dashes) and on Windows the default text encoding is the
+    # legacy ANSI code page, which mangled them into mojibake ("â€").
+    return subprocess.run(
+        list(args),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    ).stdout
 
 
 def main(check: bool = False) -> int:

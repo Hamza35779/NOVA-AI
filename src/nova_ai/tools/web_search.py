@@ -79,8 +79,12 @@ class WebSearchTool(BaseTool):
 
     @staticmethod
     def _fetch_url(url: str, max_chars: int = 6000) -> str:
-        """Fetch a URL and return extracted text content."""
-        import re as _re
+        """Fetch a URL and return extracted text content.
+
+        Entity-unescapes the markup and prefers a real HTML parser
+        (BeautifulSoup) when available, falling back to a regex sweep for
+        docstrings/comments/scripts so raw tag soup is never returned.
+        """
 
         import httpx
 
@@ -103,21 +107,51 @@ class WebSearchTool(BaseTool):
                 "[This URL points to a PDF file which"
                 f" cannot be read directly. URL: {url}]"
             )
+        # ``resp.text`` can mis-decode when the header omits/mislabels the
+        # charset; fall back to raw bytes with correct encoding detection.
+        if not resp.encoding:
+            resp.encoding = resp.charset_encoding or "utf-8"
         html = resp.text
-        # Strip script/style tags and their contents
-        html = _re.sub(
-            r"<(script|style)[^>]*>.*?</\1>",
-            "",
-            html,
-            flags=_re.DOTALL | _re.IGNORECASE,
-        )
-        # Strip HTML tags
-        text = _re.sub(r"<[^>]+>", " ", html)
-        # Collapse whitespace
-        text = _re.sub(r"\s+", " ", text).strip()
+
+        text = WebSearchTool._extract_text_from_html(html)
         if len(text) > max_chars:
             text = text[:max_chars] + "\n\n[Content truncated]"
         return text
+
+    @staticmethod
+    def _extract_text_from_html(html: str) -> str:
+        """Convert markup to plain text, dropping scripts/styles/comments."""
+        import html as _html
+        import re as _re
+
+        try:
+            from bs4 import BeautifulSoup
+
+            soup = BeautifulSoup(html, "html.parser")
+            for tag in soup(["script", "style", "noscript", "template"]):
+                tag.decompose()
+            # Separate block elements with spaces so words don't run together.
+            text = soup.get_text(separator=" ")
+        except ImportError:
+            cleaned = _re.sub(
+                r"<!--.*?-->",
+                " ",
+                html,
+                flags=_re.DOTALL,
+            )
+            cleaned = _re.sub(
+                r"<(script|style|noscript|template)[^>]*>.*?</\1>",
+                " ",
+                cleaned,
+                flags=_re.DOTALL | _re.IGNORECASE,
+            )
+            cleaned = _re.sub(r"<[^>]+>", " ", cleaned)
+            text = cleaned
+
+        # Decode entities (``&amp;`` -> ``&``) BEFORE collapsing whitespace so
+        # the resulting characters are handled correctly.
+        text = _html.unescape(text)
+        return _re.sub(r"\s+", " ", text).strip()
 
     def _searxng_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
         import httpx
