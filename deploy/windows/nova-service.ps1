@@ -93,7 +93,7 @@ ListenHost is $ListenHost (non-loopback) but `$env:NOVA_AI_API_KEY is
 not set. An unauthenticated non-loopback bind is refused by nova serve
 and would also create a security hole. Set the env var first:
 
-    `$env:NOVA_AI_API_KEY = (uv run nova auth generate-key)
+    `$env:NOVA_AI_API_KEY = (uv run nova auth create-key)
 
 then re-run with -ListenHost 0.0.0.0.
 "@

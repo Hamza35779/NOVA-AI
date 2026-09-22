@@ -27,7 +27,7 @@ declares `EnvironmentFile=/etc/nova_ai/env` (no `-` prefix), so it will
 
 ```bash
 sudo mkdir -p /etc/nova_ai
-echo "NOVA_AI_API_KEY=$(nova auth generate-key)" | sudo tee /etc/nova_ai/env
+echo "NOVA_AI_API_KEY=$(nova auth create-key)" | sudo tee /etc/nova_ai/env
 sudo chmod 600 /etc/nova_ai/env
 ```
 

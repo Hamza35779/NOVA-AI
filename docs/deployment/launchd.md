@@ -29,7 +29,7 @@ The service starts immediately (due to `RunAtLoad`) and will automatically resta
     the right default for a personal device, and no API key is needed. To
     expose it on your LAN, change the host to `0.0.0.0` **and** uncomment the
     `EnvironmentVariables` block to set `NOVA_AI_API_KEY`
-    (`nova auth generate-key`); an unauthenticated `0.0.0.0` server refuses
+    (`nova auth create-key`); an unauthenticated `0.0.0.0` server refuses
     to start.
 
 Verify it is running:

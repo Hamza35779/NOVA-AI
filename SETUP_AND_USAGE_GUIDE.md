@@ -40,6 +40,16 @@ Welcome to **NOVA AI**, a modular, high-performance AI assistant workstation. NO
 | **Storage** | 1 GB (App only) | 10 GB+ (for local model weights) |
 | **GPU** *(Optional)* | Integrated graphics / CPU only | NVIDIA GPU with CUDA or Apple Silicon (Metal) |
 
+**For building from source you also need:**
+
+| Tool | Version | Needed for |
+|---|---|---|
+| **Node.js** | 18+ (CI uses 22) | Building the web UI (`frontend/`), desktop app (Tauri 2), and browser extension |
+| **Rust** | 1.90+ | Building the native `nova_ai_rust` extension (`rustup` reads `rust/rust-toolchain.toml` automatically) |
+| **uv** | latest | Fast dependency management (`uv sync`); auto-installed by the installers |
+| **Ollama** | latest | Local models via Ollama (optional — in-process GGUF works without it) |
+| **Tesseract OCR** | 5.x | `nova screen` OCR on Windows ([UB-Mannheim build](https://github.com/UB-Mannheim/tesseract/wiki)) |
+
 ---
 
 ## 2. Installation Methods
@@ -93,6 +103,8 @@ Choose the method that best fits your environment:
 ### Method C: Developer Source Install
 *For modifying source code and contributing.*
 
+**Prerequisites:** Python 3.10–3.13, Git, Node.js 18+ (to build the web UI), and either `uv` ([install guide](https://docs.astral.sh/uv/)) or plain `pip`. Rust 1.90+ is optional — it is only needed to build the native `nova_ai_rust` extension locally (`rustup` picks the right toolchain from `rust/rust-toolchain.toml` automatically).
+
 1. Clone the repository:
    ```bash
    git clone https://github.com/Hamza35779/NOVA-AI.git
@@ -100,17 +112,22 @@ Choose the method that best fits your environment:
    ```
 2. Create and activate a virtual environment:
    ```bash
+   # With uv (recommended — creates .venv for you):
+   uv sync --extra server --extra tools-search --extra inference-gguf
+   .venv\Scripts\activate      # Windows (PowerShell: .venv\Scripts\Activate.ps1)
+   source .venv/bin/activate    # macOS / Linux
+
+   # Or with plain pip:
    python -m venv .venv
-   # Windows PowerShell:
-   .venv\Scripts\Activate.ps1
-   # macOS / Linux:
-   source .venv/bin/activate
+   .venv\Scripts\activate      # Windows (PowerShell: .venv\Scripts\Activate.ps1)
+   source .venv/bin/activate    # macOS / Linux
+   pip install -e ".[server,tools-search,inference-gguf]"
    ```
-3. Install dependencies in editable mode:
+3. *(Recommended)* Build the native Rust extension — some memory/server APIs require it:
    ```bash
-   pip install -e ".[dev,inference-gguf,tools-search]"
+   uv run maturin develop --manifest-path rust/crates/nova_ai-python/Cargo.toml
    ```
-4. Build the web frontend:
+4. Build the web frontend (the built UI is generated, not committed — `nova serve` needs it to show the web app):
    ```bash
    cd frontend
    npm install
@@ -121,6 +138,11 @@ Choose the method that best fits your environment:
    ```bash
    nova serve --reload
    ```
+6. Open **http://localhost:8000** and run `nova doctor` to verify your installation.
+
+> Prefer zero manual steps? `./scripts/quickstart.sh` (macOS/Linux) automates all of the above — including installing uv and Ollama and pulling a starter model — then opens the UI in your browser. On Windows, run `install.bat`.
+
+> A prebuilt Windows setup EXE and portable ZIP are available on the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases) — see Method A. For PowerShell deployment without WSL, see `deploy/windows/README.md`.
 
 ---
 

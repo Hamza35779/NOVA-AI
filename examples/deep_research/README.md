@@ -103,9 +103,11 @@ turns.
 
 ## Further Reading
 
-- [Architecture: Agents](../../CLAUDE.md) -- agent hierarchy (`BaseAgent`,
+- [Architecture: Agents](../../docs/architecture/agents.md) — agent hierarchy (`BaseAgent`,
   `ToolUsingAgent`, `OrchestratorAgent`) and the `accepts_tools` mechanism.
-- [Architecture: Tools](../../CLAUDE.md) -- tool registry, MCP adapter, and
-  the `ToolExecutor` dispatch pipeline.
-- [Recipes](../../src/nova_ai/recipes/) -- composable TOML configs that
+- [Architecture overview](../../docs/architecture/overview.md) — the five primitives, the
+  tool registry, MCP adapter, and the `ToolExecutor` dispatch pipeline.
+- [Recipes](../../src/nova_ai/recipes/) — composable TOML configs that
   wire all five pillars.
+- [Deep Research user guide](https://hamza35779.github.io/NOVA-AI/user-guide/deep-research/) —
+  the built-in `deep_research` agent and `nova research` CLI.

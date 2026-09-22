@@ -141,4 +141,5 @@ nova scheduler create "Daily inbox summary" --type cron --value "0 17 * * *"
 ```
 
 Or use the operator recipe pattern to run a persistent triage agent on a
-schedule. See `src/nova_ai/recipes/data/operators/` for examples.
+schedule. See `src/nova_ai/recipes/data/operators/` (e.g. `inbox_triage.toml`)
+for examples.

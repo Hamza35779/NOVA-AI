@@ -10,7 +10,7 @@ refuses to start on a non-loopback address without one. Set it first:
 ```bash
 cd deploy/docker
 cp .env.example .env
-echo "NOVA_AI_API_KEY=$(nova auth generate-key)" > .env   # or paste your own
+echo "NOVA_AI_API_KEY=$(nova auth create-key)" > .env   # or paste your own
 ```
 
 Then start both the API server and an Ollama backend with Docker Compose:

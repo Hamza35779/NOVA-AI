@@ -89,7 +89,7 @@ To expose on your LAN:
 
 ```powershell
 # 1. Generate an API key. The server REFUSES to bind 0.0.0.0 without one.
-$env:NOVA_AI_API_KEY = (uv run nova auth generate-key)
+$env:NOVA_AI_API_KEY = (uv run nova auth create-key)
 
 # 2. Re-register the task with -ListenHost 0.0.0.0.
 powershell -ExecutionPolicy Bypass -File $srv install -ListenHost 0.0.0.0

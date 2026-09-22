@@ -76,9 +76,9 @@ To avoid wasted effort, note that PRs in these categories are unlikely to be mer
 
 | Requirement | Version | Notes |
 |---|---|---|
-| Python | 3.10+ | Required |
+| Python | 3.10–3.13 | Required |
 | [uv](https://docs.astral.sh/uv/) | Latest | Package manager |
-| Node.js | 22+ | Only needed for ClaudeCodeAgent and WhatsApp channel |
+| Node.js | 22+ (18 minimum) | Building/linting/testing the web UI and desktop app; also the WhatsApp channel |
 
 ### Setup
 
