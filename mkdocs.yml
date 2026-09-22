@@ -168,6 +168,9 @@ nav:
       - Messaging Hub: tutorials/messaging-hub.md
       - Code Companion: tutorials/code-companion.md
       - Adding Custom Tools: tutorials/custom-tools.md
+      - Skills Workflow: tutorials/skills-workflow.md
+      - Building Continuous Agents: tutorials/continuous-agents.md
+      - Testing & Comparing LMs: tutorials/benchmarking.md
   - Architecture:
       - Overview: architecture/overview.md
       - Intelligence: architecture/intelligence.md

@@ -52,6 +52,22 @@ Hands-on guides that walk through building real applications with NOVA AI. Each 
 
     [:octicons-arrow-right-24: Get started](skills-workflow.md)
 
+- :material-sync:{ .lg .middle } **Building Continuous Agents**
+
+    ---
+
+    Operators that run forever: write a TOML manifest, activate it, and get session persistence across ticks, guardrails, and health monitoring — with an arXiv research monitor as the worked example.
+
+    [:octicons-arrow-right-24: Get started](continuous-agents.md)
+
+- :material-speedometer:{ .lg .middle } **Testing & Comparing LMs**
+
+    ---
+
+    Benchmark local vs cloud models on your own hardware — latency, throughput, energy per token, and cost — and learn to read the distributions instead of the means.
+
+    [:octicons-arrow-right-24: Get started](benchmarking.md)
+
 </div>
 
 ## What You Will Learn
@@ -64,6 +80,8 @@ Each tutorial demonstrates a different combination of NOVA AI primitives working
 | Scheduled Ops | `orchestrator`, `native_react` | Agents, Tools, Scheduler |
 | Messaging Hub | `orchestrator` | Agents, Tools (memory), Channels |
 | Code Companion | `native_react` | Agents, Tools (git + file + shell) |
+| Continuous Agents | `operative` | Operators, Scheduler, SessionStore, Memory |
+| Testing & Comparing LMs | — | Bench framework, Telemetry, Energy monitors |
 
 ## Estimated Time
 

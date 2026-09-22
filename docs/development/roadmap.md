@@ -11,7 +11,11 @@ These are the areas where active development is happening and contributions are 
 - **Federated memory** — memory backends that synchronize across devices
 - **LLM-guided spec search:** Frontier-driven harness learning — a frontier model analyzes your traces and proposes config improvements. See [user guide](../user-guide/llm-guided-spec-search.md) and [architecture](../architecture/learning.md#llm-guided-spec-search-frontier-driven-harness-learning).
 
-### Recently shipped (v1.2.5)
+### Recently shipped
+
+- **Tutorials: continuous agents + LM benchmarking** — the two remaining Ready docs from Workstream 4: "Building Continuous Agents" (operator manifests → activation → health) and "Testing & Comparing LMs" (bench framework, local vs cloud, energy/cost interpretation); tutorials index updated
+
+### Previously shipped (v1.2.5)
 
 - **Quick Capture global-hotkey popup** — `Alt+Space` on Windows (`Cmd+Shift+Space` on macOS) opens a Raycast-style chat popup whose conversation syncs with the main app
 - **`nova dev-watch` self-healing build diagnostics** — failure classification + fix suggestions from the self-healing agent, with a live Build Diagnostics panel on the Dashboard (`/api/devwatch/runs`)
@@ -122,9 +126,9 @@ NOVA AI has reference docs and four tutorials, but critical gaps remain in conti
 
 | Item | Maturity | Details |
 |------|----------|---------|
-| "Building Continuous Agents" tutorial | **Ready** | Writing an operator TOML manifest, activating it, session persistence across ticks, daemon mode. Example: a research operator that monitors arxiv daily. |
-| "Adding Custom Tools" tutorial | **Ready** | Implementing `BaseTool`, registering via `ToolRegistry`, wiring into agents. Example: a weather API tool. **Good first issue.** |
-| "Testing & Comparing LMs" tutorial | **Ready** | Running benchmarks, comparing local vs. cloud models, interpreting telemetry (latency, cost, energy per token). Uses the existing `bench/` framework. |
+| "Building Continuous Agents" tutorial | **Shipped** | Done — [docs/tutorials/continuous-agents.md](../tutorials/continuous-agents.md): operator TOML manifest, activation, session/state persistence across ticks, guardrails, health monitoring, arxiv-monitor example. |
+| "Adding Custom Tools" tutorial | **Shipped** | Done — `docs/tutorials/custom-tools.md`: `BaseTool` implementation, `ToolRegistry` registration, agent wiring, weather example. |
+| "Testing & Comparing LMs" tutorial | **Shipped** | Done — [docs/tutorials/benchmarking.md](../tutorials/benchmarking.md): `nova bench` walkthrough, local vs. cloud comparison workflow, interpreting latency/energy/cost telemetry. |
 | Per-platform installation guides | **Ready** | Expand `installation.md` with platform-specific walkthroughs: macOS + Ollama, Ubuntu + NVIDIA + vLLM, Windows + Ollama, Raspberry Pi. **Good first issue.** |
 | "Learning & Model Selection" tutorial | **Design Needed** | Router policies (heuristic, learned, GRPO), proposed approaches like Thompson Sampling, trace-based reward signals. |
 | Video tutorial infrastructure | **Design Needed** | Establish recording workflow, hosting (YouTube), MkDocs embedding. Write video scripts alongside written tutorials. |
@@ -143,7 +147,7 @@ Adding a new hardware target involves up to four components: hardware detection 
 | Item | Maturity | Details |
 |------|----------|---------|
 | AMD Ryzen AI iGPU path | **Ready** | Strix Point RDNA 3.5 iGPU handles 7-8B via Vulkan. llama.cpp Vulkan backend works today. Needs hardware detection and energy monitor. **Good first issue.** |
-| GPU specs database expansion | **Ready** | Add Intel Arc, Jetson Orin, Snapdragon specs to `GPU_SPECS` in `telemetry/gpu_monitor.py` (TFLOPS, bandwidth, TDP). **Good first issue.** |
+| GPU specs database expansion | **Shipped** | Done — `GPU_SPECS` in `telemetry/gpu_monitor.py` includes Intel Arc (B580/B570), Jetson Orin (NX 8/16GB, AGX), and Snapdragon X Elite/Plus entries with TFLOPS, bandwidth, and TDP. |
 | Intel Arc GPU (B580/B570) | **Design Needed** | 12GB VRAM, ~$250 consumer GPU. Viable for 7-8B models. Engine path: IPEX-LLM or llama.cpp SYCL backend. |
 | NVIDIA Jetson Orin | **Design Needed** | Best-in-class edge device. Orin NX 16GB handles 7-8B models at 15-25 tok/s. Needs hardware detection, energy monitor (tegrastats), deployment guide. |
 | Qualcomm Snapdragon X Elite NPU | **Design Needed** | 45 TOPS, Windows Arm laptops. ONNX Runtime + QNN Execution Provider is the viable path. |
