@@ -1346,22 +1346,9 @@ fn get_api_base() -> String {
     api_base()
 }
 
-#[tauri::command]
-async fn start_backend(
-    backend: tauri::State<'_, SharedBackend>,
-    status: tauri::State<'_, SharedStatus>,
-) -> Result<(), String> {
-    let b = backend.inner().clone();
-    let s = status.inner().clone();
-    tauri::async_runtime::spawn(boot_backend(b, s));
-    Ok(())
-}
-
-#[tauri::command]
-async fn stop_backend(backend: tauri::State<'_, SharedBackend>) -> Result<(), String> {
-    backend.lock().await.stop_all().await;
-    Ok(())
-}
+// NOTE: start_backend/stop_backend were exposed as Tauri commands but had
+// no JS caller — the backend is booted internally in setup() and stopped on
+// RunEvent::ExitRequested. The boot_backend/stop_all paths remain internal.
 
 #[tauri::command]
 async fn check_health(api_url: String) -> Result<serde_json::Value, String> {
@@ -1790,17 +1777,6 @@ async fn save_cloud_key(key_name: String, key_value: String) -> Result<(), Strin
         .await;
 
     Ok(())
-}
-
-/// Get which cloud providers have keys configured (without exposing values).
-#[tauri::command]
-async fn get_cloud_key_status() -> Result<serde_json::Value, String> {
-    let keys = read_cloud_keys();
-    let status: Vec<serde_json::Value> = keys
-        .iter()
-        .map(|(k, v)| serde_json::json!({ "key": k, "set": !v.is_empty() }))
-        .collect();
-    Ok(serde_json::json!(status))
 }
 
 /// Return the current inference-source config for the Settings UI.
@@ -2606,8 +2582,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_setup_status,
             get_api_base,
-            start_backend,
-            stop_backend,
             check_health,
             fetch_energy,
             fetch_telemetry,
@@ -2627,7 +2601,6 @@ pub fn run() {
             pull_ollama_model,
             delete_ollama_model,
             save_cloud_key,
-            get_cloud_key_status,
             get_inference_source,
             set_inference_source,
             toggle_overlay,

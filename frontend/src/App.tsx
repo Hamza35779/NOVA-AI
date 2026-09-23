@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Routes, Route } from 'react-router';
+import { Routes, Route, Navigate } from 'react-router';
 import { Layout } from './components/Layout';
 import { ChatPage } from './pages/ChatPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -210,6 +210,8 @@ export default function App() {
           <Route path="personas" element={<PersonasPage />} />
           <Route path="mobile" element={<MobilePairPage />} />
           <Route path="gguf-hub" element={<GGUFHubPage />} />
+          {/* Unknown URLs: redirect home instead of rendering a blank page. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
       <Toaster position="bottom-right" />

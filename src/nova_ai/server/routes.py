@@ -852,6 +852,86 @@ async def delete_model(model_name: str, request: Request):
     return {"status": "deleted", "model": model_name}
 
 
+@router.get("/v1/models/tags")
+async def list_model_tags(request: Request):
+    """Proxy Ollama's /api/tags (model names + sizes in bytes).
+
+    The SPA's CSP forbids the browser from talking to Ollama directly
+    (localhost:11434), so the Settings page fetches this same data through
+    the server instead. Returns the raw Ollama payload shape:
+    ``{"models": [{"name": ..., "size": ...}, ...]}``.
+    """
+    engine = request.app.state.engine
+    import asyncio as _asyncio
+
+    import httpx as _httpx
+
+    host = getattr(engine, "_host", "http://localhost:11434")
+
+    def _do_tags() -> dict:
+        with _httpx.Client(base_url=host, timeout=10.0) as client:
+            resp = client.get("/api/tags")
+            resp.raise_for_status()
+            return resp.json()
+
+    try:
+        data = await _asyncio.to_thread(_do_tags)
+    except (_httpx.ConnectError, _httpx.TimeoutException) as exc:
+        raise HTTPException(status_code=502, detail=f"Ollama unreachable: {exc}")
+    except _httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=f"Ollama error: {exc.response.text[:300]}",
+        )
+    return data
+
+
+@router.post("/v1/models/preload")
+async def preload_model(request: Request):
+    """Load a model into Ollama's memory (keep_alive 5m) without generating.
+
+    Backend counterpart of the SPA's preloadModel(): the browser cannot
+    reach Ollama directly under the page's CSP, so model switching goes
+    through the server. Cloud models are a no-op (nothing to preload).
+    """
+    body = await request.json()
+    model_name = (body or {}).get("model", "")
+    if not model_name:
+        raise HTTPException(status_code=422, detail="Missing 'model' in body")
+
+    from nova_ai.server.cloud_router import is_cloud_model
+
+    if is_cloud_model(model_name):
+        return {"status": "skipped", "model": model_name,
+                "detail": "cloud model — nothing to preload"}
+
+    engine = request.app.state.engine
+    import asyncio as _asyncio
+
+    import httpx as _httpx
+
+    host = getattr(engine, "_host", "http://localhost:11434")
+
+    def _do_preload() -> None:
+        with _httpx.Client(base_url=host, timeout=1800.0) as client:
+            resp = client.post(
+                "/api/generate",
+                json={"model": model_name, "prompt": "", "keep_alive": "5m"},
+            )
+            resp.raise_for_status()
+
+    try:
+        await _asyncio.to_thread(_do_preload)
+    except _httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=f"Ollama error: {exc.response.text[:300]}",
+        )
+    except (_httpx.ConnectError, _httpx.TimeoutException) as exc:
+        raise HTTPException(status_code=502, detail=f"Ollama unreachable: {exc}")
+    return {"status": "loaded", "model": model_name}
+
+
 @router.post("/v1/cloud/reload")
 async def reload_cloud_engine(request: Request):
     """Hot-reload cloud API keys and (re-)initialize the cloud engine.

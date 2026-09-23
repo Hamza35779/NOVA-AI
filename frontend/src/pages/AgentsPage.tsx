@@ -6,6 +6,7 @@ import { useAppStore } from '../lib/store';
 import {
   fetchManagedAgents,
   fetchAgentTasks,
+  createAgentTask,
   fetchAgentChannels,
   bindAgentChannel,
   unbindAgentChannel,
@@ -3452,6 +3453,8 @@ export function AgentsPage() {
   }, [refresh]);
 
   const selectedAgent = managedAgents.find((a) => a.id === selectedAgentId);
+  const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [creatingTask, setCreatingTask] = useState(false);
 
   useEffect(() => {
     if (selectedAgentId) {
@@ -3459,6 +3462,22 @@ export function AgentsPage() {
       fetchAgentChannels(selectedAgentId).then(setChannels).catch(() => setChannels([]));
     }
   }, [selectedAgentId]);
+
+  const handleCreateTask = useCallback(async () => {
+    if (!selectedAgentId || !newTaskDesc.trim()) return;
+    setCreatingTask(true);
+    try {
+      await createAgentTask(selectedAgentId, newTaskDesc.trim());
+      setNewTaskDesc('');
+      const updated = await fetchAgentTasks(selectedAgentId).catch(() => [] as AgentTask[]);
+      setTasks(updated);
+      toast.success('Task assigned to agent');
+    } catch {
+      toast.error('Failed to create task — is the agent running?');
+    } finally {
+      setCreatingTask(false);
+    }
+  }, [selectedAgentId, newTaskDesc]);
 
   const handlePause = async (id: string) => {
     await pauseManagedAgent(id).catch(() => {});
@@ -3846,6 +3865,25 @@ export function AgentsPage() {
         {/* Tab: Tasks */}
         {detailTab === 'tasks' && (
           <div className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                value={newTaskDesc}
+                onChange={(e) => setNewTaskDesc(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateTask(); }}
+                placeholder="Describe a task for this agent..."
+                className="flex-1 px-3 py-2 rounded text-sm"
+                style={{ background: 'var(--color-bg-primary)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+              />
+              <button
+                onClick={handleCreateTask}
+                disabled={!newTaskDesc.trim() || creatingTask}
+                className="px-4 py-2 rounded text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                style={{ background: 'var(--color-accent)', color: '#fff' }}
+              >
+                {creatingTask ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                Add task
+              </button>
+            </div>
             {tasks.map((t) => (
               <div
                 key={t.id}

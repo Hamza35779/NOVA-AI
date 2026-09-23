@@ -19,14 +19,17 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useAppStore, type ThemeMode } from '../lib/store';
-import { checkHealth, fetchSpeechHealth, getMemoryStats, getInferenceSource, setInferenceSource, type InferenceSource } from '../lib/api';
+import { checkHealth, fetchSpeechHealth, getMemoryStats, getInferenceSource, setInferenceSource, apiFetch, type InferenceSource } from '../lib/api';
 import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Desktop/UpdateChecker';
 
 function OllamaModelList() {
   const [models, setModels] = useState<Array<{ name: string; size: number }>>([]);
   useEffect(() => {
-    fetch('http://localhost:11434/api/tags')
-      .then(r => r.json())
+    // Through the backend proxy: the page CSP blocks direct browser fetches
+    // to Ollama (localhost:11434), which made this list permanently empty
+    // in the web UI even when models were installed.
+    apiFetch('/v1/models/tags')
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then(data => setModels((data.models || []).map((m: any) => ({ name: m.name, size: m.size }))))
       .catch(() => setModels([]));
   }, []);

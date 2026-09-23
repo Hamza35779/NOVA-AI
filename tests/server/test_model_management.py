@@ -271,3 +271,88 @@ class TestModelsEndpointExtended:
         assert resp.status_code == 200
         # The endpoint returns whatever list_models() gives
         assert resp.json()["object"] == "list"
+
+
+# ---------------------------------------------------------------------------
+# Model tags proxy (CSP-safe Ollama listing for the Settings page)
+# ---------------------------------------------------------------------------
+
+
+class TestModelTagsProxy:
+    def test_tags_success(self):
+        engine = _make_ollama_engine()
+        client = TestClient(_app(engine, engine_name="ollama"))
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = {
+            "models": [{"name": "qwen3:0.6b", "size": 522640096}]
+        }
+
+        with patch("httpx.Client") as MockClient:
+            instance = MockClient.return_value
+            instance.get.return_value = mock_resp
+            instance.close = MagicMock()
+            instance.__enter__.return_value = instance
+
+            resp = client.get("/v1/models/tags")
+
+        assert resp.status_code == 200
+        assert resp.json()["models"][0]["name"] == "qwen3:0.6b"
+
+    def test_tags_ollama_unreachable(self):
+        engine = _make_ollama_engine()
+        client = TestClient(_app(engine, engine_name="ollama"))
+
+        import httpx
+
+        with patch("httpx.Client") as MockClient:
+            instance = MockClient.return_value
+            instance.get.side_effect = httpx.ConnectError("refused")
+            instance.close = MagicMock()
+            instance.__enter__.return_value = instance
+
+            resp = client.get("/v1/models/tags")
+
+        assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# Model preload endpoint (backend proxy for the UI's model switcher)
+# ---------------------------------------------------------------------------
+
+
+class TestModelPreload:
+    def test_preload_requires_model(self):
+        engine = _make_ollama_engine()
+        client = TestClient(_app(engine, engine_name="ollama"))
+        resp = client.post("/v1/models/preload", json={})
+        assert resp.status_code == 422
+
+    def test_preload_skips_cloud_models(self):
+        engine = _make_ollama_engine()
+        client = TestClient(_app(engine, engine_name="ollama"))
+        resp = client.post("/v1/models/preload", json={"model": "gpt-4o"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "skipped"
+
+    def test_preload_success(self):
+        engine = _make_ollama_engine()
+        client = TestClient(_app(engine, engine_name="ollama"))
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status = MagicMock()
+
+        with patch("httpx.Client") as MockClient:
+            instance = MockClient.return_value
+            instance.post.return_value = mock_resp
+            instance.close = MagicMock()
+            instance.__enter__.return_value = instance
+
+            resp = client.post("/v1/models/preload", json={"model": "qwen3:0.6b"})
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "loaded"

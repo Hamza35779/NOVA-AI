@@ -49,7 +49,11 @@ def create_security_middleware() -> Any:
                 "camera=(), microphone=(), geolocation=()"
             )
             response.headers["Content-Security-Policy"] = (
-                "default-src 'self' 'unsafe-inline' 'unsafe-eval'"
+                # 'self' covers the SPA and API; data: allows the inlined fonts
+                # and SVG noise textures the UI ships as data URIs; https: CDN
+                # covers FastAPI's Swagger UI assets (served at /docs).
+                "default-src 'self' 'unsafe-inline' 'unsafe-eval' "
+                "data: https://cdn.jsdelivr.net https://fastapi.tiangolo.com"
             )
             return response
 
@@ -64,5 +68,8 @@ SECURITY_HEADERS = {
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-    "Content-Security-Policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "Content-Security-Policy": (
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "data: https://cdn.jsdelivr.net https://fastapi.tiangolo.com"
+    ),
 }

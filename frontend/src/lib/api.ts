@@ -204,13 +204,14 @@ export async function preloadModel(modelName: string): Promise<void> {
   if (_CLOUD_PREFIXES.some(p => modelName.startsWith(p))) {
     return;
   }
-  // Trigger Ollama to load the model into memory (empty prompt, no generation).
-  const ollamaUrl = 'http://127.0.0.1:11434';
+  // Route through the backend (/v1/models/preload) instead of talking to
+  // Ollama directly: the page CSP forbids connect-src to localhost:11434
+  // in the web UI, which silently broke model switching.
   try {
-    const res = await fetch(`${ollamaUrl}/api/generate`, {
+    const res = await apiFetch(`/v1/models/preload`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: modelName, prompt: '', keep_alive: '5m' }),
+      body: JSON.stringify({ model: modelName }),
       signal: AbortSignal.timeout(120_000),
     });
     if (!res.ok) throw new Error(`Preload failed: ${res.status}`);
@@ -1194,6 +1195,51 @@ export const installModelAPI = (modelId: string) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model_id: modelId }),
   }).then(r => r.json());
+
+export interface InstallProgress {
+  status: string;
+  percent: number;
+  done: boolean;
+  error: string | null;
+  total?: number;
+  completed?: number;
+}
+
+/** Subscribe to a model install's SSE progress stream until done/error. */
+export function watchInstallProgress(
+  taskId: string,
+  onUpdate: (p: InstallProgress) => void,
+  onFinish: (p: InstallProgress | null) => void,
+): () => void {
+  const controller = new AbortController();
+  fetch(`${getBase()}/api/models/hub/install/${taskId}/stream`, { signal: controller.signal })
+    .then(async res => {
+      if (!res.ok || !res.body) { onFinish(null); return; }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop() || '';
+        for (const part of parts) {
+          const line = part.split('\n').find(l => l.startsWith('data: '));
+          if (!line) continue;
+          try {
+            const prog = JSON.parse(line.slice(6)) as InstallProgress;
+            onUpdate(prog);
+            if (prog.done || prog.error) { onFinish(prog); return; }
+          } catch { /* malformed chunk — skip */ }
+          if (controller.signal.aborted) return;
+        }
+      }
+      onFinish(null);
+    })
+    .catch(() => { if (!controller.signal.aborted) onFinish(null); });
+  return () => controller.abort();
+}
 
 // Personas API
 export const listPersonas = () =>

@@ -23,6 +23,19 @@ class TestSecurityHeaders:
         }
         assert set(SECURITY_HEADERS.keys()) == expected_keys
 
+    def test_csp_allows_swagger_and_data_uris(self) -> None:
+        """CSP must include data: (inlined fonts/SVG) and the Swagger CDN.
+
+        Regression: the original `default-src 'self' ...` policy made /docs
+        render a blank page (CDN assets blocked) and logged console errors
+        for the UI's data: URI fonts on every page.
+        """
+        csp = SECURITY_HEADERS["Content-Security-Policy"]
+        assert "data:" in csp
+        assert "https://cdn.jsdelivr.net" in csp
+        assert "https://fastapi.tiangolo.com" in csp
+        assert csp.startswith("default-src 'self'")
+
     def test_create_middleware_without_starlette(self) -> None:
         """When starlette is not available, returns None."""
         import importlib
