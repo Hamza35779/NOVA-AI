@@ -37,6 +37,22 @@ def _default_num_ctx() -> int:
         return 16384
 
 
+def _ctx_retry_ladder() -> tuple[int, ...]:
+    """Context sizes to retry with when Ollama 500s on KV-cache allocation.
+
+    Ollama returns 500 when it cannot allocate the context buffer for the
+    requested ``num_ctx`` (common on low-RAM machines with the 16k default:
+    16384 ctx needs ~1.75 GB just for the KV cache on a 0.6B model). Retry at
+    half the configured size and at a 4096 floor before surfacing the error.
+    """
+    base = _default_num_ctx()
+    ladder: list[int] = []
+    for cand in (base // 2, 4096):
+        if cand < base and cand not in ladder:
+            ladder.append(cand)
+    return tuple(ladder)
+
+
 @EngineRegistry.register("ollama")
 class OllamaEngine(InferenceEngine):
     """Ollama backend via its native HTTP API."""
@@ -124,6 +140,22 @@ class OllamaEngine(InferenceEngine):
                 # Model may not support function calling -- retry without tools
                 payload.pop("tools", None)
                 resp = self._client.post("/api/chat", json=payload)
+            if resp.status_code == 500:
+                # Ollama OOMs allocating the KV cache when num_ctx is too
+                # large for available RAM; retry with smaller contexts
+                # before surfacing the error (self-healing).
+                for retry_ctx in _ctx_retry_ladder():
+                    if retry_ctx >= payload["options"]["num_ctx"]:
+                        continue
+                    logger.warning(
+                        "Ollama 500 with num_ctx=%s; retrying with num_ctx=%s",
+                        payload["options"]["num_ctx"],
+                        retry_ctx,
+                    )
+                    payload["options"]["num_ctx"] = retry_ctx
+                    resp = self._client.post("/api/chat", json=payload)
+                    if resp.status_code != 500:
+                        break
             resp.raise_for_status()
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise EngineConnectionError(
@@ -221,40 +253,65 @@ class OllamaEngine(InferenceEngine):
             payload["think"] = False
         elif kwargs["think"] is not None:
             payload["think"] = kwargs["think"]
-        try:
-            async with self._async_client.stream(
-                "POST", "/api/chat", json=payload
-            ) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line.strip():
-                        continue
-                    try:
-                        chunk = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    content = chunk.get("message", {}).get("content", "")
-                    if content:
-                        yield content
-                    if chunk.get("done", False):
-                        reported_prompt = chunk.get("prompt_eval_count", 0)
-                        est_prompt = estimate_prompt_tokens(messages)
-                        full_prompt = max(reported_prompt, est_prompt)
-                        evaluated = (
-                            reported_prompt if reported_prompt > 0 else full_prompt
-                        )
-                        comp = chunk.get("eval_count", 0)
-                        self._last_stream_usage = {
-                            "prompt_tokens": full_prompt,
-                            "prompt_tokens_evaluated": evaluated,
-                            "completion_tokens": comp,
-                            "total_tokens": full_prompt + comp,
-                        }
-                        break
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise EngineConnectionError(
-                f"Ollama not reachable at {self._host}"
-            ) from exc
+        # Ollama OOMs allocating the KV cache when num_ctx is too large for
+        # available RAM and returns 500 before any tokens are streamed. The
+        # failure surfaces at raise_for_status() (headers arrive first), so
+        # retrying with a smaller context is safe: no tokens were yielded.
+        async def _drain(resp: httpx.Response) -> AsyncIterator[str]:
+            async for line in resp.aiter_lines():
+                if not line.strip():
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                content = chunk.get("message", {}).get("content", "")
+                if content:
+                    yield content
+                if chunk.get("done", False):
+                    reported_prompt = chunk.get("prompt_eval_count", 0)
+                    est_prompt = estimate_prompt_tokens(messages)
+                    full_prompt = max(reported_prompt, est_prompt)
+                    evaluated = (
+                        reported_prompt if reported_prompt > 0 else full_prompt
+                    )
+                    comp = chunk.get("eval_count", 0)
+                    self._last_stream_usage = {
+                        "prompt_tokens": full_prompt,
+                        "prompt_tokens_evaluated": evaluated,
+                        "completion_tokens": comp,
+                        "total_tokens": full_prompt + comp,
+                    }
+                    break
+
+        attempts = (None, *_ctx_retry_ladder())
+        for i, attempt_ctx in enumerate(attempts):
+            if attempt_ctx is not None:
+                logger.warning(
+                    "Ollama 500 with num_ctx=%s; retrying with num_ctx=%s",
+                    payload["options"]["num_ctx"],
+                    attempt_ctx,
+                )
+                payload["options"]["num_ctx"] = attempt_ctx
+            try:
+                async with self._async_client.stream(
+                    "POST", "/api/chat", json=payload
+                ) as resp:
+                    resp.raise_for_status()
+                    async for token in _drain(resp):
+                        yield token
+                return
+            except httpx.HTTPStatusError as exc:
+                if (
+                    exc.response is None
+                    or exc.response.status_code != 500
+                    or i == len(attempts) - 1
+                ):
+                    raise
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                raise EngineConnectionError(
+                    f"Ollama not reachable at {self._host}"
+                ) from exc
 
     async def stream_full(
         self,
