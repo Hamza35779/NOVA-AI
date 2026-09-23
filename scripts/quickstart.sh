@@ -136,7 +136,9 @@ else
 fi
 
 # ── 6. Pull a starter model ─────────────────────────────────────────
-MODEL="${NOVA_AI_MODEL:-qwen3:0.6b}"
+# Same model `nova init` recommends by default, so config and engine agree
+# (mismatched names made the server warn 'configured model not reachable').
+MODEL="${NOVA_AI_MODEL:-qwen3.5:4b}"
 info "Ensuring model '$MODEL' is available..."
 if ollama list 2>/dev/null | grep -q "$MODEL"; then
   ok "Model '$MODEL' already pulled"
@@ -152,10 +154,20 @@ uv sync --extra desktop --quiet 2>/dev/null || uv sync --extra desktop
 ok "Python dependencies installed"
 
 # ── 7b. Build Rust extension ──────────────────────────────────────
-info "Building Rust extension..."
-uv run maturin develop -m rust/crates/nova_ai-python/Cargo.toml --quiet 2>/dev/null \
-  || uv run maturin develop -m rust/crates/nova_ai-python/Cargo.toml
-ok "Rust extension built"
+# Optional speedup, not a hard requirement: without Rust the app runs with
+# the pure-Python fallbacks. Never block first-run on a multi-minute compile
+# (and don't silently install a Rust toolchain the user didn't ask for).
+if command -v cargo &>/dev/null; then
+  info "Building Rust extension (optional, may take a few minutes)..."
+  if uv run maturin develop -m rust/crates/nova_ai-python/Cargo.toml --quiet 2>/dev/null \
+    || uv run maturin develop -m rust/crates/nova_ai-python/Cargo.toml; then
+    ok "Rust extension built"
+  else
+    warn "Rust extension build failed — continuing without it (pure-Python fallbacks)."
+  fi
+else
+  warn "Rust not found — skipping native extension (optional; app runs without it)."
+fi
 
 # ── 8. Install frontend dependencies ────────────────────────────────
 info "Installing frontend dependencies..."
@@ -166,12 +178,20 @@ ok "Frontend dependencies installed"
 info "Starting backend API server on port 8000..."
 uv run nova serve --port 8000 &>/dev/null &
 CLEANUP_PIDS+=($!)
-sleep 3
 
-if curl -sf http://localhost:8000/health &>/dev/null; then
+# Server startup includes engine discovery and scheduler init; poll instead
+# of a fixed sleep so slow machines don't get a false 'may still be starting'
+# while a fast failure (port in use, bad config) goes unnoticed.
+BACKEND_UP=0
+for i in $(seq 1 60); do
+  if curl -sf http://localhost:8000/health &>/dev/null; then BACKEND_UP=1; break; fi
+  if ! kill -0 "${CLEANUP_PIDS[-1]}" 2>/dev/null; then break; fi
+  sleep 2
+done
+if [ "$BACKEND_UP" = "1" ]; then
   ok "Backend running at http://localhost:8000"
 else
-  warn "Backend may still be starting..."
+  fail "Backend did not start. Re-run with the log visible to see the error:\n  uv run nova serve --port 8000"
 fi
 
 # ── 9b. opencode companion (optional) ─────────────────────────────
@@ -191,8 +211,18 @@ uv run nova opencode init &>/dev/null \
 info "Starting frontend dev server on port 5173..."
 (cd frontend && npm run dev) &>/dev/null &
 CLEANUP_PIDS+=($!)
-sleep 3
-ok "Frontend running at http://localhost:5173"
+
+FRONTEND_UP=0
+for i in $(seq 1 30); do
+  if curl -sf http://localhost:5173/ &>/dev/null; then FRONTEND_UP=1; break; fi
+  if ! kill -0 "${CLEANUP_PIDS[-1]}" 2>/dev/null; then break; fi
+  sleep 2
+done
+if [ "$FRONTEND_UP" = "1" ]; then
+  ok "Frontend running at http://localhost:5173"
+else
+  fail "Frontend dev server did not start. Run it manually to see the error:\n  cd frontend && npm run dev"
+fi
 
 # ── 11. Open browser ────────────────────────────────────────────────
 URL="http://localhost:5173"

@@ -478,8 +478,12 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
       await sendAgentMessage(apiUrl, agentId, input.trim(), mode);
       setInput('');
       await loadMessages();
-    } catch {
-      setError('Failed to send message.');
+    } catch (err) {
+      const detail =
+        err instanceof Error && err.message ? ` (${err.message})` : '';
+      setError(
+        `Could not reach the agent backend${detail}. Check that the server is running and the agent is online, then try again.`,
+      );
     } finally {
       setSending(false);
     }

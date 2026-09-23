@@ -37,6 +37,7 @@ Commands:
   host                 Download (if needed) and serve a model locally
   init                 Detect hardware and generate ~/.nova_ai/config.toml
   integrations         Manage app integrations, software connectors, and MCP
+  logs                 Show NOVA AI log files (server daemon + CLI); -f to f
   mcp                  Serve or inspect NOVA AI tools via MCP (e.g. for open
   memory               Manage the memory store
   memory-wiki          Manage structured Memory Wiki knowledge base

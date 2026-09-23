@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -30,6 +32,34 @@ from nova_ai.core.config import (
 from nova_ai.core.utils import soft_fail
 
 logger = logging.getLogger(__name__)
+
+
+def _backup_existing_config(max_backups: int = 5) -> Optional[Path]:
+    """Copy ~/.nova_ai/config.toml aside before ``nova init`` overwrites it.
+
+    ``nova init`` regenerates the whole config; without a backup a user who
+    just wanted a fresh template loses every manual edit (keys, endpoints,
+    presets). Keeps the last *max_backups* copies, newest numbered highest.
+    Returns the backup path, or None when there was nothing to back up.
+    """
+    if not DEFAULT_CONFIG_PATH.exists():
+        return None
+    existing = sorted(DEFAULT_CONFIG_DIR.glob("config.toml.bak-*"))
+    while len(existing) >= max_backups:
+        oldest = existing.pop(0)
+        try:
+            oldest.unlink()
+        except OSError:
+            pass
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = DEFAULT_CONFIG_DIR / f"config.toml.bak-{stamp}"
+    try:
+        shutil.copy2(DEFAULT_CONFIG_PATH, backup_path)
+    except OSError as exc:
+        logger.debug("Config backup failed: %s", exc)
+        return None
+    return backup_path
+
 
 # Engines supported by ``nova init --engine``.
 _SUPPORTED_ENGINES = [
@@ -345,6 +375,9 @@ def init(
             console.print(f"  Looked in: {examples_dir}")
             raise SystemExit(1)
         DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        _backup = _backup_existing_config()
+        if _backup is not None:
+            console.print("[yellow]Existing config backed up to[/yellow] " + str(_backup))
         DEFAULT_CONFIG_PATH.write_text(preset_path.read_text())
         console.print(
             f"[green]Preset '{preset}' installed to {DEFAULT_CONFIG_PATH}[/green]"
@@ -455,6 +488,9 @@ def init(
     if config:
         config.write_text(toml_content)
     else:
+        _backup = _backup_existing_config()
+        if _backup is not None:
+            console.print("[yellow]Existing config backed up to[/yellow] " + str(_backup))
         DEFAULT_CONFIG_PATH.write_text(toml_content)
 
     console.print()

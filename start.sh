@@ -17,6 +17,26 @@ fi
 
 PY_BIN="$(command -v python3 || command -v python)"
 
+# The menu runs nova_ai from the system Python. If the package isn't
+# installed there, every option would crash with ModuleNotFoundError —
+# fail up front with the fix instead (first-run onboarding bug).
+if ! "$PY_BIN" -c "import nova_ai" >/dev/null 2>&1; then
+    echo "[ERROR] The 'nova_ai' package is not installed for: $PY_BIN"
+    if [ -x "$DIR/.venv/Scripts/python.exe" ]; then
+        echo "A project venv exists at $DIR/.venv — activate it first, then re-run this script:"
+        echo "  source \"$DIR/.venv/Scripts/activate\""
+    elif [ -x "$DIR/.venv/bin/python" ]; then
+        echo "A project venv exists at $DIR/.venv — activate it first, then re-run this script:"
+        echo "  source \"$DIR/.venv/bin/activate\""
+    else
+        echo "Install dependencies first (from the repo root):"
+        echo "  uv sync --extra server --extra tools-search"
+        echo "  or: python -m venv .venv && source .venv/bin/activate && pip install -e '.[server,tools-search]'"
+        echo "Then re-run ./start.sh (Windows: start.bat)."
+    fi
+    exit 1
+fi
+
 echo "Choose an option to start:"
 echo "1) Interactive Chat (CLI)"
 echo "2) Voice Conversation Mode (Speak with Nova)"

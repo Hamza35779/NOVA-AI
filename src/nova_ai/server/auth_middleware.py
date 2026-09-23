@@ -80,8 +80,14 @@ def check_bind_safety(host: str, *, api_key: str) -> None:
 
     if not is_loop and not api_key:
         logger.error(
-            "Binding to %s requires NOVA_AI_API_KEY to be set. "
-            "Run: nova auth create-key",
+            "Binding to %s requires an API key (anyone on your network could "
+            "reach a keyless server). Two fixes:\n"
+            "  1. Local-only (recommended to start): set host = \"127.0.0.1\" "
+            "in ~/.nova_ai/config.toml under [server], or run "
+            "`nova serve --host 127.0.0.1`.\n"
+            "  2. LAN access: keep host = \"0.0.0.0\" and run "
+            "`nova auth create-key` (also set NOVA_AI_API_KEY, or make sure "
+            "the key is under [server.auth] in ~/.nova_ai/config.toml).",
             host,
         )
         sys.exit(1)

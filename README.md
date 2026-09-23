@@ -65,14 +65,21 @@ git clone https://github.com/Hamza35779/NOVA-AI.git
 cd NOVA-AI
 
 # With uv (recommended):
-uv sync --extra server --extra tools-search --extra inference-gguf
+uv sync --extra server --extra tools-search
 
 # Or with plain pip (virtualenv recommended):
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[server,tools-search,inference-gguf]"
+pip install -e ".[server,tools-search]"
 ```
 
-Extra groups (install only what you need): `dev` (pytest/ruff/mypy/maturin), `desktop` (server + speech), `server` (FastAPI backend), `inference-gguf` (in-process GGUF, no Ollama needed), `inference-vllm`, `inference-cloud`, `inference-litellm`, `memory-faiss` / `memory-pdf` / `memory-bm25`, `voice`, `screen`, `channel-telegram`, and more — see `[project.optional-dependencies]` in `pyproject.toml`.
+> **Windows note on `inference-gguf`:** the in-process GGUF engine extra
+> (`--extra inference-gguf`) compiles `llama-cpp-python` from source and needs
+> Visual Studio Build Tools (C++ workload) + CMake. Without them `uv sync` /
+> `pip install` fails inside its CMake step. Skip that extra (use Ollama or
+> the cloud engines), or install the build tools first — prebuilt Windows
+> wheels are not published.
+
+Extra groups (install only what you need): `dev` (pytest/ruff/mypy/maturin), `desktop` (server + speech), `server` (FastAPI backend), `inference-gguf` (in-process GGUF, no Ollama needed — see the Windows note above), `inference-vllm`, `inference-cloud`, `inference-litellm`, `memory-faiss` / `memory-pdf` / `memory-bm25`, `voice`, `screen`, `channel-telegram`, and more — see `[project.optional-dependencies]` in `pyproject.toml`.
 
 ### 2. Build the native Rust extension (recommended)
 
@@ -113,6 +120,28 @@ Then open **http://localhost:8000**. The in-app **GGUF Hub** can download a star
 | **vLLM** | `uv sync --extra inference-vllm`, run a vLLM OpenAI-compatible server, point NOVA AI at it | GPU servers, batch throughput |
 
 Running `nova init` writes `~/.nova_ai/config.toml` with hardware-detected defaults (or start from a template in `configs/nova_ai/config.toml`).
+
+## Uninstalling
+
+Source installs live entirely inside the cloned folder plus `~/.nova_ai/`:
+
+```bash
+# Remove the checkout (deactivates the CLI / uv environments)
+cd .. && rm -rf NOVA-AI
+
+# Remove user data: config, databases, downloaded GGUF models
+rm -rf ~/.nova_ai        # Windows (PowerShell): Remove-Item -Recurse ~\.nova_ai
+
+# Optional extras you may have installed along the way:
+#   uv:        rm -rf ~/.local/share/uv ~/.cargo/bin/uv
+#   Ollama:    use the platform uninstaller, or `brew uninstall ollama`
+#   Rust:      rustup self uninstall
+```
+
+The curl/one-line installer variant ships an uninstaller: `nova-uninstall`
+(sees `scripts/install/nova-uninstall.sh`). There is no `pip uninstall nova-ai`
+step needed for source installs; for the PyPI package use
+`pip uninstall nova-ai-pro`.
 
 ## Why NOVA AI?
 
@@ -298,6 +327,7 @@ NOVA AI features a comprehensive CLI suite (`nova` or `python -m nova_ai.cli` or
 | Command | Description | Example |
 |---|---|---|
 | `nova doctor` | Run full hardware, GPU, and engine health diagnostics | `nova doctor` |
+| `nova logs` | Show server/CLI log files (`-f` to follow) | `nova logs -f server.log` |
 | `nova dev-watch -c "<cmd>"` | Run a build/test command and self-diagnose failures with fix suggestions | `nova dev-watch -c "pytest -q" --watch` |
 | `nova init` | Auto-detect GPU hardware and create `~/.nova_ai/config.toml` | `nova init --preset deep-research` |
 | `nova config show` | Print loaded configuration hierarchy and settings | `nova config show` |

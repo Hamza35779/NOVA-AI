@@ -10,6 +10,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+**First-run onboarding fixes (fresh-clone audit).** Walking a new user's
+first hour — fresh clone, README-only — surfaced several blockers, all
+fixed and covered by tests (`tests/server/test_onboarding_fixes.py`):
+
+- `nova serve` on a fresh source clone now serves a friendly "web UI
+  hasn't been built" page (with the exact `npm run build` command) at
+  every URL instead of a bare `{"detail":"Not Found"}` JSON, and the
+  startup banner says the same. The API itself is unaffected and the
+  real UI appears without a server restart once built.
+- `nova doctor` gained a **Web UI** check that warns when the browser
+  app hasn't been built in a source checkout.
+- `nova init --force` / preset installs back up the previous
+  `~/.nova_ai/config.toml` to `config.toml.bak-<timestamp>` (last 5
+  kept) before overwriting.
+- The bind-safety error for non-loopback binds now offers the
+  loopback-first alternative (`--host 127.0.0.1`) instead of only the
+  API-key route.
+- Model-fallback notice on `nova serve` now includes the matching
+  `ollama pull <model>` command.
+- New `nova logs [-n N] [-f] [server.log|cli.log]` command surfaces the
+  daemon/CLI log files users previously had to know by path.
+- README's recommended source install no longer includes
+  `inference-gguf` (its `llama-cpp-python` needs a C++ toolchain+CMake
+  on Windows; documented with an explicit note instead), plus a new
+  Uninstalling section.
+- `start.sh` / `start.bat` now verify the `nova_ai` package is importable
+  before showing the menu, with the exact fix when it isn't.
+- `scripts/quickstart.sh` pulls the same model the default config
+  expects (`qwen3.5:4b`), treats the Rust extension as optional, and
+  polls backend/frontend startup instead of fixed sleeps.
+
 **Dev-watch run persistence.** `/api/devwatch/runs` previously kept an
 in-memory ring of 50 runs, so the Dashboard's Build Diagnostics panel
 reset on every server restart. Runs are now mirrored to

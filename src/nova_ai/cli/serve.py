@@ -270,7 +270,9 @@ def serve(
     if configured_model and model_name and model_name != configured_model:
         console.print(
             "[yellow]Configured model "
-            f"{configured_model!r} is not reachable; using {model_name!r}.[/yellow]"
+            f"{configured_model!r} is not reachable; using {model_name!r}.[/yellow]\n"
+            f"  To install it: [cyan]ollama pull {configured_model}[/cyan] "
+            "(or pick an installed model via Model Hub / Settings)."
         )
     if not model_name:
         console.print(
@@ -701,6 +703,24 @@ def serve(
         f"  Agent:  [cyan]{agent_key or 'none'}[/cyan]\n"
         f"  URL:    [cyan]http://{bind_host}:{bind_port}[/cyan]"
     )
+
+    # First-run help: if the built web UI isn't present (fresh source clone,
+    # before `npm run build`), say so up front. The API still works and GET /
+    # serves a page pointing at the same command, but the console is where a
+    # terminal user is actually looking at startup.
+    import pathlib as _pathlib
+
+    _static_index = (
+        _pathlib.Path(__file__).resolve().parents[1] / "server" / "static" / "index.html"
+    )
+    if not _static_index.is_file():
+        console.print(
+            "[yellow]Web UI not built —[/yellow] http://"
+            f"{bind_host}:{bind_port}/ will show setup instructions instead of "
+            "the app. To get the UI: [cyan]cd frontend && npm install && "
+            "npm run build[/cyan], then restart the server. The API works "
+            "without it."
+        )
 
     # Warn about wildcard CORS on non-loopback
     import ipaddress as _ipa

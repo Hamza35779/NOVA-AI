@@ -192,6 +192,7 @@ _COMMAND_MAP: dict[str, tuple[str, str]] = {
     "research": ("deep_research_setup_cmd", "deep_research_setup"),
     "auth": ("auth_cmd", "auth"),
     "tunnel": ("tunnel_cmd", "tunnel"),
+    "logs": ("logs_cmd", "logs"),
 }
 
 
@@ -277,6 +278,7 @@ def cli(ctx: click.Context, verbose: bool, quiet: bool) -> None:
 # importing any command module. Extracted from each command's help docstring
 # (first line); keep in sync when adding a command to _COMMAND_MAP.
 _SHORT_HELP: dict[str, str] = {
+    "logs": "Show NOVA AI log files (server daemon + CLI); -f to follow",
     "init": "Detect hardware and generate ~/.nova_ai/config.toml",
     "ask": "Ask Nova a question",
     "chat": "Start an interactive multi-turn chat session",

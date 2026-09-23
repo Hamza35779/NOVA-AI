@@ -68,6 +68,11 @@ echo =======================================================
 echo  Installation Complete!
 echo =======================================================
 echo.
+echo NOTE: The browser web UI is not built by this installer (it needs Node.js).
+echo The API works without it; to get the browser app run:
+echo   cd frontend ^&^& npm install ^&^& npm run build
+echo   then start the server again.
+echo.
 echo Quick start:
 echo   1. Start the backend:  python -m nova_ai.cli serve
 echo   2. Launch opencode:    python -m nova_ai.cli opencode launch

@@ -134,9 +134,10 @@ Choose the method that best fits your environment:
    npm run build
    cd ..
    ```
+   If you skip this step the API still works, but http://localhost:8000 will show a "web UI hasn't been built" page with these same instructions.
 5. Start the development server:
    ```bash
-   nova serve --reload
+   nova serve
    ```
 6. Open **http://localhost:8000** and run `nova doctor` to verify your installation.
 
@@ -384,6 +385,29 @@ nova serve --port 8080
    ```bash
    pip install llama-cpp-python --upgrade --force-reinstall --no-cache-dir --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
    ```
+
+### Q: The web page at http://localhost:8000 shows "The web UI hasn't been built yet"
+**Solution:** From a source checkout the browser UI is generated, not committed. Build it once, then restart the server:
+```bash
+cd frontend && npm install && npm run build
+cd ..
+nova serve
+```
+`nova doctor` warns when it's missing.
+
+### Q: `nova serve` says "Binding to 0.0.0.0 requires an API key"
+**Solution:** Either run local-only (recommended to start):
+```bash
+nova serve --host 127.0.0.1
+# or set host = "127.0.0.1" under [server] in ~/.nova_ai/config.toml
+```
+or, if you really want LAN access, keep `host = "0.0.0.0"` and run `nova auth create-key`.
+
+### Q: `nova init` overwrote my config — can I get it back?
+**Solution:** Yes. Since this version, `nova init` saves the previous file as `~/.nova_ai/config.toml.bak-<timestamp>` (keeps the last 5). Copy the newest one back.
+
+### Q: Where are the logs?
+**Solution:** Run `nova logs` (background-daemon `server.log` and verbose `cli.log`), or `nova logs -f` to follow. Files live in `~/.nova_ai/`.
 
 ### Q: Where are configuration files and models stored?
 * **Configuration:** `~/.nova_ai/config.toml`

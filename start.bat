@@ -20,6 +20,25 @@ if %ERRORLEVEL% NEQ 0 (
 :: Set PYTHONPATH to src
 set "PYTHONPATH=%~dp0src;%PYTHONPATH%"
 
+:: The menu runs nova_ai from the system Python. If the package isn't
+:: installed there, every option would crash with ModuleNotFoundError —
+:: fail up front with the fix instead.
+python -c "import nova_ai" >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] The 'nova_ai' package is not installed for the 'python' on PATH.
+    if exist "%~dp0.venv\Scripts\python.exe" (
+        echo A project venv exists at %~dp0.venv — activate it first, then re-run this script:
+        echo   %~dp0.venv\Scripts\activate.bat
+    ) else (
+        echo Install dependencies first from the repo root:
+        echo   uv sync --extra server --extra tools-search
+        echo   or: python -m venv .venv ^&^& .venv\Scripts\activate ^&^& pip install -e ".[server,tools-search]"
+    )
+    echo Then re-run start.bat.
+    pause
+    exit /b 1
+)
+
 :: Display Menu
 echo Choose an option to start:
 echo [1] Interactive Chat (CLI)
