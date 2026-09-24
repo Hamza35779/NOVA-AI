@@ -1,7 +1,7 @@
 # macOS Install
 
 ```bash
-curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 ```
 
 Works on Intel and Apple Silicon. The installer auto-detects your CPU/GPU.
@@ -37,7 +37,7 @@ ollama --version
 ### 2. Install NOVA AI
 
 ```bash
-curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 ```
 
 ### 3. Pull a model that fits your RAM

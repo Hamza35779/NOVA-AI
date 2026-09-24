@@ -2,7 +2,7 @@
 # install.sh — NOVA AI curl-pipe-bash installer.
 #
 # Usage:
-#   curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 #
 # Flags (only used in tests / power users):
 #   --no-bg-orchestrator   Skip the detached background orchestrator
@@ -49,7 +49,7 @@ NOVA AI runs on Windows via WSL2. Two paths:
 
      Open the Ubuntu shell that gets installed, then re-run:
 
-       curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+       curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 
   2. Desktop app — download the .exe from the Releases page:
      https://github.com/Hamza35779/NOVA-AI/releases
@@ -148,7 +148,7 @@ Two ways forward:
        Arch:          sudo pacman -S $tool
 
   2. Pre-authenticate sudo before piping (caches credentials for 5 min):
-       sudo -v && curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+       sudo -v && curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 EOF
         exit 1
     fi

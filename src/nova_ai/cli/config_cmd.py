@@ -20,6 +20,63 @@ def config() -> None:
     """Inspect configuration — show loaded settings, hardware, and config files."""
 
 
+@config.command("reset")
+@click.option(
+    "--yes", "assume_yes", is_flag=True, help="Skip the confirmation prompt."
+)
+@click.option("--path", default=None, help="Config file to reset (default: resolved config).")
+def reset(assume_yes: bool, path: str | None) -> None:
+    """Back up and remove the config file; the next command regenerates defaults.
+
+    Use this when a broken or hand-edited config stops NOVA AI from starting.
+    The existing file is saved as config.toml.bak-<timestamp> first, so this
+    is recoverable — it is not data loss.
+    """
+    import sys
+    from datetime import datetime
+
+    from nova_ai.core.config import DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_PATH
+
+    console = Console(stderr=True)
+    config_path = Path(path) if path else Path(os.environ.get("NOVA_AI_CONFIG", DEFAULT_CONFIG_PATH))
+    if not config_path.exists():
+        console.print(f"[green]No config file at {config_path} — nothing to reset.[/green]")
+        return
+
+    if not assume_yes:
+        console.print(f"[yellow]This backs up and removes:[/yellow] {config_path}")
+        console.print("[dim]A timestamped backup is kept next to it; NOVA AI will recreate defaults on next run.[/dim]")
+        if not click.confirm("Continue?", default=False):
+            console.print("[dim]Aborted — config left untouched.[/dim]")
+            return
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = config_path.with_name(f"config.toml.bak-{stamp}")
+    try:
+        backup.write_text(config_path.read_text(encoding="utf-8"), encoding="utf-8")
+    except OSError as exc:
+        console.print(f"[red bold]Could not write backup {backup}: {exc}[/red bold]")
+        sys.exit(1)
+    try:
+        config_path.unlink()
+    except OSError as exc:
+        console.print(f"[red bold]Could not remove {config_path}: {exc}[/red bold]")
+        sys.exit(1)
+
+    # Prune old backups (keep 5, matching nova init's backup retention).
+    try:
+        backups = sorted(DEFAULT_CONFIG_DIR.glob("config.toml.bak-*"))
+        for old in backups[:-5]:
+            old.unlink()
+    except OSError:
+        pass
+
+    console.print("[green]Config reset.[/green]")
+    console.print(f"  Backup:      {backup}")
+    console.print("  Next run:    defaults are regenerated automatically (or run `nova init`).")
+    console.print("  Restore:     copy the backup back to " + str(config_path))
+
+
 def _get_config_path(path: str | None) -> Path:
     """Determine the config path from argument or environment."""
     from nova_ai.core.config import DEFAULT_CONFIG_PATH

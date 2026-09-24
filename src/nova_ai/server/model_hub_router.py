@@ -47,6 +47,47 @@ async def get_model_catalog() -> Dict[str, Any]:
 
     curated = [
         {
+            # Default-model family: these mirror the tiers recommend_model()
+            # writes into fresh configs (≤8/16/32 GB RAM). Keeping them here
+            # means "the model the config expects" is always one click away —
+            # previously the default existed nowhere in the UI and users saw
+            # "configured model not reachable" until they hand-pulled it.
+            "id": "qwen3.5:2b",
+            "name": "Qwen 3.5 2B (default ≤ 8 GB)",
+            "category": "fast",
+            "category_label": "⚡ Ultra Fast",
+            "params": "2B",
+            "vram": "~ 3 GB",
+            "size": "2.6 GB",
+            "description": "NOVA AI's default pick on machines with 8 GB RAM or less. Fast MoE model with strong quality for its size.",
+            "recommended": True,
+            "installed": "qwen3.5:2b" in installed_models,
+        },
+        {
+            "id": "qwen3.5:4b",
+            "name": "Qwen 3.5 4B (default ≤ 16 GB)",
+            "category": "general",
+            "category_label": "🌟 General Purpose",
+            "params": "4B",
+            "vram": "~ 4 GB",
+            "size": "3.2 GB",
+            "description": "NOVA AI's default model on 16 GB machines — best quality per GB. Recommended first install.",
+            "recommended": True,
+            "installed": "qwen3.5:4b" in installed_models,
+        },
+        {
+            "id": "qwen3.5:9b",
+            "name": "Qwen 3.5 9B (default ≤ 32 GB)",
+            "category": "reasoning",
+            "category_label": "🧠 Deep Reasoning",
+            "params": "9B",
+            "vram": "~ 7 GB",
+            "size": "6.3 GB",
+            "description": "NOVA AI's default pick on machines with 32 GB RAM. Highest-quality MoE in the default tier ladder.",
+            "recommended": True,
+            "installed": "qwen3.5:9b" in installed_models,
+        },
+        {
             "id": "qwen2.5:0.5b",
             "name": "Qwen 2.5 0.5B",
             "category": "fast",

@@ -27,7 +27,7 @@ avoid a Linux VM; WSL2 remains the smoother experience for most users.
 In any PowerShell:
 
 ```powershell
-irm https://hamza35779.github.io/NOVA-AI/install.ps1 | iex
+irm https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1 | iex
 ```
 
 The installer will:

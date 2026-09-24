@@ -220,7 +220,7 @@ Agent with code execution, file I/O, and shell access.
 | Platform | Quick Start |
 |----------|------------|
 | **Windows** | Double-click `start.bat` or run installer `.exe` |
-| **Linux/macOS** | `curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh \| bash` |
+| **Linux/macOS** | `curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh \| bash` |
 | **Docker** | `docker compose -f deploy/docker/docker-compose.yml up` |
 | **Desktop** | Download `.exe` / `.dmg` / `.AppImage` |
 | **PyPI** | `pip install nova-ai-pro` |
@@ -308,10 +308,10 @@ Add new engines, agents, tools, channels, or memory backends by implementing the
 
 ```bash
 # Install
-curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 
 # Or for Windows
-irm https://hamza35779.github.io/NOVA-AI/install.ps1 | iex
+irm https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1 | iex
 ```
 
 **GitHub:** [Hamza35779/NOVA-AI](https://github.com/Hamza35779/NOVA-AI)

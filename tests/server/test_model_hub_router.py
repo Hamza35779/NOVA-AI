@@ -21,6 +21,20 @@ async def test_get_model_catalog():
         assert len(data["catalog"]) > 0
 
 @pytest.mark.asyncio
+async def test_catalog_contains_default_model_family():
+    """The models recommend_model() writes into fresh configs must be
+    installable from the Hub — otherwise users see 'configured model not
+    reachable' with no UI path to fix it (onboarding audit finding)."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/models/hub/catalog")
+        data = response.json()
+        ids = {m["id"] for m in data["catalog"]}
+        assert "qwen3.5:2b" in ids
+        assert "qwen3.5:4b" in ids
+        assert "qwen3.5:9b" in ids
+
+
+@pytest.mark.asyncio
 async def test_install_model():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/api/models/hub/install", json={"model_id": "mock_model:test"})

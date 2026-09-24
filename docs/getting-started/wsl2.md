@@ -18,7 +18,7 @@ Then open the Ubuntu (or Debian) shell that gets installed.
 ## Install NOVA AI
 
 ```bash
-curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 ```
 
 About 3 minutes. Type `nova` to start.

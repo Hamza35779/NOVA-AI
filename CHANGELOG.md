@@ -8,6 +8,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (launch readiness)
+
+- **Installer one-liners were dead:** the README's `irm …/install.ps1 | iex`
+  and `curl …/install.sh | bash` URLs pointed at GitHub Pages copies that
+  return 404. All 28 references across README, docs, and scripts now use the
+  canonical raw.githubusercontent.com URLs (verified HTTP 200), and
+  `scripts/check-versions.sh` fails CI if any dead Pages URL returns or the
+  raw URLs become unreachable.
+- **Default models missing from Model Hub:** the models `recommend_model()`
+  writes into fresh configs (`qwen3.5:2b/4b/9b`) did not exist in the Hub
+  catalog, so the model the config expected could not be installed from the
+  UI. Added as pinned entries with real registry sizes; regression test
+  guards the mapping between config defaults and catalog ids.
+- New **`nova config reset`** command: confirmation-gated, backs up the
+  config to `config.toml.bak-<timestamp>` before removing it, prints restore
+  instructions (broken-config recovery previously required manual surgery).
+- Tauri desktop release profile verified: `cargo build --release` completes
+  and links `nova_ai-desktop.exe` (9m43s).
+
 ### Added
 
 **First-run onboarding fixes (fresh-clone audit).** Walking a new user's

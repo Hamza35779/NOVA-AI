@@ -474,9 +474,9 @@ add_text(slide, 1, 3.2, 11.3, 1, "Personal AI, On Personal Devices.",
 
 add_code_block(slide, 2.5, 4.2, 8.3, 1.5,
     "# Install (Linux/macOS)\n"
-    "curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash\n\n"
+    "curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash\n\n"
     "# Install (Windows)\n"
-    "irm https://hamza35779.github.io/NOVA-AI/install.ps1 | iex", font_size=14)
+    "irm https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1 | iex", font_size=14)
 
 add_text(slide, 1, 6.2, 11.3, 0.6,
          "GitHub: Hamza35779/NOVA-AI  |  Docs: hamza35779.github.io/NOVA-AI  |  License: Apache 2.0",

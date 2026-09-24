@@ -22,10 +22,10 @@
          deploy/windows/nova-service.ps1).
 
     Usage (one-liner):
-      irm https://hamza35779.github.io/NOVA-AI/install.ps1 | iex
+      irm https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1 | iex
 
     Usage (file invocation, supports flags):
-      irm https://hamza35779.github.io/NOVA-AI/install.ps1 -OutFile install.ps1
+      irm https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1 -OutFile install.ps1
       .\install.ps1 -SkipService
 
     Flags (when running the file directly):

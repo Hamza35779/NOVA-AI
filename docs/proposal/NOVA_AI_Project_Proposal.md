@@ -324,8 +324,8 @@ AI-powered bot for messaging platforms with multi-turn conversation support.
 
 | Platform | Method |
 |----------|--------|
-| Windows | `irm https://hamza35779.github.io/NOVA-AI/install.ps1 \| iex` or `.exe` installer |
-| Linux/macOS | `curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh \| bash` |
+| Windows | `irm https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1 \| iex` or `.exe` installer |
+| Linux/macOS | `curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh \| bash` |
 | Docker | `docker compose -f deploy/docker/docker-compose.yml up` |
 | Desktop | Download `.exe` / `.dmg` / `.AppImage` from releases |
 | PyPI | `pip install nova-ai-pro` |

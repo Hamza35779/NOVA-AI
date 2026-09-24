@@ -35,7 +35,7 @@ The root is resolved in priority order:
 
 ```bash
 # Relocate the whole install + runtime tree at install time:
-NOVA_AI_HOME=~/apps/nova_ai curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+NOVA_AI_HOME=~/apps/nova_ai curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 
 # Or for a single run / your shell profile:
 export NOVA_AI_HOME=~/apps/nova_ai

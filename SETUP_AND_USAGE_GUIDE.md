@@ -406,6 +406,14 @@ or, if you really want LAN access, keep `host = "0.0.0.0"` and run `nova auth cr
 ### Q: `nova init` overwrote my config — can I get it back?
 **Solution:** Yes. Since this version, `nova init` saves the previous file as `~/.nova_ai/config.toml.bak-<timestamp>` (keeps the last 5). Copy the newest one back.
 
+### Q: My config is broken and nothing starts — how do I start fresh?
+**Solution:**
+```bash
+nova config reset      # prompts; backs up the file, removes it
+nova init              # regenerate (optional — defaults apply automatically)
+```
+Or restore a specific backup manually from `~/.nova_ai/`.
+
 ### Q: Where are the logs?
 **Solution:** Run `nova logs` (background-daemon `server.log` and verbose `cli.log`), or `nova logs -f` to follow. Files live in `~/.nova_ai/`.
 

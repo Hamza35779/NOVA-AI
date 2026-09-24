@@ -2,8 +2,8 @@
 
 Serves the installers at::
 
-    https://hamza35779.github.io/NOVA-AI/install.sh   (Linux / macOS / WSL2)
-    https://hamza35779.github.io/NOVA-AI/install.ps1  (native Windows)
+    https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh   (Linux / macOS / WSL2)
+    https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1  (native Windows)
 
 so users have an HTTPS-valid, project-controlled install URL that does not
 depend on the externally-hosted ``nova_ai.ai`` domain — whose TLS config

@@ -19,7 +19,7 @@ There are now **two Windows install paths**:
 In an elevated-or-regular PowerShell:
 
 ```powershell
-irm https://hamza35779.github.io/NOVA-AI/install.ps1 | iex
+irm https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1 | iex
 ```
 
 What it does:
@@ -49,7 +49,7 @@ absent:
 
 ```powershell
 $env:NOVA_AI_SKIP_SERVICE = '1'
-irm https://hamza35779.github.io/NOVA-AI/install.ps1 | iex
+irm https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1 | iex
 ```
 
 The available env vars: `NOVA_AI_SKIP_SERVICE`, `NOVA_AI_SERVICE`,
@@ -121,7 +121,7 @@ uv sync --extra desktop
 Or re-run the installer with `-Force`:
 
 ```powershell
-irm https://hamza35779.github.io/NOVA-AI/install.ps1 | iex
+irm https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1 | iex
 # (then re-run with the file directly, passing -Force)
 ```
 

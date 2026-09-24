@@ -1,7 +1,7 @@
 # Linux Install
 
 ```bash
-curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 ```
 
 Tested on: Ubuntu 22.04 / 24.04, Fedora 40, Debian 12, Arch.
@@ -46,7 +46,7 @@ nvidia-smi   # should print your GPU and driver version
 ### 2. Install NOVA AI
 
 ```bash
-curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 ```
 
 The installer detects the NVIDIA card. On datacenter GPUs it proposes **vLLM** as the recommended engine; on consumer cards it proposes Ollama but vLLM works too if you prefer the throughput.
@@ -100,7 +100,7 @@ sudo apt install -y git curl build-essential
 ### 2. Install NOVA AI
 
 ```bash
-curl -fsSL https://hamza35779.github.io/NOVA-AI/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh | bash
 ```
 
 The installer detects CPU-only hardware and recommends **llama.cpp** (with a lighter Ollama fallback for serving small models).
