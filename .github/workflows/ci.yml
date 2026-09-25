@@ -33,6 +33,13 @@ jobs:
       - name: CLI docs are fresh
         run: uv run python scripts/gen-cli-docs.py --check
 
+      # Doc/CI version drift gate: frontend/package.json ↔ tauri.conf.json ↔
+      # Inno Setup ↔ docs installer names, dead installer URLs, and every
+      # installer filename in current-claim docs existing on the v<PKG>
+      # release (scripts/check-doc-assets.py; passes pre-tag by design).
+      - name: Docs/installer versions are fresh
+        run: bash scripts/check-versions.sh
+
   test:
     runs-on: ubuntu-latest
     steps:

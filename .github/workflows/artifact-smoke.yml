@@ -39,17 +39,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # Every branch assigns TAG — with `set -u` a branch that skips the
+          # assignment explodes on the shared echo below (caught by the
+          # first workflow_dispatch run).
           if [ -n "$INPUT_TAG" ]; then
-            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+            TAG="$INPUT_TAG"
           elif [ -n "${{ github.event.release.tag_name }}" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ github.event.release.tag_name }}"
           else
             # Latest stable vX.Y.Z release (skips prereleases and desktop-* tags).
             TAG=$(curl -sf "https://api.github.com/repos/${{ github.repository }}/releases?per_page=30" \
               | python -c "import json,sys,re; rs=json.load(sys.stdin); print(next(r['tag_name'] for r in rs if not r['prerelease'] and re.match(r'^v[0-9]+\\.[0-9]+\\.[0-9]+$', r['tag_name'])))")
             [ -n "$TAG" ] || { echo "::error::no stable v* release found"; exit 1; }
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "verifying tag: $TAG"
 
       - name: Verify release assets

@@ -83,10 +83,54 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: dist/${{ matrix.artifact_name }}
           if-no-files-found: error
+  # Traditional Windows setup EXE, rebuilt from the ONEDIR payload the
+  # build-and-release job already produced. The zip artifact IS the payload:
+  # the Windows step zips dist/nova-ai-windows-x64/* at the archive root, so
+  # expanding it back into dist/nova-ai-windows-x64/ recreates exactly the
+  # directory deploy/windows/nova-ai-setup.iss packages. This restores the
+  # NOVA-AI-Setup-<version>.exe asset that was last built by hand for v1.2.4.
+  build-windows-setup:
+    name: Windows Setup EXE (Inno)
+    runs-on: windows-latest
+    needs: build-and-release
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download ONEDIR payload zip
+        uses: actions/download-artifact@v4
+        with:
+          name: nova-ai-windows-x64.zip
+          path: dist-zip
+
+      - name: Extract payload
+        shell: pwsh
+        run: |
+          Expand-Archive -Path dist-zip/nova-ai-windows-x64.zip -DestinationPath dist/nova-ai-windows-x64
+          if (-not (Test-Path dist/nova-ai-windows-x64/nova-ai-windows-x64.exe)) {
+            throw "payload extraction did not produce nova-ai-windows-x64.exe"
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build setup EXE
+        shell: pwsh
+        # ISCC path is the chocolatey default for Inno Setup 6.
+        run: '&"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" deploy\windows\nova-ai-setup.iss'
+
+      - name: Upload setup EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nova-ai-windows-setup-exe
+          path: dist/NOVA-AI-Setup-*.exe
+          if-no-files-found: error
+
   publish-release:
     if: startsWith(github.ref, 'refs/tags/')
     name: Create GitHub Release
-    needs: build-and-release
+    needs: [build-and-release, build-windows-setup]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -96,6 +140,13 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
+
+      - name: Include Windows setup EXE
+        shell: bash
+        run: |
+          mv release-assets/nova-ai-windows-setup-exe/NOVA-AI-Setup-*.exe release-assets/
+          rmdir release-assets/nova-ai-windows-setup-exe
+          ls -lh release-assets/
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:

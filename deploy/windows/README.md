@@ -11,9 +11,11 @@ There are now **two Windows install paths**:
   This is the Tauri desktop app, built by `desktop.yml` on every stable tag.
 - **Portable backend (no Python needed)** — download `nova-ai-windows-x64.zip`
   from the same release, extract, and run `nova-ai-windows-x64.exe` inside.
-  This is the self-contained PyInstaller backend (`nova-ai-windows-x64.spec`); the
-  Inno Setup project in `nova-ai-setup.iss` can wrap it into a traditional
-  `NOVA-AI-Setup-<version>.exe`, but that step is not part of CI today.
+  This is the self-contained PyInstaller backend (`nova-ai-windows-x64.spec`).
+- **Classic setup EXE** — `NOVA-AI-Setup-<version>.exe` wraps the same PyInstaller
+  payload with the Inno Setup project in `nova-ai-setup.iss`; release.yml builds it
+  on every stable tag since the 1.2.7-era CI reinstatement (it was last built by
+  hand for v1.2.4 before that).
 - **Source install (this document)** — the `install.ps1` one-liner below clones the
   repo and sets up a uv-managed Python environment. Use it when you want the CLI
   (`nova ...`), source access, or the auto-start scheduled task.

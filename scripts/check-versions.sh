@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # CI gate for docs version drift (PR-2/PR-3).
 set -euo pipefail
+# Ripgrep is expected in CI images but not every dev machine; the usages
+# below map onto grep -E (-r so directory args like `docs` recurse like rg).
+if ! command -v rg >/dev/null 2>&1; then
+  rg() { grep -r -E "$@"; }
+fi
 PKG=$(node -p "require('./frontend/package.json').version")
 echo "frontend version: $PKG"
 rg -n "NOVA-AI-Setup-[0-9.]+" README.md SETUP_AND_USAGE_GUIDE.md docs || true
@@ -40,10 +45,11 @@ if [ "$TAURI_VERSION" != "$PKG" ]; then
   echo "version drift: frontend/package.json=$PKG but frontend/src-tauri/tauri.conf.json defines $TAURI_VERSION"
   exit 1
 fi
-for doc in README.md SETUP_AND_USAGE_GUIDE.md; do
-  if ! grep -q "NOVA.AI_$PKG" "$doc"; then
-    echo "$doc does not reference the current desktop installer (NOVA.AI_${PKG}_x64-setup.exe) — bump the docs together with frontend/package.json"
-    exit 1
-  fi
-done
+# Installer-filename drift needs more than a string grep: docs must only
+# reference assets a workflow actually publishes (version match, existence on
+# the v$PKG release, no phantom NOVA-AI-Setup-<version>.exe in current-claim
+# docs). This subsumes any plain doc-name grep.
+PY="python3"
+command -v "$PY" >/dev/null 2>&1 || PY="python"
+"$PY" scripts/check-doc-assets.py
 echo "release versions: OK ($PKG across package.json, tauri.conf.json, setup.iss, docs)"
