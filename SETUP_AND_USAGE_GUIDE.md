@@ -61,7 +61,7 @@ Choose the method that best fits your environment:
 
 ### Option 1 — Setup Installer (recommended):
 
-1. Download `NOVA-AI-Setup-1.2.5.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
+1. Download `NOVA-AI-Setup-1.2.6.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
 2. Run it — installs to `%LOCALAPPDATA%\Programs\NOVA AI` (per-user, no admin required), with optional Start Menu / Desktop shortcuts and a "Add to PATH" checkbox.
 3. Launch **NOVA AI** from the Start Menu (or run `nova-ai-windows-x64 serve` from any terminal).
 

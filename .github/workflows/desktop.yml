@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'desktop-v*'
+      # Plain stable release tags also build desktop bundles: release-info
+      # already special-cases vX.Y.Z tags ("publish installers under the SAME
+      # release as the CLI/PyPI package"), but without this trigger the branch
+      # was unreachable — a `git push origin vX.Y.Z` built only the
+      # release.yml PyInstaller artifacts and no .exe/.dmg/.AppImage ever
+      # landed on the stable release.
+      - 'v[0-9]+.[0-9]+.[0-9]+'
   pull_request:
     branches: [main]
     paths:

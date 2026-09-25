@@ -1,0 +1,89 @@
+name: Docker build & smoke
+
+# The Docker deploy path cannot be verified on every dev machine (Docker is
+# not installed everywhere), so CI is the live check: build the same image
+# `docker compose up` builds, then boot the container and hit /health — the
+# exact first command a user following deploy/README.md would run.
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/docker/**'
+      - 'src/nova_ai/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'frontend/vite.config.ts'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.dockerignore'
+      - '.github/workflows/docker.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/docker/**'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & smoke-test image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (compose definition)
+        # Build through the same compose file users run, so a drifted
+        # context/dockerfile/env contract fails here, not for a user.
+        run: >
+          docker compose -f deploy/docker/docker-compose.yml
+          --env-file deploy/docker/.env.example build nova
+
+      - name: Smoke-test `nova serve` inside the container
+        # compose interpolation requires a real value for the API key at
+        # runtime, but the check only proves the key file parses — the env
+        # var itself is still unset, which is exactly the bind-safety state
+        # we want to verify: the server must boot with auth DISABLED
+        # (loopback-style empty NOVA_AI_API_KEY) and /health must answer.
+        env:
+          NOVA_AI_API_KEY: ci-smoke-not-a-real-key
+        run: |
+          set -euo pipefail
+          docker compose -f deploy/docker/docker-compose.yml \
+            --env-file deploy/docker/.env.example up -d nova
+          # Wait for uvicorn to accept connections (image has no curl).
+          for i in $(seq 1 30); do
+            code=$(docker compose -f deploy/docker/docker-compose.yml \
+              exec -T nova python -c \
+              "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status)" \
+              2>/dev/null || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          [ "$code" = "200" ] || {
+            echo "::error::container /health never returned 200"
+            docker compose -f deploy/docker/docker-compose.yml logs nova
+            exit 1
+          }
+          echo "container /health: 200"
+
+      - name: Smoke-test /v1/models
+        run: |
+          set -euo pipefail
+          body=$(docker compose -f deploy/docker/docker-compose.yml exec -T \
+            nova python -c \
+            "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8000/v1/models',timeout=5).read().decode())")
+          echo "$body" | grep -q '"object":"list"'
+          echo "container /v1/models: OK"
+
+      - name: Teardown
+        if: always()
+        run: >
+          docker compose -f deploy/docker/docker-compose.yml down -v --remove-orphans

@@ -722,3 +722,31 @@ class TestCloudEngineDeepSeek:
             engine.generate(
                 [Message(role=Role.USER, content="Hi")], model="deepseek-v4-pro"
             )
+
+
+@pytest.mark.cloud
+class TestLiveOpenRouter:
+    """Live OpenRouter roundtrip (opt-in lane: ``pytest -m cloud``).
+
+    Excluded from the default and CI lanes by the ``not cloud`` addopts
+    filter; runs only when explicitly requested with real API spend
+    authorized. Kept to ONE minimal request (~$0.00001 on gpt-4o-mini).
+    """
+
+    def test_live_generate_roundtrip(self) -> None:
+        import os
+
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            pytest.skip("OPENROUTER_API_KEY not set — skipping live cloud check")
+        engine = CloudEngine()
+        assert engine.health(), "CloudEngine should be healthy with an OpenRouter key"
+        assert engine.can_serve("openrouter/openai/gpt-4o-mini")
+        result = engine.generate(
+            [Message(role=Role.USER, content="Reply with exactly: LAUNCH-CHECK-OK")],
+            model="openrouter/openai/gpt-4o-mini",
+            temperature=0.0,
+            max_tokens=20,
+        )
+        assert "LAUNCH-CHECK-OK" in result["content"]
+        assert result["usage"]["total_tokens"] > 0
+        assert result["cost_usd"] > 0

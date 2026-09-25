@@ -10,6 +10,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed (launch readiness)
 
+- **Docker deploy path is now CI-verified:** a new `docker.yml` workflow builds
+  the exact image `docker compose up` builds and smoke-tests `nova serve`
+  inside it (`/health` and `/v1/models`), so the deploy path is verified on
+  every change even on machines without Docker. Static cross-file guarantees
+  (vite `outDir` ↔ frontend COPY path, compose context/env contract, port and
+  bind-safety invariants) are pinned in `tests/deployment/test_docker.py`, and
+  a `.dockerignore` keeps secrets (`.env`) and multi-GB build dirs out of the
+  image context.
+- **Stable tags now ship desktop installers:** `desktop.yml` only triggered on
+  `desktop-v*` tags, so its own stable `vX.Y.Z` branch ("publish under the
+  same release as the CLI") was unreachable — cutting `v1.2.6` would have
+  produced CLI artifacts but no desktop `.exe`/`.dmg`/`.AppImage`. Plain
+  `vX.Y.Z` tags now trigger the desktop build too.
+- **Version consistency is CI-enforced:** `scripts/check-versions.sh` now
+  fails on drift between `frontend/package.json`, `tauri.conf.json`, the Inno
+  Setup script, and the installer filenames in docs (a 1.2.4-era installer
+  previously shipped during the 1.2.5 release). All four bumped to **1.2.6**
+  for this cut.
+- Live cloud inference verified end-to-end through `CloudEngine` (OpenRouter,
+  one request, `LAUNCH-CHECK-OK`, ~$0.00001); the check is preserved as a
+  `@pytest.mark.cloud` regression test plus an opt-in `cloud` CI lane that
+  skips cleanly when `OPENROUTER_API_KEY` is absent.
+- Installer assets for this release ship the correct version: the Inno Setup
+  script still defined **1.2.4** while docs advertised 1.2.5 installers.
+
 - **Installer one-liners were dead:** the README's `irm …/install.ps1 | iex`
   and `curl …/install.sh | bash` URLs pointed at GitHub Pages copies that
   return 404. All 28 references across README, docs, and scripts now use the

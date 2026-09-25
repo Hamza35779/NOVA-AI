@@ -70,7 +70,7 @@ present (`nvidia-smi` should print your card).
 ### 3. Install NOVA AI
 
 Either the one-liner above, or the no-Python desktop installer
-(`NOVA-AI-Setup-1.2.5.exe` from the
+(`NOVA-AI-Setup-1.2.6.exe` from the
 [releases page](https://github.com/Hamza35779/NOVA-AI/releases)) which
 ships its own backend. For the source install:
 

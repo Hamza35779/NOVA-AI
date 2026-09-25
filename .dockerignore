@@ -1,0 +1,37 @@
+# Keep the build context small and secret-free. The Dockerfiles COPY only
+# what they need (frontend/, src/, pyproject.toml, README.md, scripts/install,
+# deploy/windows), so everything below is context-size pruning — except
+# **/.env, which is a secret-exclusion (baking an API key into a layer would
+# leak it to anyone who pulls the image).
+.git
+.github
+.vscode
+.idea
+**/__pycache__
+**/*.py[cod]
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+.venv
+venv
+# Secrets — never enter the build context. (.env.example is a template and
+# stays includable; only the literal .env files are excluded.)
+**/.env
+dist
+build
+coverage*
+.coverage
+htmlcov
+tests
+# Node
+**/node_modules
+frontend/dist
+# Rust / Tauri build output (the heavy parts of frontend/src-tauri)
+rust/target
+frontend/src-tauri/target
+frontend/src-tauri/binaries
+frontend/src-tauri/gen
+# Docs and CI-only content not needed inside the image
+docs
+*.md
+!README.md

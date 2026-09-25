@@ -141,6 +141,38 @@ jobs:
         run: |
           uv run nova --version
 
+  # Opt-in live-cloud verification. Costs one ~$0.00001 OpenRouter request
+  # per push/PR run. Gated on the repo (forks never have the secret) and on
+  # OPENROUTER_API_KEY: when the secret is unset the job exits 0 after
+  # printing a warning, so forks and secret-less runs stay green.
+  cloud:
+    if: github.repository == 'Hamza35779/NOVA-AI'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.0.0
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra inference-cloud
+
+      - name: Live OpenRouter roundtrip (single minimal request)
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::warning::OPENROUTER_API_KEY not set — skipping live cloud verification"
+            exit 0
+          fi
+          uv run pytest tests/engine/test_cloud.py::TestLiveOpenRouter -m cloud -v
+
   rust:
     runs-on: ubuntu-latest
     defaults:
