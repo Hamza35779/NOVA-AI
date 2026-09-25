@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The v1.2.9 `publish-release` job failed after the Inno EXE built
+  successfully: `download-artifact` with `merge-multiple: true` already
+  flattens all artifacts into one directory, so the extra move step was a
+  no-op assumption that crashed on a missing subdirectory. Replaced with a
+  presence check that still fails the release when the setup EXE is absent.
+
 - The v1.2.8 cut failed in the new `build-windows-setup` job: the ISCC
   locator passed a multi-line string where PowerShell expected a quoted,
   comma-separated array, so `Test-Path` never saw the real candidate paths

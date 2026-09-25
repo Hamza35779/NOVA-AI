@@ -156,12 +156,16 @@ jobs:
           path: release-assets
           merge-multiple: true
 
-      - name: Include Windows setup EXE
+      # download-artifact with merge-multiple:true flattens every artifact
+      # into release-assets/, so the setup EXE is already alongside the CLI
+      # artifacts — just verify it made it (a missing Inno output must fail
+      # the release, not silently ship without it).
+      - name: Verify all release assets are present
         shell: bash
         run: |
-          mv release-assets/nova-ai-windows-setup-exe/NOVA-AI-Setup-*.exe release-assets/
-          rmdir release-assets/nova-ai-windows-setup-exe
           ls -lh release-assets/
+          ls release-assets/NOVA-AI-Setup-*.exe >/dev/null \
+            || { echo "::error::NOVA-AI-Setup-*.exe missing from merged artifacts"; exit 1; }
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
