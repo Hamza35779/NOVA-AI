@@ -75,6 +75,7 @@ def expected_assets() -> dict[str, str]:
         r"^nova-ai-windows-x64\.zip$": "release.yml (PyInstaller CLI zip)",
         r"^nova-ai-linux-amd64\.deb$": "release.yml (PyInstaller CLI deb)",
         r"^nova-ai-macos\.dmg$": "release.yml (PyInstaller CLI dmg)",
+        r"^NOVA-AI-Setup-[0-9.]+\.exe$": "release.yml (Inno Setup EXE)",
         r"^NOVA\.AI_.+_x64-setup\.exe$": "desktop.yml (Tauri NSIS installer)",
         r"^NOVA\.AI_.+_x64_en-US\.msi$": "desktop.yml (Tauri MSI installer)",
         r"^NOVA\.AI_.+_universal\.dmg$": "desktop.yml (Tauri universal dmg)",

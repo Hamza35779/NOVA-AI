@@ -117,8 +117,16 @@ jobs:
 
       - name: Build setup EXE
         shell: pwsh
-        # ISCC path is the chocolatey default for Inno Setup 6.
-        run: '&"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" deploy\windows\nova-ai-setup.iss'
+        # Locate ISCC instead of hardcoding the chocolatey default dir —
+        # the innosetup package may land in either Program Files variant.
+        run: |
+          $iscc = @("
+            C:\Program Files (x86)\Inno Setup 6\ISCC.exe
+            C:\Program Files\Inno Setup 6\ISCC.exe
+          " | ForEach-Object { $_.Trim() } | Where-Object { Test-Path $_ } | Select-Object -First 1)
+          if (-not $iscc) { throw "ISCC.exe not found after innosetup install" }
+          Write-Host "using ISCC: $iscc"
+          & $iscc deploy\windows\nova-ai-setup.iss
 
       - name: Upload setup EXE artifact
         uses: actions/upload-artifact@v4
