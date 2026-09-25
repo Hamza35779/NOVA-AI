@@ -16,7 +16,7 @@
 ; ============================================================================
 
 #define MyAppName "NOVA AI"
-#define MyAppVersion "1.2.7"
+#define MyAppVersion "1.2.8"
 #define MyAppExeName "nova-ai-windows-x64.exe"
 #define MyAppId "{{7E6F8A2C-1D34-4E5A-9B8C-2F0D1A3B4C5D}"
 

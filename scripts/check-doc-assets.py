@@ -156,14 +156,14 @@ def main() -> int:
                     f"docs reference asset {name!r} which is not published on "
                     f"release {tag} (assets: {', '.join(sorted(assets))})"
                 )
+        if referenced and not failures:
+            print(f"all {len(referenced)} referenced installer assets exist on {tag}")
 
     if failures:
         for f in failures:
             print(f"::error::{f}" if not sys.stdout.isatty() else f"FAIL: {f}")
         print(f"\n{len(failures)} doc-asset problem(s)")
         return 1
-    if referenced:
-        print(f"all {len(referenced)} referenced installer assets exist on {tag}")
     print("doc-asset check passed")
     return 0
 

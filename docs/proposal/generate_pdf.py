@@ -106,7 +106,8 @@ pdf.ln(15)
 pdf.set_font("Helvetica", "", 11)
 pdf.set_text_color(80, 80, 80)
 info = [
-    ("Version", "1.2.7"),
+    # Single-sourced with the release version — never hand-edit here.
+    ("Version", __import__('json').load(open('../../frontend/package.json'))['version']),
     ("License", "Apache 2.0"),
     ("Repository", "github.com/Hamza35779/NOVA-AI"),
     ("Documentation", "hamza35779.github.io/NOVA-AI"),

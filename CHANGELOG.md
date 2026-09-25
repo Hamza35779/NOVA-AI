@@ -71,6 +71,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+**Classic Windows setup EXE ships from CI again.** `release.yml` gained a
+`build-windows-setup` job: on every stable tag it re-expands the PyInstaller
+ONEDIR payload and wraps it with the Inno Setup project, so
+`NOVA-AI-Setup-<version>.exe` is published automatically (it had to be built
+by hand for v1.2.4 and was missing from 1.2.5–1.2.7). The release-asset
+smoke job now requires it, and a new docs gate
+(`scripts/check-doc-assets.py`, run by `check-versions.sh` in CI) fails when
+any current-claim doc references an installer asset that the release for the
+repo version does not actually publish.
+
 **Release-asset smoke job.** Every stable release is now verified
 end-to-end after publishing: `scripts/check-release-assets.py` downloads
 each asset and checks byte size, sha256 (against GitHub's published
