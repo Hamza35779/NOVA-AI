@@ -2428,11 +2428,11 @@ mod quick_capture {
 
 #[tauri::command]
 async fn get_overlay_conversation() -> Result<String, String> {
-    #[cfg(target_os = "macos")]
-    {
-        return Ok(native_overlay::load_conversation());
-    }
-    #[cfg(not(target_os = "macos"))]
+    // Both platforms read the same parent-module implementation. (Reaching
+    // through `native_overlay::load_conversation` failed to compile on
+    // macOS: the `use super::… as load_conversation` alias inside the module
+    // is a private import, invisible from the crate root — E0603. Only the
+    // darwin compile saw it, which is why Windows/Linux CI stayed green.)
     Ok(overlay_load_conversation())
 }
 

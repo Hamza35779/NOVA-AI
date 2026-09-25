@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **macOS desktop builds compile again:** `get_overlay_conversation` reached
+  through `native_overlay::load_conversation`, a private re-export that is
+  only visible to the darwin compile — so Windows/Linux CI stayed green while
+  the universal macOS build failed with E0603 and v1.2.6 shipped without
+  `.dmg`. The command now calls the shared parent-module implementation on
+  every platform, and the desktop `validate` job cross-checks
+  `aarch64-apple-darwin` so darwin-only breakage fails in minutes, not 30
+  minutes into a release. Cut **v1.2.7** (v1.2.6 already published to PyPI,
+  which is immutable). Installer assets and docs bumped to 1.2.7.
+
 ### Fixed (launch readiness)
 
 - **Docker deploy path is now CI-verified:** a new `docker.yml` workflow builds

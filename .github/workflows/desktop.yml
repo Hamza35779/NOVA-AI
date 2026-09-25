@@ -32,12 +32,23 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-22.04
+    # The build matrix compiles the macOS leg on macOS only, so a darwin-only
+    # compile error (e.g. E0603 private re-export into the
+    # cfg(target_os = "macos") overlay module) used to survive this job and
+    # fail the release build 30 minutes in. An ubuntu cross-check of
+    # aarch64-apple-darwin is not an option — the C dependencies need a darwin
+    # SDK — so validate runs cargo test on macOS too (free on public repos).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system dependencies
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -79,6 +90,8 @@ jobs:
       # `cargo test` builds the crate (same coverage as the old `cargo check`)
       # and runs the unit tests, including the #331 uv-sync error-formatting
       # helpers. Static command, no untrusted input — no injection surface.
+      # On the macOS leg this also type-checks every cfg(target_os = "macos")
+      # module before a release build can fail on them.
       - name: Cargo test
         working-directory: frontend/src-tauri
         run: cargo test

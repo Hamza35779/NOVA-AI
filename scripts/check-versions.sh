@@ -5,7 +5,7 @@ PKG=$(node -p "require('./frontend/package.json').version")
 echo "frontend version: $PKG"
 rg -n "NOVA-AI-Setup-[0-9.]+" README.md SETUP_AND_USAGE_GUIDE.md docs || true
 # fail if old version string still present
-if rg -q "1\\.2\\.5" README.md SETUP_AND_USAGE_GUIDE.md; then echo "stale 1.2.5 ref found"; exit 1; fi
+if rg -q "1\\.2\\.6" README.md SETUP_AND_USAGE_GUIDE.md; then echo "stale 1.2.6 ref found"; exit 1; fi
 # agent count guard — remove number instead of bumping forever:
 if rg -qi "eight built-in agents" README.md; then echo "stale agent count"; exit 1; fi
 
