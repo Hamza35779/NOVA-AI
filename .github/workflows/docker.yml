@@ -42,22 +42,25 @@ jobs:
       - name: Build image (compose definition)
         # Build through the same compose file users run, so a drifted
         # context/dockerfile/env contract fails here, not for a user.
+        # NOVA_AI_API_KEY must come from the environment: compose's ${VAR:?}
+        # fail-fast rejects EMPTY values too, so --env-file with the blank
+        # .env.example template fails interpolation even though the key name
+        # is documented there.
+        env:
+          NOVA_AI_API_KEY: ci-build-placeholder
         run: >
-          docker compose -f deploy/docker/docker-compose.yml
-          --env-file deploy/docker/.env.example build nova
+          docker compose -f deploy/docker/docker-compose.yml build nova
 
-      - name: Smoke-test `nova serve` inside the container
-        # compose interpolation requires a real value for the API key at
-        # runtime, but the check only proves the key file parses — the env
-        # var itself is still unset, which is exactly the bind-safety state
-        # we want to verify: the server must boot with auth DISABLED
-        # (loopback-style empty NOVA_AI_API_KEY) and /health must answer.
+      - name: Boot the stack and wait for /health
+        # The container binds 0.0.0.0, so users must set a real API key
+        # (compose fails fast without one) — the step env provides the
+        # placeholder; the next step verifies the auth contract end-to-end.
+        # `up -d nova` also starts the ollama sidecar via depends_on.
         env:
           NOVA_AI_API_KEY: ci-smoke-not-a-real-key
         run: |
           set -euo pipefail
-          docker compose -f deploy/docker/docker-compose.yml \
-            --env-file deploy/docker/.env.example up -d nova
+          docker compose -f deploy/docker/docker-compose.yml up -d nova
           # Wait for uvicorn to accept connections (image has no curl).
           for i in $(seq 1 30); do
             code=$(docker compose -f deploy/docker/docker-compose.yml \
@@ -74,16 +77,33 @@ jobs:
           }
           echo "container /health: 200"
 
-      - name: Smoke-test /v1/models
+      - name: Smoke-test auth contract inside the container
+        # The container binds 0.0.0.0, so users must set a real API key
+        # (compose fails fast without one). The placeholder key puts the
+        # server in auth-enabled mode and these checks verify the security
+        # contract end-to-end: /health stays open for liveness probes,
+        # /v1/models rejects requests without a Bearer key (401) and accepts
+        # requests with the correct one (200).
+        env:
+          NOVA_AI_API_KEY: ci-smoke-not-a-real-key
         run: |
           set -euo pipefail
-          body=$(docker compose -f deploy/docker/docker-compose.yml exec -T \
-            nova python -c \
-            "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8000/v1/models',timeout=5).read().decode())")
-          echo "$body" | grep -q '"object":"list"'
-          echo "container /v1/models: OK"
+          COMPOSE="docker compose -f deploy/docker/docker-compose.yml"
+          # Single-line base64 keeps the embedded Python free of YAML/bash
+          # indentation traps; decode with -d and run with args: <url> [key].
+          PROBE_B64='aW1wb3J0IHN5cywgdXJsbGliLnJlcXVlc3QsIHVybGxpYi5lcnJvcgp1cmwgPSBzeXMuYXJndlsxXQprZXkgPSBzeXMuYXJndlsyXSBpZiBsZW4oc3lzLmFyZ3YpID4gMiBlbHNlIE5vbmUKaCA9IHsiQXV0aG9yaXphdGlvbiI6ICJCZWFyZXIgIiArIGtleX0gaWYga2V5IGVsc2Uge30KciA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QodXJsLCBoZWFkZXJzPWgpCnRyeToKICAgIHByaW50KHVybGxpYi5yZXF1ZXN0LnVybG9wZW4ociwgdGltZW91dD01KS5zdGF0dXMpCmV4Y2VwdCB1cmxsaWIuZXJyb3IuSFRUUEVycm9yIGFzIGU6CiAgICBwcmludChlLmNvZGUpCg=='
+          code() { $COMPOSE exec -T nova python -c "$(echo "$PROBE_B64" | base64 -d)" "$1" "${2:-}"; }
+          [ "$(code http://127.0.0.1:8000/health)" = "200" ] \
+            || { echo "::error::health must stay open without a key"; exit 1; }
+          [ "$(code http://127.0.0.1:8000/v1/models)" = "401" ] \
+            || { echo "::error::v1/models must reject keyless requests (bound 0.0.0.0)"; exit 1; }
+          [ "$(code http://127.0.0.1:8000/v1/models ci-smoke-not-a-real-key)" = "200" ] \
+            || { echo "::error::v1/models must accept the correct Bearer key"; exit 1; }
+          echo "auth contract OK: /health open, /v1/models 401 keyless / 200 with key"
 
       - name: Teardown
         if: always()
+        env:
+          NOVA_AI_API_KEY: ci-smoke-not-a-real-key
         run: >
           docker compose -f deploy/docker/docker-compose.yml down -v --remove-orphans

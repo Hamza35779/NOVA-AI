@@ -60,11 +60,9 @@ export function ModelHubPage() {
     setStatus(s => ({ ...s, [id]: undefined as unknown as 'done' | 'error' }));
     setProgress(p => ({ ...p, [id]: 0 }));
     let taskId = `dl_${id.replace(':', '_')}`;
-    let started = false;
     try {
       const resp = await installModelAPI(id);
       if (resp?.task_id) taskId = resp.task_id;
-      started = true;
     } catch {
       // Server unreachable — no install possible; show error instead of a
       // fake success.
@@ -72,7 +70,6 @@ export function ModelHubPage() {
       setStatus(s => ({ ...s, [id]: 'error' }));
       return;
     }
-    if (!started) { setInstalling(null); return; }
     // Real completion: stream the backend's SSE progress until done/error,
     // then refresh installed state. No more premature success alert.
     cancelWatch.current[id] = watchInstallProgress(
