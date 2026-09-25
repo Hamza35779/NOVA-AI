@@ -11,24 +11,23 @@ NOVA AI runs entirely on your hardware. Choose the interface that fits your work
 
 ---
 
-## Windows Setup EXE (no Python required)
+## Windows desktop installer
 
-The fastest path on Windows — a per-user installer that bundles everything:
+The fastest path on Windows — a per-user installer, no admin required:
 
-1. Download `NOVA-AI-Setup-<version>.exe` from the
+1. Download `NOVA.AI_<version>_x64-setup.exe` from the
    [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
-2. Run it. Installs to `%LOCALAPPDATA%\Programs\NOVA AI` (no admin required),
-   with optional shortcuts and an "Add to PATH" checkbox.
-3. Launch **NOVA AI** from the Start Menu, then open `http://localhost:8000`.
+2. Run it. Installs per-user with Start Menu / Desktop shortcuts.
+3. Launch **NOVA AI** from the Start Menu.
 
-The installer ships the full workstation: press `Alt+Space` anywhere on Windows for the
-**Quick Capture** chat popup, run `nova dev-watch -c "pytest -q"` for **build diagnostics
-with self-healing suggestions**, and get a **desktop notification** whenever your morning
-digest is ready.
+The desktop app wraps the web workstation UI with native integration — press
+`Alt+Space` anywhere on Windows for the **Quick Capture** chat popup.
 
-Built from `deploy/windows/nova-ai-setup.iss` over the PyInstaller ONEDIR
-backend (`nova-ai-windows-x64.spec`) — embeds Python 3.13 and the web
-workstation UI, so no runtime dependencies need installing.
+For a **self-contained CLI + backend that needs no Python**, download
+`nova-ai-windows-x64.zip` from the same release, extract it, and run
+`nova-ai-windows-x64.exe` inside. That zip is the PyInstaller ONEDIR build
+(`nova-ai-windows-x64.spec`) — it embeds Python and the web workstation UI,
+so no runtime dependencies need installing.
 
 ---
 

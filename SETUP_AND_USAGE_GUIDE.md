@@ -59,11 +59,11 @@ Choose the method that best fits your environment:
 ### Method A: Standalone Windows Executable (Easiest)
 *No Python, Node.js, or external runtimes required.*
 
-### Option 1 — Setup Installer (recommended):
+### Option 1 — Desktop Installer (recommended):
 
-1. Download `NOVA-AI-Setup-1.2.7.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
-2. Run it — installs to `%LOCALAPPDATA%\Programs\NOVA AI` (per-user, no admin required), with optional Start Menu / Desktop shortcuts and a "Add to PATH" checkbox.
-3. Launch **NOVA AI** from the Start Menu (or run `nova-ai-windows-x64 serve` from any terminal).
+1. Download `NOVA.AI_1.2.7_x64-setup.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
+2. Run it — installs the NOVA AI desktop app per-user (no admin required), with Start Menu / Desktop shortcuts.
+3. Launch **NOVA AI** from the Start Menu. For the self-contained CLI/backend without Python, use the portable zip (Option 2).
 
 > The installer bundles the **Quick Capture popup** (press `Alt+Space` anywhere on Windows), the
 > **dev-watch diagnostics** CLI, and **morning digest notifications** — no extra setup needed.

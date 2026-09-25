@@ -46,7 +46,7 @@ Compose builds `nova` from `deploy/docker/Dockerfile*` and starts an `ollama/oll
 
 ## Windows
 
-- **Setup installer (no Python needed):** download `NOVA-AI-Setup-<version>.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
+- **Desktop installer:** download `NOVA.AI_<version>_x64-setup.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases). For a no-Python backend, grab `nova-ai-windows-x64.zip` from the same release.
 - **PowerShell deployment (source + uv):** see [`windows/README.md`](windows/README.md) for the one-liner, flags, scheduled-task management, and LAN-exposure guardrails.
 - Building the installer assets locally requires the Inno Setup project in `windows/nova-ai-setup.iss` and the PyInstaller spec at the repo root (`nova-ai-windows-x64.spec`).
 

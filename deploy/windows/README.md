@@ -6,10 +6,14 @@ PowerShell, without WSL2 or Docker.
 
 There are now **two Windows install paths**:
 
-- **Setup installer (no Python needed)** — download `NOVA-AI-Setup-<version>.exe`
+- **Desktop installer** — download `NOVA.AI_<version>_x64-setup.exe`
   from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases) and run it.
-  It packages the self-contained PyInstaller backend (`deploy/windows/nova-ai-setup.iss`),
-  installs to `%LOCALAPPDATA%\Programs\NOVA AI`, and needs no Python / git / uv.
+  This is the Tauri desktop app, built by `desktop.yml` on every stable tag.
+- **Portable backend (no Python needed)** — download `nova-ai-windows-x64.zip`
+  from the same release, extract, and run `nova-ai-windows-x64.exe` inside.
+  This is the self-contained PyInstaller backend (`nova-ai-windows-x64.spec`); the
+  Inno Setup project in `nova-ai-setup.iss` can wrap it into a traditional
+  `NOVA-AI-Setup-<version>.exe`, but that step is not part of CI today.
 - **Source install (this document)** — the `install.ps1` one-liner below clones the
   repo and sets up a uv-managed Python environment. Use it when you want the CLI
   (`nova ...`), source access, or the auto-start scheduled task.

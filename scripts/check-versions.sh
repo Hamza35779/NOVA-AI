@@ -41,8 +41,8 @@ if [ "$TAURI_VERSION" != "$PKG" ]; then
   exit 1
 fi
 for doc in README.md SETUP_AND_USAGE_GUIDE.md; do
-  if ! grep -q "NOVA-AI-Setup-$PKG" "$doc"; then
-    echo "$doc does not reference the current installer (NOVA-AI-Setup-$PKG.exe) — bump the docs together with frontend/package.json"
+  if ! grep -q "NOVA.AI_$PKG" "$doc"; then
+    echo "$doc does not reference the current desktop installer (NOVA.AI_${PKG}_x64-setup.exe) — bump the docs together with frontend/package.json"
     exit 1
   fi
 done

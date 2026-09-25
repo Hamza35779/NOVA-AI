@@ -71,6 +71,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+**Release-asset smoke job.** Every stable release is now verified
+end-to-end after publishing: `scripts/check-release-assets.py` downloads
+each asset and checks byte size, sha256 (against GitHub's published
+digests), magic bytes, and archive contents, then asserts the release page
+is complete (both the PyInstaller CLI artifacts and all six Tauri bundles
+present) and that PyPI's latest `nova-ai-pro` equals the tag version. Wired
+as `artifact-smoke.yml` on every `release: published` event — a release
+like v1.2.6 (which briefly shipped without desktop bundles) can no longer
+slip through silently.
+
 **First-run onboarding fixes (fresh-clone audit).** Walking a new user's
 first hour — fresh clone, README-only — surfaced several blockers, all
 fixed and covered by tests (`tests/server/test_onboarding_fixes.py`):

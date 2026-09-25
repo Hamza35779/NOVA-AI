@@ -21,23 +21,33 @@ processing happens on your local machine — the app connects to the backend you
     ./scripts/quickstart.sh
     ```
 
-### Windows: all-in-one Setup EXE (recommended)
+### Windows: desktop installer
 
-The **[NOVA-AI-Setup](https://github.com/Hamza35779/NOVA-AI/releases/latest)** installer bundles
-the backend *and* the UI — no Python, no Ollama, no git. It includes the `Alt+Space`
-**Quick Capture** popup, `nova dev-watch` build diagnostics, and morning digest notifications:
+The **desktop installer** (`NOVA.AI_<version>_x64-setup.exe`) is the Tauri
+desktop app — `Alt+Space` **Quick Capture** popup and the full workstation
+UI. Start the backend first (see the info box above) or use the portable
+backend below:
 
-1. Download `NOVA-AI-Setup-<version>.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
-2. Run it — per-user install, optional "Add to PATH".
-3. Launch from the Start Menu and open `http://localhost:8000`.
+1. Download `NOVA.AI_<version>_x64-setup.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
+2. Run it — per-user install, no admin required.
+3. Launch **NOVA AI** from the Start Menu.
 
-### Tauri desktop shell (advanced)
+### Windows: portable backend (no Python)
+
+`nova-ai-windows-x64.zip` bundles the backend *and* the web UI — no Python,
+no git:
+
+1. Download `nova-ai-windows-x64.zip` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
+2. Extract it and run `nova-ai-windows-x64.exe serve`, then open
+   `http://localhost:8000`.
+
+### Tauri desktop bundles (all platforms)
 
 | Platform | Download | Notes |
 |----------|----------|-------|
-| macOS (Universal) | [:material-download: **NOVA AI.dmg**](https://github.com/Hamza35779/NOVA-AI/releases) | Apple Silicon + Intel — see [Releases](https://github.com/Hamza35779/NOVA-AI/releases) |
-| Windows (64-bit) | [:material-download: **NOVA-AI-Setup.exe**](https://github.com/Hamza35779/NOVA-AI/releases) | Windows 10+ — see [Releases](https://github.com/Hamza35779/NOVA-AI/releases) |
-| Linux (DEB) | [:material-download: **NOVA AI.deb**](https://github.com/Hamza35779/NOVA-AI/releases) | Ubuntu, Debian — see [Releases](https://github.com/Hamza35779/NOVA-AI/releases) |
+| macOS (Universal) | [:material-download: **NOVA.AI_\<version\>_universal.dmg**](https://github.com/Hamza35779/NOVA-AI/releases) | Apple Silicon + Intel — see [Releases](https://github.com/Hamza35779/NOVA-AI/releases) |
+| Windows (64-bit) | [:material-download: **NOVA.AI_\<version\>_x64-setup.exe**](https://github.com/Hamza35779/NOVA-AI/releases) | Windows 10+ — see [Releases](https://github.com/Hamza35779/NOVA-AI/releases) |
+| Linux (DEB) | [:material-download: **NOVA.AI_\<version\>_amd64.deb**](https://github.com/Hamza35779/NOVA-AI/releases) | Ubuntu, Debian — see [Releases](https://github.com/Hamza35779/NOVA-AI/releases) |
 
 !!! tip "All releases"
     Browse all versions on the [GitHub Releases](https://github.com/Hamza35779/NOVA-AI/releases) page.

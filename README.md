@@ -155,7 +155,7 @@ Pick your platform and start in seconds:
 
 | Platform | Quick Launch | Installation One-liner |
 |---|---|---|
-| **Windows (Setup EXE, no Python)** | Double-click `NOVA-AI-Setup-1.2.7.exe` — includes **Alt+Space Quick Capture** | [Latest Release](https://github.com/Hamza35779/NOVA-AI/releases) |
+| **Windows (Desktop installer)** | Double-click `NOVA.AI_1.2.7_x64-setup.exe` — desktop GUI incl. **Alt+Space Quick Capture**; for the no-Python full backend use the portable zip | [Latest Release](https://github.com/Hamza35779/NOVA-AI/releases) |
 | **Windows (1-Click)** | Double-click `start.bat` | `irm https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/deploy/windows/install.ps1 \| iex` or run `install.bat` |
 | **Linux · macOS** | `./start.sh` | `curl -fsSL https://raw.githubusercontent.com/Hamza35779/NOVA-AI/main/scripts/install/install.sh \| bash` |
 | **Docker** | `cp deploy/docker/.env.example .env  # fill NOVA_AI_API_KEY` then `docker compose -f deploy/docker/docker-compose.yml --env-file .env up` | Containerized setup with local Ollama engine |

@@ -429,7 +429,7 @@ set_bg(slide)
 add_text(slide, 0.8, 0.4, 11.7, 0.8, "Roadmap",
          font_size=32, color=ACCENT, bold=True)
 
-add_text(slide, 0.8, 1.3, 5.5, 0.6, "Current (v1.2.5)", font_size=20, color=ACCENT2, bold=True)
+add_text(slide, 0.8, 1.3, 5.5, 0.6, "Current (v1.2.7)", font_size=20, color=ACCENT2, bold=True)
 add_bullet_list(slide, 0.8, 2.0, 5.5, 4, [
     "Five-primitive architecture",
     "9 agent types (incl. self-healing)",

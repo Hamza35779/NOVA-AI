@@ -1,0 +1,61 @@
+name: Release asset smoke
+
+# Download every published asset for a stable release and verify byte size,
+# sha256 (against GitHub's published digests), magic bytes, archive contents,
+# release completeness (both PyInstaller and Tauri artifacts present), and
+# PyPI version sync. Guards the exact failure mode of the v1.2.6 cut, where
+# the macOS leg failed and the release silently shipped without desktop
+# bundles.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Stable tag to verify (e.g. v1.2.7). Defaults to the latest stable v* release.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_TAG" ]; then
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.release.tag_name }}" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            # Latest stable vX.Y.Z release (skips prereleases and desktop-* tags).
+            TAG=$(curl -sf "https://api.github.com/repos/${{ github.repository }}/releases?per_page=30" \
+              | python -c "import json,sys,re; rs=json.load(sys.stdin); print(next(r['tag_name'] for r in rs if not r['prerelease'] and re.match(r'^v[0-9]+\\.[0-9]+\\.[0-9]+$', r['tag_name'])))")
+            [ -n "$TAG" ] || { echo "::error::no stable v* release found"; exit 1; }
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+          echo "verifying tag: $TAG"
+
+      - name: Verify release assets
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # -u flag in the script keeps CI log readable; failures still exit 1.
+          python scripts/check-release-assets.py "$TAG"

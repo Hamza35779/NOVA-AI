@@ -2,7 +2,7 @@
 
 > **Personal AI, On Personal Devices.**
 
-**Version:** 1.2.4
+**Version:** 1.2.7
 **License:** Apache 2.0
 **Repository:** [github.com/Hamza35779/NOVA-AI](https://github.com/Hamza35779/NOVA-AI)
 **Documentation:** [hamza35779.github.io/NOVA-AI](https://hamza35779.github.io/NOVA-AI/)
@@ -334,7 +334,7 @@ AI-powered bot for messaging platforms with multi-turn conversation support.
 
 ## 9. Roadmap
 
-### Current Status (v1.2.5)
+### Current Status (v1.2.7)
 
 - ✅ Five-primitive architecture implemented
 - ✅ 9 agent types registered (incl. `self_healing_react`)
