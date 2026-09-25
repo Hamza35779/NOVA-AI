@@ -29,7 +29,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (vite `outDir` ↔ frontend COPY path, compose context/env contract, port and
   bind-safety invariants) are pinned in `tests/deployment/test_docker.py`, and
   a `.dockerignore` keeps secrets (`.env`) and multi-GB build dirs out of the
-  image context.
+  image context. The CI boot test also caught a real first-run trap: `nova
+  serve` refuses to start until an engine lists a model, and a fresh Ollama
+  sidecar has none — the compose stack now documents (and CI exercises) the
+  required `ollama pull qwen3.5:2b` step, and the containerized server stops
+  offering a bogus `pip upgrade` (it has no `.git`, so its version reads
+  `0.0.0+unknown`).
 - **Stable tags now ship desktop installers:** `desktop.yml` only triggered on
   `desktop-v*` tags, so its own stable `vX.Y.Z` branch ("publish under the
   same release as the CLI") was unreachable — cutting `v1.2.6` would have

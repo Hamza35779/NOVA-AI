@@ -51,18 +51,38 @@ jobs:
         run: >
           docker compose -f deploy/docker/docker-compose.yml build nova
 
-      - name: Boot the stack and wait for /health
+      - name: Boot the stack
         # The container binds 0.0.0.0, so users must set a real API key
         # (compose fails fast without one) — the step env provides the
-        # placeholder; the next step verifies the auth contract end-to-end.
-        # `up -d nova` also starts the ollama sidecar via depends_on.
+        # placeholder; a later step verifies the auth contract end-to-end.
+        # Starts ollama too (depends_on). nova crash-loops harmlessly until
+        # a model exists — the next step provides one.
         env:
           NOVA_AI_API_KEY: ci-smoke-not-a-real-key
         run: |
           set -euo pipefail
           docker compose -f deploy/docker/docker-compose.yml up -d nova
+
+      - name: Pull a model into the Ollama sidecar
+        # `nova serve` refuses to start until at least one reachable engine
+        # lists a model (launch guardrail), and a fresh ollama sidecar has
+        # none — the same first-run state any user hits. Pull the smallest
+        # catalog default so the stack can actually serve. nova's restart
+        # policy picks it up on its next restart.
+        env:
+          NOVA_AI_API_KEY: ci-smoke-not-a-real-key
+        run: >
+          docker compose -f deploy/docker/docker-compose.yml
+          exec -T ollama ollama pull qwen3.5:2b
+
+      - name: Wait for /health
+        env:
+          NOVA_AI_API_KEY: ci-smoke-not-a-real-key
+        run: |
+          set -euo pipefail
           # Wait for uvicorn to accept connections (image has no curl).
-          for i in $(seq 1 30); do
+          code=""
+          for i in $(seq 1 60); do
             code=$(docker compose -f deploy/docker/docker-compose.yml \
               exec -T nova python -c \
               "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status)" \

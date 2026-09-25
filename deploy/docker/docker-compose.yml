@@ -8,6 +8,9 @@ services:
     environment:
       - NOVA_AI_ENGINE_DEFAULT=ollama
       - OLLAMA_HOST=http://ollama:11434
+      # The image has no .git, so hatch-vcs reports 0.0.0+unknown and the
+      # startup banner offers a bogus "upgrade" inside an immutable container.
+      - NOVA_AI_NO_UPDATE_CHECK=1
       # The container binds 0.0.0.0, so an API key is REQUIRED. Compose fails
       # fast if NOVA_AI_API_KEY is unset (set it in deploy/docker/.env —
       # see .env.example, or `export` it). Generate one: `nova auth create-key`.

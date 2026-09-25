@@ -34,6 +34,12 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.nvidia.yml --env-file
 
 # 2c. With an AMD GPU (ROCm)
 docker compose -f docker-compose.yml -f docker-compose.gpu.rocm.yml --env-file .env up -d
+
+# 3. Pull a model into the Ollama sidecar — REQUIRED on first run.
+#    `nova serve` refuses to start until at least one reachable engine lists
+#    a model, and a fresh sidecar has none: until the pull finishes the nova
+#    container sits in a restart loop printing "No model available".
+docker compose -f docker-compose.yml exec ollama ollama pull qwen3.5:2b
 ```
 
 Compose builds `nova` from `deploy/docker/Dockerfile*` and starts an `ollama/ollama` sidecar. Clients authenticate with `Authorization: Bearer <key>`.
