@@ -61,7 +61,7 @@ Choose the method that best fits your environment:
 
 ### Option 1 — Desktop Installer (recommended):
 
-1. Download `NOVA.AI_1.2.8_x64-setup.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
+1. Download `NOVA.AI_1.2.9_x64-setup.exe` from the [Releases page](https://github.com/Hamza35779/NOVA-AI/releases).
 2. Run it — installs the NOVA AI desktop app per-user (no admin required), with Start Menu / Desktop shortcuts.
 3. Launch **NOVA AI** from the Start Menu. For the self-contained CLI/backend without Python, use the portable zip (Option 2).
 

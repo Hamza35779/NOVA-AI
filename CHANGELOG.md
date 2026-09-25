@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The v1.2.8 cut failed in the new `build-windows-setup` job: the ISCC
+  locator passed a multi-line string where PowerShell expected a quoted,
+  comma-separated array, so `Test-Path` never saw the real candidate paths
+  and threw "ISCC.exe not found" (the runner image already ships Inno Setup
+  6.7.1 — chocolatey just no-ops). Fixed with a proper array plus a
+  `Get-Command` PATH fallback. PyPI 1.2.8 was already published, so the
+  completed cut is **v1.2.9**.
+
+### Fixed
+
 - **macOS desktop builds compile again:** `get_overlay_conversation` reached
   through `native_overlay::load_conversation`, a private re-export that is
   only visible to the darwin compile — so Windows/Linux CI stayed green while
