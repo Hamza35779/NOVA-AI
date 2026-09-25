@@ -29,6 +29,7 @@ import io
 import json
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -131,6 +132,15 @@ def main() -> int:
         help="reuse previously downloaded assets from this directory when "
         "their size matches (they are still sha256-verified)",
     )
+    parser.add_argument(
+        "--wait-minutes",
+        type=int,
+        default=40,
+        help="when expected assets are missing, re-poll the release this long "
+        "before failing (desktop.yml attaches its bundles after "
+        "publish-release creates the release — a race, not a defect; 0 = "
+        "single check)",
+    )
     args = parser.parse_args()
 
     m = STABLE_RE.match(args.tag)
@@ -150,9 +160,29 @@ def main() -> int:
     print(f"release {args.tag}: {len(assets)} assets")
 
     # --- completeness ------------------------------------------------------
-    for pattern, source in expected_assets().items():
-        if not any(re.search(pattern, name) for name in assets):
-            fail(f"missing expected asset matching {pattern!r} ({source})")
+    # desktop.yml publishes to the same release after publish-release creates
+    # it, so on a `release: published` trigger the Tauri bundles legitimately
+    # lag. Re-poll instead of failing instantly.
+    deadline = time.monotonic() + args.wait_minutes * 60
+    while True:
+        missing = [
+            (pattern, source)
+            for pattern, source in expected_assets().items()
+            if not any(re.search(pattern, name) for name in assets)
+        ]
+        if not missing or time.monotonic() >= deadline:
+            break
+        print(
+            f"waiting for {len(missing)} expected asset(s) "
+            f"({', '.join(p for p, _ in missing)}); re-polling in 30s"
+        )
+        time.sleep(30)
+        assets = {
+            a["name"]: a
+            for a in json.loads(http_get(f"{API}/releases/tags/{args.tag}", timeout=60))["assets"]
+        }
+    for pattern, source in missing:
+        fail(f"missing expected asset matching {pattern!r} ({source})")
 
     # --- per-asset integrity ----------------------------------------------
     for name, asset in sorted(assets.items()):
