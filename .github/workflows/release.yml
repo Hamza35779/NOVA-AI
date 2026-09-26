@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # gh workflow run artifact-smoke.yml after publishing
 
 jobs:
   build-and-release:
@@ -175,3 +176,13 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # GITHUB_TOKEN-created releases don't trigger `release:` workflows;
+      # workflow_dispatch is the documented exception. (desktop.yml dispatches
+      # the same smoke job for the release it creates — first one to run wins,
+      # the smoke check is idempotent.)
+      - name: Dispatch release asset smoke
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh workflow run artifact-smoke.yml --ref main -f tag="$TAG"

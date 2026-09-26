@@ -29,6 +29,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write # gh workflow run artifact-smoke.yml after publishing
 
 jobs:
   validate:
@@ -357,6 +358,16 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # A release created with GITHUB_TOKEN does NOT trigger `release:`
+      # workflows (GitHub recursion prevention), so artifact-smoke would
+      # never see stable cuts. workflow_dispatch is the documented exception.
+      - name: Dispatch release asset smoke
+        if: needs.release-info.outputs.prerelease == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-info.outputs.tag }}
+        run: gh workflow run artifact-smoke.yml --ref main -f tag="$TAG"
 
   # When a stable `desktop-v*` release is published, repoint the
   # `desktop-latest` auto-update channel (the endpoint the installed app

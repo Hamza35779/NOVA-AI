@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Release-created-with-GITHUB_TOKEN does not trigger `release:` workflows
+  (GitHub recursion prevention), so the asset smoke job never saw stable
+  cuts; both `release.yml` and `desktop.yml` now dispatch it explicitly
+  (`workflow_dispatch` is the documented exception; `actions: write` added)
+  after publishing.
 - The v1.2.9 `publish-release` job failed after the Inno EXE built
   successfully: `download-artifact` with `merge-multiple: true` already
   flattens all artifacts into one directory, so the extra move step was a
