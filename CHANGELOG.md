@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `gh workflow run artifact-smoke.yml` in `desktop.yml`'s `publish-desktop`
+  failed on the v1.2.10 cut with "failed to run git: fatal: not a git
+  repository": the job never checks out the repo and `gh` without `-R`
+  resolves the repo from git remotes. Both dispatch steps (desktop.yml and
+  release.yml) now pass `-R "$GITHUB_REPOSITORY"` so the dispatch works from
+  checkout-less jobs. (v1.2.10's smoke still ran — release.yml's dispatch
+  succeeded — because that job checks out the repo.)
 - **Shipped CLI exes were silent no-ops.** Every frozen binary produced by
   `release.yml` used `src/nova_ai/cli/__init__.py` as the PyInstaller entry
   script — a module that defines the CLI but never calls `main()`. The

@@ -367,7 +367,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release-info.outputs.tag }}
-        run: gh workflow run artifact-smoke.yml --ref main -f tag="$TAG"
+        # -R is mandatory: this job never checks out the repo, and without it
+        # gh resolves the repo from git remotes and dies with
+        # "fatal: not a git repository" (exactly what broke the v1.2.10 run).
+        run: gh workflow run artifact-smoke.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
 
   # When a stable `desktop-v*` release is published, repoint the
   # `desktop-latest` auto-update channel (the endpoint the installed app
