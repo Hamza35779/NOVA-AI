@@ -54,7 +54,7 @@ Open the **[Latest Release page](https://github.com/Hamza35779/NOVA-AI/releases/
 
 | File | What it is | Choose this if you want… |
 |---|---|---|
-| `NOVA.AI_1.2.10_x64-setup.exe` (~14 MB) | **Desktop app** (GUI, Alt+Space Quick Capture, auto-updater) | The full desktop experience — recommended for most people |
+| `NOVA.AI_1.2.10_x64-setup.exe` (~14 MB) | **Desktop app** — its own window with sidebar tabs, Alt+Space Quick Capture, auto-updater | The full desktop experience, like WhatsApp/Telegram Desktop — recommended for most people |
 | `NOVA-AI-Setup-1.2.10.exe` (~70 MB) | **CLI + local backend** (`nova` command, no Python needed) | Terminal/chat usage and the `nova …` commands |
 | `nova-ai-windows-x64.zip` (~95 MB) | **Portable** — no installation, just unzip and run | A no-install trial or a USB-stick setup |
 
@@ -75,33 +75,36 @@ Other platforms: **macOS** → `NOVA.AI_1.2.10_universal.dmg` · **Linux** → `
 
 ### Step 3 — First launch
 
-- **Desktop app:** launch **NOVA AI** from the Start menu. The dashboard opens with engine, memory, and model status.
-- **CLI:** open **PowerShell** and check the install:
+Launch **NOVA AI** from the Start menu (Windows) or Applications (macOS) — just like WhatsApp Desktop or Telegram. It opens in **its own window** with a sidebar of tabs (Chat, Dashboard, Agents, Model Hub, GGUF Hub, Settings, …), its own taskbar icon, and a system tray presence. A setup wizard on first run connects an engine and a model — no terminal involved.
 
-  ```powershell
-  nova --version     # prints the version
-  nova doctor        # hardware, GPU, and engine health check
-  ```
+> Behind the scenes the app carries its own private engine (the same `nova` backend that the CLI uses), started automatically inside the app. You never see it and never open a browser — the window **is** the app.
 
-- **Portable zip:** in the extracted folder, run `nova-ai-windows-x64.exe --version` from a terminal to confirm it works.
+**CLI users:** if you installed the CLI installer instead, verify it in PowerShell:
 
-> Tip: the desktop app can also install/start the local backend for you — you only need the CLI installer if you prefer working in a terminal.
+```powershell
+nova --version     # prints the version
+nova doctor        # hardware, GPU, and engine health check
+```
+
+**Portable zip:** in the extracted folder, run `nova-ai-windows-x64.exe --version` from a terminal to confirm it works.
 
 ### Step 4 — Connect a model engine (pick one)
 
 | Option | Steps | Best for |
 |---|---|---|
 | **Ollama** (easiest) | 1. Install [Ollama](https://ollama.com) · 2. `ollama pull qwen2.5:7b` · 3. NOVA AI detects it automatically | One-click local model management |
-| **Built-in GGUF Hub** (zero setup) | In the app/web UI, open the **GGUF Hub** and click a starter model to download — or drop any `.gguf` file into `~\.nova_ai\models\` | Fully offline, nothing else to install |
+| **Built-in GGUF Hub** (zero setup) | In the app's **GGUF Hub** tab, click a starter model to download — or drop any `.gguf` file into `~\.nova_ai\models\` | Fully offline, nothing else to install |
 | **Cloud APIs** | In the app's **Settings** page, paste an `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `GROQ_API_KEY` | Maximum capability |
 
-### Step 5 — Verify and start using it
+### Step 5 — Start using it (all inside the app window)
 
-1. **Chat:** press `Alt+Space` anywhere in Windows (Quick Capture), or run `nova chat` in a terminal.
-2. **Web UI:** the desktop app serves the dashboard at `http://localhost:8000` — open it and check the model list.
-3. **Health check (optional):** visit `http://localhost:8000/health` — it should return `{"status":"ok"}`.
+1. **Chat:** press `Alt+Space` anywhere in Windows (Quick Capture popup), or click the **Chat** tab in the app's sidebar.
+2. **Explore the tabs:** **Dashboard** (system + energy stats), **Model Hub** / **GGUF Hub** (download models with one click), **Agents** (built-in assistants), **Integrations** / **Data Sources** (connect email, calendar, files), **Personas**, **Settings**.
+3. **Daily-driver behavior:** pin it to your taskbar, let it live in the system tray, and it auto-updates itself — the same routine as any desktop messenger. Your data stays in `~\.nova_ai\` on your own disk.
 
-Your data lives in `~\.nova_ai\` (config, memory database, downloaded models). The desktop app keeps itself up to date automatically; the CLI updates with `nova self-update`. To remove everything, see [Uninstalling](#uninstalling).
+> Developer note: the engine inside the app listens privately on your machine's port 8000. That is an implementation detail — like a messenger's local database — and only matters if you build NOVA AI from source or script against the REST API (see [Install from source](#install-from-source)).
+
+To remove everything, see [Uninstalling](#uninstalling).
 
 > Prefer building from source or scripting the install? See [Quick Start (from source)](#quick-start-from-source), the one-liners in [Installation & Quick Start](#installation--quick-start), or the [Complete Setup & User Guide](SETUP_AND_USAGE_GUIDE.md).
 
