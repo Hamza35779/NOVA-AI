@@ -380,9 +380,15 @@ jobs:
           platforms = {}
 
           def add(platform, path):
+              # GitHub renames spaces to dots when storing release assets
+              # ("NOVA AI_x64-setup.exe" becomes "NOVA.AI_x64-setup.exe"),
+              # so the URL must use the sanitized name or the updater's
+              # download 404s. Found by HEAD-checking the first real
+              # latest.json after the desktop-edge run.
+              name = os.path.basename(path).replace(" ", ".")
               platforms[platform] = {
                   "signature": sig_for(path),
-                  "url": f"{base}/{os.path.basename(path)}",
+                  "url": f"{base}/{name}",
               }
 
           # Windows: NSIS installer is the updater payload (silent /S install).
@@ -426,6 +432,30 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # A manifest URL that 404s is invisible until a user's updater dies
+      # mid-download — verify every entry actually resolves right after the
+      # publish (release asset names are GitHub-sanitized, so this also
+      # catches name-mapping regressions).
+      - name: Verify manifest URLs resolve
+        if: needs.release-info.outputs.has_updater == 'true'
+        run: |
+          python3 - <<'PYEOF'
+          import json, urllib.request, sys
+          m = json.load(open("release-assets/latest.json"))
+          bad = []
+          for plat, entry in m["platforms"].items():
+              req = urllib.request.Request(entry["url"], method="HEAD")
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      print(f"{plat}: HTTP {r.status} {entry['url'].rsplit('/', 1)[-1]}")
+              except Exception as exc:
+                  bad.append(f"{plat}: {entry['url']} ({exc})")
+          if bad:
+              print("::error::latest.json URLs do not resolve:\n" + "\n".join(bad))
+              sys.exit(1)
+          print("all manifest URLs resolve")
+          PYEOF
 
       # A release created with GITHUB_TOKEN does NOT trigger `release:`
       # workflows (GitHub recursion prevention), so artifact-smoke would

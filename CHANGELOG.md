@@ -28,6 +28,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `latest.json` pointed at asset URLs containing raw spaces (the bundler
+  names artifacts after `productName`, "NOVA AI"), but GitHub renames
+  spaces to dots when storing release assets — the updater's download
+  would 404. The assembler now sanitizes names the way GitHub does, and
+  `publish-desktop` HEAD-checks every manifest URL after publishing so a
+  broken entry fails the release instead of a user's update. Found by
+  downloading the first real manifest and HEAD-checking its URLs.
 - `release.yml`'s debian build failed on main-branch pushes: the deb
   `Version` came straight from `github.ref_name` (`main`), which dpkg-deb
   rejects ("version number does not start with digit"). Tag cuts keep the
