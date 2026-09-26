@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `release.yml`'s debian build failed on main-branch pushes: the deb
+  `Version` came straight from `github.ref_name` (`main`), which dpkg-deb
+  rejects ("version number does not start with digit"). Tag cuts keep the
+  ref version; branch builds now fall back to the repo version with a
+  `+dev<sha>` suffix so the ubuntu leg stays green on every push.
 - `gh workflow run artifact-smoke.yml` in `desktop.yml`'s `publish-desktop`
   failed on the v1.2.10 cut with "failed to run git: fatal: not a git
   repository": the job never checks out the repo and `gh` without `-R`

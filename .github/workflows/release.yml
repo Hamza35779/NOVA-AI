@@ -56,15 +56,24 @@ jobs:
       # Linux .deb
       - name: Build Debian (.deb) Package
         if: matrix.os == 'ubuntu-latest'
-        env:
-          DEB_VERSION: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
+          DEB_VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "$DEB_VERSION" =~ ^[0-9] ]]; then
+            # Tag cuts keep the ref version (v1.2.10 -> 1.2.10). Branch pushes
+            # and manual dispatches have no v-tag (ref_name=main), and dpkg-deb
+            # rejects any version not starting with a digit — exactly what
+            # failed the ubuntu leg on main. Fall back to the repo version with
+            # a commit suffix so main builds still produce a valid deb.
+            PKG_VER=$(python -c "import json;print(json.load(open('frontend/package.json'))['version'])")
+            DEB_VERSION="${PKG_VER}+dev${GITHUB_SHA:0:8}"
+          fi
           pyinstaller --noconfirm --onefile --name nova src/nova_ai/cli/__main__.py
           mkdir -p deb-pkg/DEBIAN deb-pkg/usr/local/bin
           cp dist/nova deb-pkg/usr/local/bin/nova
           cat << EOF > deb-pkg/DEBIAN/control
           Package: nova-ai
-          Version: ${DEB_VERSION#v}
+          Version: ${DEB_VERSION}
           Section: utils
           Priority: optional
           Architecture: amd64
