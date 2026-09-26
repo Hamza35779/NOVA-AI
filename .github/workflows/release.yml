@@ -39,32 +39,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pyinstaller
-      # Windows .exe
+      # Windows .exe — built from nova-ai-windows-x64.spec (single source of
+      # packaging config). The entry MUST be cli/__main__.py (which carries
+      # the `if __name__ == "__main__"` guard): building from cli/__init__.py
+      # produced an exe that defined the CLI and exited 0 on every command —
+      # no output, no server, silently (found by launching the v1.2.9 exe).
       # --onedir (not --onefile): botocore's deep data paths exceed Windows
-      # MAX_PATH during onefile temp extraction ("decompression resulted in
-      # return code -1"). Zip the folder so users get one download; they
-      # extract and run nova-ai-windows-x64.exe inside.
-      # NOTE: no separate copy step — the pyinstaller output name already
-      # matches artifact_name, and copying a file onto itself fails cmd.
+      # MAX_PATH during onefile temp extraction. Zip the folder so users get
+      # one download.
       - name: Build Windows .exe
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller --noconfirm --onedir --name "nova-ai-windows-x64" src/nova_ai/cli/__init__.py
-          # artifact_name already ends in .zip — appending another one here
-          # made the upload step look for a nonexistent file and silently
-          # skip ("No files were found"), so no Windows zip ever shipped.
+          pyinstaller --noconfirm --clean nova-ai-windows-x64.spec
           Compress-Archive -Path dist\nova-ai-windows-x64\* -DestinationPath dist\${{ matrix.artifact_name }} -Force
         shell: pwsh
       # Linux .deb
       - name: Build Debian (.deb) Package
         if: matrix.os == 'ubuntu-latest'
+        env:
+          DEB_VERSION: ${{ github.ref_name }}
         run: |
-          pyinstaller --noconfirm --onefile --name nova src/nova_ai/cli/__init__.py
+          pyinstaller --noconfirm --onefile --name nova src/nova_ai/cli/__main__.py
           mkdir -p deb-pkg/DEBIAN deb-pkg/usr/local/bin
           cp dist/nova deb-pkg/usr/local/bin/nova
-          cat << 'EOF' > deb-pkg/DEBIAN/control
+          cat << EOF > deb-pkg/DEBIAN/control
           Package: nova-ai
-          Version: 1.0.0
+          Version: ${DEB_VERSION#v}
           Section: utils
           Priority: optional
           Architecture: amd64
@@ -76,7 +76,7 @@ jobs:
       - name: Build macOS Application & Disk Image (.dmg)
         if: matrix.os == 'macos-latest'
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name "NOVA AI" src/nova_ai/cli/__init__.py
+          pyinstaller --noconfirm --onedir --windowed --name "NOVA AI" src/nova_ai/cli/__main__.py
           hdiutil create -volname "NOVA AI" -srcfolder "dist/NOVA AI.app" -ov -format UDZO dist/${{ matrix.artifact_name }}
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
