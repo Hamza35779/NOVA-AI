@@ -10,6 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Artifact smoke now gates the Tauri updater chain.** Stable cuts newer
+  than 1.2.10 must publish the macOS `.app.tar.gz` updater payload, per-
+  platform `.sig` minisign signatures, and a `latest.json` manifest whose
+  version matches the tag, whose URLs point at assets that actually exist
+  on the release (no raw spaces — GitHub renames them to dots), and whose
+  platform entries cover Windows/macOS (both arches)/Linux. A future
+  unsigned or malformed release fails the `Release asset smoke` CI job
+  instead of shipping a dead auto-update channel. v1.2.10 and earlier
+  remain smokeable (signed-era expectations are version-gated);
+  `validate_latest_json` is a pure function unit-tested in
+  `tests/deployment/test_release_assets.py`.
+
+### Added
+
 - **Desktop auto-update goes live.** The updater public key committed in
   `tauri.conf.json` had no matching private half anywhere (it predates the
   repository), so every shipped desktop build was unsigned, no `latest.json`
