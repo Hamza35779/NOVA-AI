@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Shipped CLI exes were silent no-ops.** Every frozen binary produced by
+  `release.yml` used `src/nova_ai/cli/__init__.py` as the PyInstaller entry
+  script — a module that defines the CLI but never calls `main()`. The
+  result exited 0 with no output for every command (`--help`, `--version`,
+  even `serve`). Found by installing and launching the CI-built
+  `NOVA-AI-Setup-1.2.9.exe` payload; the correct entry (`cli/__main__.py`,
+  used by `nova-ai-windows-x64.spec` all along) now drives all platforms.
+  The v1.2.9 CLI/Inno assets are broken (`NOVA.AI_1.2.9_*` desktop bundles
+  are fine); use 1.2.10 or later.
 - Release-created-with-GITHUB_TOKEN does not trigger `release:` workflows
   (GitHub recursion prevention), so the asset smoke job never saw stable
   cuts; both `release.yml` and `desktop.yml` now dispatch it explicitly

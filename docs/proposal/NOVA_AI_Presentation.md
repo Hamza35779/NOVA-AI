@@ -280,7 +280,7 @@ Add new engines, agents, tools, channels, or memory backends by implementing the
 
 # Roadmap
 
-## Current Status (v1.2.9)
+## Current Status (v1.2.10)
 
 ✅ Five-primitive architecture · ✅ 9 agent types · ✅ 58+ tools
 ✅ 5 memory backends · ✅ Smart router + cloud failover · ✅ MCP integration
