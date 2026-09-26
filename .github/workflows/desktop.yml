@@ -204,12 +204,9 @@ jobs:
           # plain installers and disable createUpdaterArtifacts via the
           # --config override consumed by the build jobs — otherwise the
           # bundler fails with "A public key has been found, but no private
-          # key".
-          #
-          # NOTE: without tauri-action, a signed build still needs latest.json
-          # assembled manually before refresh-stable-channel can mirror it;
-          # until then treat has_updater=true as producing signed artifacts
-          # only (the in-app updater stays dormant without the manifest).
+          # key". The build jobs read the same secret from their env so the
+          # bundler can actually sign (raw `tauri build` has no secrets of
+          # its own).
           if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             echo "has_updater=true" >> "$GITHUB_OUTPUT"
             UPDATER_BUNDLE=true
@@ -315,6 +312,14 @@ jobs:
       # and failed every platform at the updater-signing step.
       - name: Build Tauri app
         shell: bash
+        # The signing secret MUST be in this step's env — createUpdaterArtifacts
+        # makes the bundler sign each updater payload with the minisign key
+        # (TAURI_SIGNING_PRIVATE_KEY_PASSWORD stays empty: the key is
+        # passphrase-less). Without the env the build fails with "A public key
+        # has been found, but no private key".
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -o pipefail
           cd frontend
@@ -322,7 +327,8 @@ jobs:
           mkdir -p ../bundles-out
           find src-tauri/target -path '*bundle*' -type f \
             \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \
-               -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \) \
+               -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \
+               -o -name '*.sig' -o -name '*.app.tar.gz' \) \
             -exec cp {} ../bundles-out/ \;
           ls -lh ../bundles-out/
 
@@ -345,6 +351,68 @@ jobs:
 
       - name: List assets
         run: ls -lh release-assets/
+
+      # Assemble the Tauri updater manifest by hand (no tauri-action in this
+      # workflow). Each platform entry's `signature` is the exact content of
+      # the .sig file produced next to the signed artifact. macOS uses the
+      # .app.tar.gz (the updater's diffable payload), not the dmg.
+      - name: Assemble updater manifest (latest.json)
+        if: needs.release-info.outputs.has_updater == 'true'
+        env:
+          TAG: ${{ needs.release-info.outputs.tag }}
+          VERSION: ${{ needs.release-info.outputs.version }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, glob, os, sys, datetime
+
+          assets = "release-assets"
+          repo = os.environ["GITHUB_REPOSITORY"]
+          tag = os.environ["TAG"]
+          version = os.environ["VERSION"]
+          base = f"https://github.com/{repo}/releases/download/{tag}"
+
+          def sig_for(path):
+              sig = path + ".sig"
+              if not os.path.isfile(sig):
+                  sys.exit(f"::error::missing signature file {sig} — signed build did not produce updater artifacts")
+              return open(sig, encoding="utf-8").read().strip()
+
+          platforms = {}
+
+          def add(platform, path):
+              platforms[platform] = {
+                  "signature": sig_for(path),
+                  "url": f"{base}/{os.path.basename(path)}",
+              }
+
+          # Windows: NSIS installer is the updater payload (silent /S install).
+          win = sorted(glob.glob(f"{assets}/*_x64-setup.exe"))
+          if win:
+              add("windows-x86_64", win[-1])
+          # macOS: updater wants the .app.tar.gz; fall back to the dmg.
+          mac = sorted(glob.glob(f"{assets}/*.app.tar.gz")) or sorted(glob.glob(f"{assets}/*_universal.dmg"))
+          if mac:
+              for plat in ("darwin-aarch64", "darwin-x86_64"):
+                  add(plat, mac[-1])
+          # Linux: AppImage.
+          linux = sorted(glob.glob(f"{assets}/*_amd64.AppImage"))
+          if linux:
+              add("linux-x86_64", linux[-1])
+
+          if not platforms:
+              sys.exit("::error::no signed updater artifacts found in release-assets")
+
+          manifest = {
+              "version": version,
+              "notes": f"NOVA AI Desktop {version}",
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": platforms,
+          }
+          with open(f"{assets}/latest.json", "w", encoding="utf-8") as f:
+              json.dump(manifest, f, indent=2)
+              f.write("\n")
+          print(json.dumps(manifest, indent=2))
+          PYEOF
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -372,13 +440,15 @@ jobs:
         # "fatal: not a git repository" (exactly what broke the v1.2.10 run).
         run: gh workflow run artifact-smoke.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
 
-  # When a stable `desktop-v*` release is published, repoint the
-  # `desktop-latest` auto-update channel (the endpoint the installed app
-  # polls) at it. Only meaningful for signed builds that produced an updater
-  # manifest; without the signing key there is no latest.json to mirror.
+  # When a stable release is published (a `desktop-v*` tag or a plain
+  # `vX.Y.Z` cut), repoint the `desktop-latest` auto-update channel (the
+  # endpoint the installed app polls) at it. Only meaningful for signed
+  # builds that produced an updater manifest; without the signing key there
+  # is no latest.json to mirror. Edge/dev runs never touch the stable
+  # channel (prerelease gate below).
   refresh-stable-channel:
     needs: [publish-desktop, release-info]
-    if: startsWith(github.ref, 'refs/tags/desktop-v') && needs.release-info.outputs.has_updater == 'true'
+    if: needs.release-info.outputs.prerelease == 'false' && needs.release-info.outputs.has_updater == 'true' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Mirror stable latest.json into desktop-latest

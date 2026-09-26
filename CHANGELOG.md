@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop auto-update goes live.** The updater public key committed in
+  `tauri.conf.json` had no matching private half anywhere (it predates the
+  repository), so every shipped desktop build was unsigned, no `latest.json`
+  manifest was ever produced, and the `desktop-latest` channel the installed
+  app polls did not exist. Generated a fresh minisign keypair with
+  `npx tauri signer generate` (private key stored as the
+  `TAURI_SIGNING_PRIVATE_KEY` repo secret, public key now baked into the
+  app), passed the secret to the desktop build steps, stopped the bundle
+  copy filter from dropping `.sig`/`.app.tar.gz` updater artifacts, added a
+  `latest.json` assembler to `publish-desktop`, and extended
+  `refresh-stable-channel` to also flip the stable channel on plain `vX.Y.Z`
+  cuts (not just `desktop-v*` tags). Installs made before this change bake
+  in the old public key and cannot verify updates signed by the new one —
+  the only recovery is a manual reinstall (see
+  `docs/desktop-auto-update.md`).
+
 ### Fixed
 
 - `release.yml`'s debian build failed on main-branch pushes: the deb
