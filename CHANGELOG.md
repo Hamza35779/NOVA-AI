@@ -42,6 +42,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `check-doc-assets.py` still banned any doc mention of
+  `NOVA-AI-Setup-<version>.exe` as a "phantom" asset — a rule that became
+  wrong when release.yml regained its Inno Setup job and v1.2.10 shipped a
+  CI-built, smoke-verified `NOVA-AI-Setup-1.2.10.exe`. The installer is now
+  checked like every other referenced asset (version must match the repo
+  version, must exist on the release), so the README's step-by-step PC
+  setup guide can describe all three Windows download options.
 - `latest.json` pointed at asset URLs containing raw spaces (the bundler
   names artifacts after `productName`, "NOVA AI"), but GitHub renames
   spaces to dots when storing release assets — the updater's download

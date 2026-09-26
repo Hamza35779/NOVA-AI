@@ -42,6 +42,71 @@ NOVA AI is local-first: the only hard requirement is Python. Everything else is 
 
 **Hardware:** any 64-bit Windows 10/11, macOS 12+, or modern Linux. 4 GB RAM minimum, 16 GB+ recommended. A CUDA/Metal/ROCm GPU or Apple Silicon is optional but makes 7–8B models much faster. Small models (0.5–3B) run fine on CPU.
 
+---
+
+## Set Up on Your PC (Step by Step)
+
+From zero to a working NOVA AI on a Windows PC in five steps. macOS/Linux notes are inline; no Python or programming knowledge is needed for the installer routes.
+
+### Step 1 — Download an installer
+
+Open the **[Latest Release page](https://github.com/Hamza35779/NOVA-AI/releases/latest)** and download **one** of these:
+
+| File | What it is | Choose this if you want… |
+|---|---|---|
+| `NOVA.AI_1.2.10_x64-setup.exe` (~14 MB) | **Desktop app** (GUI, Alt+Space Quick Capture, auto-updater) | The full desktop experience — recommended for most people |
+| `NOVA-AI-Setup-1.2.10.exe` (~70 MB) | **CLI + local backend** (`nova` command, no Python needed) | Terminal/chat usage and the `nova …` commands |
+| `nova-ai-windows-x64.zip` (~95 MB) | **Portable** — no installation, just unzip and run | A no-install trial or a USB-stick setup |
+
+Other platforms: **macOS** → `NOVA.AI_1.2.10_universal.dmg` · **Linux** → `.AppImage`, `.deb`, or `.rpm` from the same release page.
+
+### Step 2 — Install it
+
+**Windows (desktop app or CLI installer):**
+1. Double-click the downloaded `.exe`.
+2. If **Windows SmartScreen** shows "Windows protected your PC", click **More info → Run anyway** (the binaries are verified by CI checksums but not yet code-signed with a paid certificate).
+3. Keep the default install location (`%LOCALAPPDATA%\Programs\NOVA AI` for the desktop app) and finish.
+
+**macOS:** open the `.dmg`, drag **NOVA AI** into **Applications**, then right-click it → **Open** (first launch only, to pass Gatekeeper).
+
+**Linux (AppImage):** `chmod +x NOVA.AI_*.AppImage && ./NOVA.AI_*.AppImage` — or install the package: `sudo dpkg -i NOVA.AI_*_amd64.deb` (Debian/Ubuntu) or `sudo rpm -i NOVA.AI-*.rpm` (Fedora).
+
+**Portable zip:** right-click → **Extract All…**, then open the extracted folder.
+
+### Step 3 — First launch
+
+- **Desktop app:** launch **NOVA AI** from the Start menu. The dashboard opens with engine, memory, and model status.
+- **CLI:** open **PowerShell** and check the install:
+
+  ```powershell
+  nova --version     # prints the version
+  nova doctor        # hardware, GPU, and engine health check
+  ```
+
+- **Portable zip:** in the extracted folder, run `nova-ai-windows-x64.exe --version` from a terminal to confirm it works.
+
+> Tip: the desktop app can also install/start the local backend for you — you only need the CLI installer if you prefer working in a terminal.
+
+### Step 4 — Connect a model engine (pick one)
+
+| Option | Steps | Best for |
+|---|---|---|
+| **Ollama** (easiest) | 1. Install [Ollama](https://ollama.com) · 2. `ollama pull qwen2.5:7b` · 3. NOVA AI detects it automatically | One-click local model management |
+| **Built-in GGUF Hub** (zero setup) | In the app/web UI, open the **GGUF Hub** and click a starter model to download — or drop any `.gguf` file into `~\.nova_ai\models\` | Fully offline, nothing else to install |
+| **Cloud APIs** | In the app's **Settings** page, paste an `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `GROQ_API_KEY` | Maximum capability |
+
+### Step 5 — Verify and start using it
+
+1. **Chat:** press `Alt+Space` anywhere in Windows (Quick Capture), or run `nova chat` in a terminal.
+2. **Web UI:** the desktop app serves the dashboard at `http://localhost:8000` — open it and check the model list.
+3. **Health check (optional):** visit `http://localhost:8000/health` — it should return `{"status":"ok"}`.
+
+Your data lives in `~\.nova_ai\` (config, memory database, downloaded models). The desktop app keeps itself up to date automatically; the CLI updates with `nova self-update`. To remove everything, see [Uninstalling](#uninstalling).
+
+> Prefer building from source or scripting the install? See [Quick Start (from source)](#quick-start-from-source), the one-liners in [Installation & Quick Start](#installation--quick-start), or the [Complete Setup & User Guide](SETUP_AND_USAGE_GUIDE.md).
+
+---
+
 ## Quick Start (from source)
 
 The fastest way to a running system from a fresh clone:

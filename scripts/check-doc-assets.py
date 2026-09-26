@@ -12,10 +12,14 @@ Rules:
   * concrete ``NOVA.AI_<version>_…`` / ``NOVA.AI-<version>-…`` names must
     carry the current PKG version (stale concrete names fail),
   * every referenced asset (including the versionless
-    ``nova-ai-windows-x64.zip``) must exist on the v<PKG> release,
-  * the phantom ``NOVA-AI-Setup-<version>.exe`` name must not appear in
-    current-claim docs at all (it is only legitimate in historical context
-    — CHANGELOG, roadmap, the Inno project itself, deploy/windows/README.md).
+    ``nova-ai-windows-x64.zip``) must exist on the v<PKG> release.
+
+The Inno ``NOVA-AI-Setup-<version>.exe`` installer is checked like any
+other asset since release.yml regained its Inno Setup job (the 1.2.10
+cut): its version must match PKG and it must exist on the release.
+(Historically this script banned the name outright because the asset was
+last built by hand for 1.2.4 while docs kept advertising it — that ban
+became wrong the moment CI rebuilt the asset every cut.)
 
 If the v<PKG> release has not been cut yet (404) the check warns and passes
 — a version-bump commit lands before its tag by design.
@@ -56,6 +60,7 @@ CONCRETE_PATTERNS = [
     re.compile(r"NOVA\.AI_([0-9]+\.[0-9]+\.[0-9]+)_amd64\.AppImage"),
     re.compile(r"NOVA\.AI_([0-9]+\.[0-9]+\.[0-9]+)_amd64\.deb"),
     re.compile(r"NOVA\.AI-([0-9]+\.[0-9]+\.[0-9]+)-[0-9]+\.x86_64\.rpm"),
+    re.compile(r"NOVA-AI-Setup-([0-9]+\.[0-9]+\.[0-9]+)\.exe"),
 ]
 
 # References to a specific asset name (versionless ones included).
@@ -67,17 +72,8 @@ ASSET_NAME_PATTERNS = [
     re.compile(r"NOVA\.AI_[0-9.]+_amd64\.deb"),
     re.compile(r"NOVA\.AI-[0-9.-]+\.x86_64\.rpm"),
     re.compile(r"nova-ai-windows-x64\.zip"),
+    re.compile(r"NOVA-AI-Setup-[0-9.]+\.exe"),
 ]
-
-# The Inno-produced installer name that CI does not build (yet). Any concrete
-# mention outside the exempt historical files is doc drift.
-PHANTOM_PATTERN = re.compile(r"NOVA-AI-Setup-[0-9.]+\.exe")
-PHANTOM_EXEMPT = {
-    "deploy/windows/nova-ai-setup.iss",
-    "deploy/windows/README.md",
-    "CHANGELOG.md",
-    "docs/development/roadmap.md",
-}
 
 
 def frontend_version() -> str:
@@ -130,14 +126,6 @@ def main() -> int:
                     )
         for pattern in ASSET_NAME_PATTERNS:
             referenced.update(pattern.findall(text))
-        rel_key = rel.replace("\\", "/")
-        if rel_key not in PHANTOM_EXEMPT:
-            for hit in PHANTOM_PATTERN.findall(text):
-                failures.append(
-                    f"{rel}: references {hit}, an Inno-built installer that no "
-                    f"CI workflow produces — use NOVA.AI_{pkg}_x64-setup.exe "
-                    f"(desktop app) or nova-ai-windows-x64.zip (backend)"
-                )
 
     print(f"repo version: {pkg}; checking docs against release {tag}")
     try:
