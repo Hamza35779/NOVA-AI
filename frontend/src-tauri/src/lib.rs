@@ -1,4 +1,3 @@
-
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -111,7 +110,8 @@ struct BootPlan {
     /// e.g. `("lmstudio", "http://localhost:1234")`. Written into
     /// ~/.nova_ai/config.toml so `nova serve` picks it up.
     engine_host: Option<(String, String)>,
-    /// Args appended after `uv run nova serve --port <port>`.
+    /// Args appended after `nova serve --port <port>` (launched via uv when
+    /// available, otherwise `python -m nova_ai.cli`).
     serve_args: Vec<String>,
 }
 
@@ -263,6 +263,215 @@ fn resolve_bin(name: &str) -> String {
     }
 
     name.to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Engine launcher resolution — uv first, plain-Python fallback
+// ---------------------------------------------------------------------------
+
+/// How to launch the `nova` CLI on this machine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum NovaLauncher {
+    /// The self-contained PyInstaller backend shipped by the Windows CLI
+    /// installer / portable zip (`nova-ai-windows-x64.exe`) — needs neither
+    /// Python, uv, nor a repo clone.
+    Frozen(String),
+    /// uv is installed → `uv run nova …` (uv manages the project venv).
+    Uv,
+    /// No uv → `python -m nova_ai.cli …` (package must be importable).
+    Python,
+}
+
+/// Python executables to try for the no-uv fallback, most likely first.
+/// `py` is the Windows launcher that exists even when `python.exe` isn't on
+/// PATH; on Unix `python3` is the standard name.
+fn python_candidates() -> Vec<String> {
+    #[cfg(target_os = "windows")]
+    {
+        vec!["python".to_string(), "py".to_string()]
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        vec!["python3".to_string(), "python".to_string()]
+    }
+}
+
+/// Path of the checkout-local venv interpreter for `root`, if the venv exists
+/// (`.venv/Scripts/python.exe` on Windows, `.venv/bin/python` elsewhere).
+fn repo_venv_python(root: &std::path::Path) -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    let venv_python = root.join(".venv").join("Scripts").join("python.exe");
+    #[cfg(not(target_os = "windows"))]
+    let venv_python = root.join(".venv").join("bin").join("python");
+    venv_python.exists().then_some(venv_python)
+}
+
+/// First Python candidate that can `import nova_ai`, if any. Blocking and
+/// quick (~100 ms per healthy interpreter); used to pick the no-uv fallback
+/// and to decide whether a `pip install` is needed at all.
+fn python_importing_nova() -> Option<String> {
+    for py in python_candidates() {
+        if let Ok(output) = std::process::Command::new(&py)
+            .args(["-c", "import nova_ai"])
+            .output()
+        {
+            if output.status.success() {
+                return Some(py);
+            }
+        }
+    }
+    None
+}
+
+/// Which engine launcher can this machine use right now? Probed WITHOUT a
+/// project root (it runs before the possible first-launch auto-clone), in
+/// preference order:
+///   1. uv — preferred in dev checkouts (manages the repo venv itself),
+///   2. the self-contained frozen backend installed by the CLI installer —
+///      the route that keeps the desktop app working with no Python at all,
+///   3. any Python that imports the package.
+///
+/// `None` = no route works → the caller shows one actionable setup error
+/// covering all install options.
+fn probe_nova_launcher() -> Option<NovaLauncher> {
+    let uv = resolve_bin("uv");
+    if std::path::Path::new(&uv).exists() || uv != "uv" {
+        return Some(NovaLauncher::Uv);
+    }
+    if let Some(path) = resolve_frozen_backend() {
+        return Some(NovaLauncher::Frozen(path));
+    }
+    if python_importing_nova().is_some() {
+        return Some(NovaLauncher::Python);
+    }
+    // A discoverable checkout with its own venv also counts (manual
+    // `python -m venv` + `pip install -e .` users without uv or a PATH
+    // install). Checked last — find_project_root is the priciest probe.
+    if let Some(root) = find_project_root() {
+        if repo_venv_python(&root).is_some() {
+            return Some(NovaLauncher::Python);
+        }
+    }
+    None
+}
+
+/// Locate the self-contained PyInstaller backend (`nova-ai-windows-x64.exe`)
+/// shipped by `NOVA-AI-Setup-<ver>.exe` and the portable zip. Checks the Inno
+/// default install dir first, then PATH (the installer's optional
+/// "Add to PATH" task, or a user-added entry).
+fn resolve_frozen_backend() -> Option<String> {
+    let localappdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let inno_default = format!("{localappdata}\\Programs\\NOVA AI\\nova-ai-windows-x64.exe");
+    if std::path::Path::new(&inno_default).exists() {
+        return Some(inno_default);
+    }
+    let on_path = resolve_bin("nova-ai-windows-x64");
+    if on_path != "nova-ai-windows-x64" && std::path::Path::new(&on_path).exists() {
+        return Some(on_path);
+    }
+    None
+}
+
+/// Concrete spawn plan for a launcher: program, argument prefix that goes
+/// before the nova subcommand, and the index of the first nova subcommand
+/// arg in the final argv (used by error hints that re-print the command).
+fn nova_spawn_plan(
+    launcher: &NovaLauncher,
+    root: &std::path::Path,
+) -> (String, Vec<String>, usize) {
+    match launcher {
+        NovaLauncher::Frozen(path) => (path.clone(), Vec::new(), 3),
+        NovaLauncher::Uv => {
+            let (prog, prefix) = nova_launch_command_with(&resolve_bin("uv"), root);
+            (prog, prefix, 5)
+        }
+        NovaLauncher::Python => {
+            // Prefix `-m nova_ai.cli` is also 2 elements, so nova's argv starts
+            // at the same slot as under the uv launcher.
+            let (prog, prefix) = nova_launch_command_with("uv", root);
+            (prog, prefix, 5)
+        }
+    }
+}
+
+/// Resolve the concrete program + argument prefix used to run the `nova`
+/// CLI from the repo at `root`, WITHOUT the frozen-backend route (that one
+/// never reaches the repo-based launchers). Preference order:
+///   1. `uv run nova` — uv manages the project venv itself,
+///   2. `<root>/.venv python -m nova_ai.cli` — a checkout-local venv
+///      (created by `uv sync`, `install.bat`, or a manual `python -m venv`),
+///   3. `python -m nova_ai.cli` — package importable from a PATH Python
+///      (pip/pipx install from the CLI installers).
+///
+/// A resolved-uv argument of bare `"uv"` means "uv was not found anywhere".
+fn nova_launch_command_with(uv_bin: &str, root: &std::path::Path) -> (String, Vec<String>) {
+    if std::path::Path::new(uv_bin).exists() || uv_bin != "uv" {
+        return (uv_bin.to_string(), vec!["run".into(), "nova".into()]);
+    }
+
+    if let Some(venv_python) = repo_venv_python(root) {
+        return (
+            venv_python.display().to_string(),
+            vec!["-m".into(), "nova_ai.cli".into()],
+        );
+    }
+
+    // Last resort: the first Python on the candidate list that imports the
+    // package, or plainly the first candidate (a spawn/import failure is
+    // surfaced downstream with an actionable message).
+    let py = python_importing_nova()
+        .or_else(|| python_candidates().into_iter().next())
+        .unwrap_or_else(|| "python".into());
+    (py, vec!["-m".into(), "nova_ai.cli".into()])
+}
+
+/// Best-effort `pip install -e .` into the first Python candidate that
+/// actually has pip. Returns a ready-to-show error message on failure.
+async fn install_python_deps(root: &std::path::Path) -> Result<(), String> {
+    for py in python_candidates() {
+        let mut pip_cmd = tokio::process::Command::new(&py);
+        pip_cmd
+            .args([
+                "-m",
+                "pip",
+                "install",
+                "--user",
+                "-e",
+                ".[desktop,inference-cloud,inference-google]",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .current_dir(root);
+        // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455).
+        prepare_subprocess_for_appimage(&mut pip_cmd);
+        let output = match pip_cmd.output().await {
+            Ok(out) => out,
+            Err(_) => continue, // no pip in this interpreter — try the next
+        };
+        if output.status.success() {
+            return Ok(());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Installing the NOVA AI engine with pip failed (exit {}). Last output:\n\n{}\n\n\
+             Open a terminal in {} and run:\n  \
+             python -m pip install -e \".[desktop,inference-cloud,inference-google]\"\n\n\
+             …or install uv (https://astral.sh/uv) and relaunch — the app will then \
+             manage its own environment.",
+            output
+                .status
+                .code()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "unknown".into()),
+            uv_sync_stderr_tail(&stderr, 800),
+            root.display(),
+        ));
+    }
+    Err(
+        "Could not find a Python with pip. Install Python 3.10+ from \
+         https://www.python.org (tick 'Add python.exe to PATH'), then relaunch."
+            .into(),
+    )
 }
 
 /// Find the NOVA AI project root (contains pyproject.toml).
@@ -665,18 +874,19 @@ async fn pull_model(model: &str) -> Result<(), String> {
 fn uv_sync_stderr_tail(stderr: &str, max_chars: usize) -> String {
     let total = stderr.chars().count();
     let skip = total.saturating_sub(max_chars);
-    stderr.chars().skip(skip).collect::<String>().trim().to_string()
+    stderr
+        .chars()
+        .skip(skip)
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 /// Error message shown when `uv sync` runs but exits non-zero (#331).
 ///
 /// `exit_code` is `None` when the process was terminated by a signal with
 /// no exit code (rendered as "unknown" rather than a misleading -1).
-fn format_uv_sync_failure(
-    root: &std::path::Path,
-    exit_code: Option<i32>,
-    stderr: &str,
-) -> String {
+fn format_uv_sync_failure(root: &std::path::Path, exit_code: Option<i32>, stderr: &str) -> String {
     let code = exit_code
         .map(|c| c.to_string())
         .unwrap_or_else(|| "unknown".to_string());
@@ -740,6 +950,44 @@ fn format_uv_sync_spawn_error(root: &std::path::Path, uv_bin: &str, err: &str) -
 // ---------------------------------------------------------------------------
 
 async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
+    // Probe the engine launcher FIRST — before starting Ollama, downloading a
+    // model, or cloning the repo — so a machine with no way to run the engine
+    // fails fast with one actionable message instead of after a multi-GB
+    // download. The desktop app does NOT hard-require uv: it falls back to the
+    // self-contained CLI-backend install and then to any Python 3.10+ that can
+    // `import nova_ai` (details on `probe_nova_launcher`).
+    let Some(launcher) = probe_nova_launcher() else {
+        let mut s = status.lock().await;
+        #[cfg(target_os = "windows")]
+        let msg = "Could not find a Python environment to start the NOVA AI engine. \
+                   Install ONE of the following, then close and relaunch this app:\n\n\
+                   1. The NOVA AI CLI installer (NOVA-AI-Setup-*.exe from the \
+                   Releases page — fully self-contained, no Python needed)\n\n\
+                   2. Python 3.10+ — https://www.python.org/downloads/ \
+                   (tick 'Add python.exe to PATH' in the installer)\n\n\
+                   3. uv — open PowerShell and run: \
+                   powershell -ExecutionPolicy Bypass -c \"irm https://astral.sh/uv/install.ps1 | iex\"\n\n\
+                   Already have the source elsewhere? Set the NOVA_AI_ROOT \
+                   environment variable to that folder and relaunch. \
+                   (If the install completes but the app still can't find Python, \
+                   log out and back in so PATH refreshes.)";
+        #[cfg(target_os = "macos")]
+        let msg = "Could not find a Python environment to start the NOVA AI engine. \
+                   Install ONE of the following, then relaunch this app:\n\n\
+                   1. Python 3.10+ — https://www.python.org/downloads/\n\n\
+                   2. uv — open Terminal and run: curl -LsSf https://astral.sh/uv/install.sh | sh";
+        #[cfg(target_os = "linux")]
+        let msg = "Could not find a Python environment to start the NOVA AI engine. \
+                   Install ONE of the following, then relaunch this app:\n\n\
+                   1. Python 3.10+ (e.g. sudo apt install python3 python3-pip)\n\n\
+                   2. uv — open a terminal and run: curl -LsSf https://astral.sh/uv/install.sh | sh";
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+        let msg = "Could not find a Python environment to start the NOVA AI engine. \
+                   Install Python 3.10+ or uv (https://astral.sh/uv), then relaunch.";
+        s.error = Some(msg.into());
+        return;
+    };
+
     // Decide the inference source (default Ollama) before launching anything.
     let cfg = read_inference_config();
     let plan = boot_plan(&cfg, total_ram_gb());
@@ -869,7 +1117,11 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             s.error = Some(format!(
                 "Could not reach your custom inference server at {}. \
                  Start the server (e.g. LM Studio) and check the URL in Settings, then relaunch.",
-                if host.is_empty() { "(no URL set)" } else { host.as_str() }
+                if host.is_empty() {
+                    "(no URL set)"
+                } else {
+                    host.as_str()
+                }
             ));
             return;
         }
@@ -898,120 +1150,99 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         s.detail = "Starting API server...".into();
     }
 
-    let uv_bin = resolve_bin("uv");
+    // The engine launcher was probed at the top of boot — by the time we
+    // reach Phase 3 we know at least one route (uv / frozen backend / Python)
+    // is available.
 
-    // Verify uv is actually installed. Concrete per-OS instructions —
-    // the generic "install it from astral.sh" was the #1 source of
-    // confusion on the Discord support thread; users couldn't tell whether
-    // to use winget, scoop, pip, or the official installer.
-    if !std::path::Path::new(&uv_bin).exists() && uv_bin == "uv" {
-        let mut s = status.lock().await;
-        #[cfg(target_os = "windows")]
-        let msg = "Could not find 'uv' (Python package manager). \
-                   To install on Windows, open PowerShell and run:\n\n\
-                   powershell -ExecutionPolicy Bypass -c \"irm https://astral.sh/uv/install.ps1 | iex\"\n\n\
-                   Then close and relaunch this app. \
-                   (If the install completes but the app still can't find uv, \
-                   you may need to log out and back in so PATH refreshes.)";
-        #[cfg(target_os = "macos")]
-        let msg = "Could not find 'uv' (Python package manager). \
-                   To install on macOS, open Terminal and run:\n\n\
-                   curl -LsSf https://astral.sh/uv/install.sh | sh\n\n\
-                   Then relaunch this app.";
-        #[cfg(target_os = "linux")]
-        let msg = "Could not find 'uv' (Python package manager). \
-                   To install on Linux, open a terminal and run:\n\n\
-                   curl -LsSf https://astral.sh/uv/install.sh | sh\n\n\
-                   Then relaunch this app.";
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        let msg = "Could not find 'uv' (Python package manager). \
-                   Install it from https://astral.sh/uv then relaunch.";
-        s.error = Some(msg.into());
-        return;
-    }
+    // The self-contained frozen backend needs neither a repo clone nor any
+    // dependency install — it skips straight to serving.
+    let needs_repo = !matches!(launcher, NovaLauncher::Frozen(_));
 
-    let mut project_root = find_project_root();
+    let mut project_root = None;
+    if needs_repo {
+        project_root = find_project_root();
 
-    if project_root.is_none() {
-        // Auto-clone on first launch
-        let git_bin = resolve_bin("git");
+        if project_root.is_none() {
+            // Auto-clone on first launch
+            let git_bin = resolve_bin("git");
 
-        // Check that git is installed
-        if !std::path::Path::new(&git_bin).exists() && git_bin == "git" {
-            let mut s = status.lock().await;
-            s.error = Some(
-                "Could not find 'git'. \
+            // Check that git is installed
+            if !std::path::Path::new(&git_bin).exists() && git_bin == "git" {
+                let mut s = status.lock().await;
+                s.error = Some(
+                    "Could not find 'git'. \
                  Install it from https://git-scm.com then relaunch."
-                    .into(),
-            );
-            return;
-        }
+                        .into(),
+                );
+                return;
+            }
 
-        let target_path = std::path::PathBuf::from(home_dir()).join("NOVA AI");
-        let clone_target = target_path.display().to_string();
+            let target_path = std::path::PathBuf::from(home_dir()).join("NOVA AI");
+            let clone_target = target_path.display().to_string();
 
-        // If the directory exists but is not a valid project, don't overwrite
-        if target_path.exists() && !target_path.join("pyproject.toml").exists() {
-            let mut s = status.lock().await;
-            s.error = Some(format!(
-                "{} exists but is not a valid NOVA AI project. \
+            // If the directory exists but is not a valid project, don't overwrite
+            if target_path.exists() && !target_path.join("pyproject.toml").exists() {
+                let mut s = status.lock().await;
+                s.error = Some(format!(
+                    "{} exists but is not a valid NOVA AI project. \
                  Remove it and relaunch, or set NOVA_AI_ROOT to the correct path.",
-                clone_target,
-            ));
-            return;
-        }
+                    clone_target,
+                ));
+                return;
+            }
 
-        {
-            let mut s = status.lock().await;
-            s.detail = "Downloading NOVA AI (first launch)...".into();
-        }
+            {
+                let mut s = status.lock().await;
+                s.detail = "Downloading NOVA AI (first launch)...".into();
+            }
 
-        let clone_result = tokio::process::Command::new(&git_bin)
-            .args([
-                "clone",
-                "--depth",
-                "1",
-                "https://github.com/Hamza35779/NOVA-AI.git",
-                &clone_target,
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .spawn();
+            let clone_result = tokio::process::Command::new(&git_bin)
+                .args([
+                    "clone",
+                    "--depth",
+                    "1",
+                    "https://github.com/Hamza35779/NOVA-AI.git",
+                    &clone_target,
+                ])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .spawn();
 
-        match clone_result {
-            Ok(child) => match child.wait_with_output().await {
-                Ok(output) if output.status.success() => {
-                    project_root = Some(target_path);
-                }
-                Ok(output) => {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let mut s = status.lock().await;
-                    s.error = Some(format!(
-                        "Failed to download NOVA AI: {}. \
+            match clone_result {
+                Ok(child) => match child.wait_with_output().await {
+                    Ok(output) if output.status.success() => {
+                        project_root = Some(target_path);
+                    }
+                    Ok(output) => {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        let mut s = status.lock().await;
+                        s.error = Some(format!(
+                            "Failed to download NOVA AI: {}. \
                          Clone manually: git clone https://github.com/Hamza35779/NOVA-AI.git {}",
-                        stderr.trim(),
-                        clone_target,
-                    ));
-                    return;
-                }
+                            stderr.trim(),
+                            clone_target,
+                        ));
+                        return;
+                    }
+                    Err(e) => {
+                        let mut s = status.lock().await;
+                        s.error = Some(format!(
+                            "Failed to download NOVA AI: {}. \
+                         Clone manually: git clone https://github.com/Hamza35779/NOVA-AI.git {}",
+                            e, clone_target,
+                        ));
+                        return;
+                    }
+                },
                 Err(e) => {
                     let mut s = status.lock().await;
                     s.error = Some(format!(
-                        "Failed to download NOVA AI: {}. \
-                         Clone manually: git clone https://github.com/Hamza35779/NOVA-AI.git {}",
-                        e, clone_target,
+                        "Could not run git: {}. \
+                     Install git from https://git-scm.com then relaunch.",
+                        e,
                     ));
                     return;
                 }
-            },
-            Err(e) => {
-                let mut s = status.lock().await;
-                s.error = Some(format!(
-                    "Could not run git: {}. \
-                     Install git from https://git-scm.com then relaunch.",
-                    e,
-                ));
-                return;
             }
         }
     }
@@ -1073,10 +1304,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                     // false otherwise because we skipped those steps).
                     let mut s = status.lock().await;
                     s.phase = "ready".into();
-                    s.detail = format!(
-                        "Connected to existing API server on port {}.",
-                        NOVA_PORT,
-                    );
+                    s.detail = format!("Connected to existing API server on port {}.", NOVA_PORT,);
                     s.server_ready = true;
                     s.model_ready = true;
                     s.ollama_ready = true;
@@ -1120,7 +1348,10 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         }
     }
 
-    let root = project_root.as_ref().unwrap();
+    // The frozen backend needs no repo; fall back to a scratch cwd so the
+    // rest of the boot flow stays uniform.
+    let scratch_cwd = std::env::temp_dir();
+    let root = project_root.as_deref().unwrap_or(scratch_cwd.as_path());
 
     // Install dependencies automatically (handles fresh clones).
     //
@@ -1136,37 +1367,65 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     // to the user BEFORE the long server-start wait. The status detail
     // message also indicates this can take a couple of minutes on first
     // boot so users don't restart the app thinking it's stuck.
-    {
-        let mut s = status.lock().await;
-        s.detail = "Installing dependencies (uv sync — may take 1-2 min on first boot)...".into();
-    }
-    let mut sync_cmd = tokio::process::Command::new(&uv_bin);
-    sync_cmd
-        .args([
-            "sync",
-            "--extra", "desktop",
-            "--extra", "inference-cloud",
-            "--extra", "inference-google",
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .current_dir(root);
-    // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455).
-    prepare_subprocess_for_appimage(&mut sync_cmd);
-    let sync_output = sync_cmd.output().await;
-    match sync_output {
-        Ok(out) if !out.status.success() => {
-            let stderr = String::from_utf8_lossy(&out.stderr);
+    if matches!(launcher, NovaLauncher::Uv) {
+        // uv route: `uv sync` is a hard requirement — a failed sync means an
+        // under-provisioned venv and a confusing crash later, so surface the
+        // failure immediately (issue #331).
+        {
             let mut s = status.lock().await;
-            s.error = Some(format_uv_sync_failure(root, out.status.code(), &stderr));
-            return;
+            s.detail =
+                "Installing dependencies (uv sync — may take 1-2 min on first boot)...".into();
         }
-        Err(e) => {
-            let mut s = status.lock().await;
-            s.error = Some(format_uv_sync_spawn_error(root, &uv_bin, &e.to_string()));
-            return;
+        let uv_bin = resolve_bin("uv");
+        let mut sync_cmd = tokio::process::Command::new(&uv_bin);
+        sync_cmd
+            .args([
+                "sync",
+                "--extra",
+                "desktop",
+                "--extra",
+                "inference-cloud",
+                "--extra",
+                "inference-google",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .current_dir(root);
+        // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455).
+        prepare_subprocess_for_appimage(&mut sync_cmd);
+        let sync_output = sync_cmd.output().await;
+        match sync_output {
+            Ok(out) if !out.status.success() => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let mut s = status.lock().await;
+                s.error = Some(format_uv_sync_failure(root, out.status.code(), &stderr));
+                return;
+            }
+            Err(e) => {
+                let mut s = status.lock().await;
+                s.error = Some(format_uv_sync_spawn_error(root, &uv_bin, &e.to_string()));
+                return;
+            }
+            Ok(_) => {} // success — fall through
         }
-        Ok(_) => {} // success — fall through
+    } else if !matches!(launcher, NovaLauncher::Frozen(_)) {
+        // Python route (no uv): install only when nothing can already run
+        // the package — a PATH Python that imports it, or a checkout venv
+        // (CLI installer, install.bat, `uv sync` of the past, manual venv).
+        let has_venv = repo_venv_python(root).is_some();
+        if python_importing_nova().is_none() && !has_venv {
+            {
+                let mut s = status.lock().await;
+                s.detail =
+                    "Installing dependencies (pip install — may take 1-2 min on first boot)..."
+                        .into();
+            }
+            if let Err(msg) = install_python_deps(root).await {
+                let mut s = status.lock().await;
+                s.error = Some(msg);
+                return;
+            }
+        }
     }
 
     {
@@ -1174,15 +1433,14 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         s.detail = format!("Starting API server from {}...", root.display());
     }
 
-    let mut cmd = tokio::process::Command::new(&uv_bin);
-    let mut serve_argv: Vec<String> = vec![
-        "run".into(),
-        "nova".into(),
-        "serve".into(),
-        "--port".into(),
-        NOVA_PORT.to_string(),
-    ];
+    // Frozen backend → the self-contained exe; uv present → `uv run nova
+    // serve …`; otherwise the repo venv or a PATH Python via
+    // `python -m nova_ai.cli` (same chain as the dependency step above).
+    let (nova_prog, launch_prefix, nova_argv_start) = nova_spawn_plan(&launcher, root);
+    let mut serve_argv = launch_prefix;
+    serve_argv.extend(["serve".into(), "--port".into(), NOVA_PORT.to_string()]);
     serve_argv.extend(plan.serve_args.iter().cloned());
+    let mut cmd = tokio::process::Command::new(&nova_prog);
     // If the Ollama pull fell back to a different tag than planned, serve the
     // tag that is actually present. boot_plan always emits `--model` followed
     // immediately by its value, so `i + 1` is in bounds.
@@ -1230,7 +1488,8 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             let mut s = status.lock().await;
             s.error = Some(format!(
                 "Could not start nova server: {}. \
-                 Make sure uv is installed (https://astral.sh/uv) and the NOVA AI repo is cloned at {}",
+                 Make sure Python 3.10+ is installed (https://www.python.org) — \
+                 or install uv from https://astral.sh/uv — and the NOVA AI repo is at {}",
                 e,
                 root.display(),
             ));
@@ -1251,8 +1510,10 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                  Server response:\n{}",
                 NOVA_PORT,
                 // Show the args actually passed (after `serve --port <port>`),
-                // including any post-fallback `--model` override.
-                match serve_argv.get(5..) {
+                // including any post-fallback `--model` override. The index
+                // depends on the launcher: uv consumes `run`, python adds
+                // `-m nova_ai.cli`, the frozen backend has no prefix.
+                match serve_argv.get(nova_argv_start..) {
                     Some(rest) if !rest.is_empty() => format!(" {}", rest.join(" ")),
                     _ => String::new(),
                 },
@@ -1274,11 +1535,10 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 format!(
                     "Nova server exited (code {}) before becoming ready.\n\n\
                      No stderr output. Check that:\n\
-                     1. uv is installed ({})\n\
+                     1. Python 3.10+ or uv is installed and healthy\n\
                      2. The NOVA AI repo is at {}\n\
-                     3. 'uv sync' completes in that directory",
+                     3. Dependencies are installed in that directory",
                     code_str,
-                    uv_bin,
                     root.display(),
                 )
             } else {
@@ -1295,10 +1555,9 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             s.error = Some(if stderr.is_empty() {
                 format!(
                     "Nova server did not become ready within 10 minutes. Check that:\n\
-                     1. uv is installed ({})\n\
+                     1. Python 3.10+ or uv is installed and healthy\n\
                      2. The NOVA AI repo is at {}\n\
-                     3. Run 'uv sync' in that directory",
-                    uv_bin,
+                     3. Dependencies are installed in that directory",
                     root.display(),
                 )
             } else {
@@ -1528,19 +1787,44 @@ async fn fetch_models(api_url: String) -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 async fn run_nova_command(args: Vec<String>) -> Result<String, String> {
-    let uv_bin = resolve_bin("uv");
-
-    let mut cmd_args = vec!["run".to_string(), "nova".to_string()];
+    // Run from the project root so the launcher resolves the NOVA AI project
+    // regardless of the app's launch cwd. In a packaged install the cwd isn't
+    // the checkout, so without this `nova` isn't found and the backend never
+    // starts — the UI then shows "Failed to get response" (see #531). Prefers
+    // uv, falling back to a venv / system Python when uv isn't installed
+    // (same chain as boot_backend).
+    // Prefer the frozen backend when installed (no repo/Python needed),
+    // then the repo-based uv / Python launchers.
+    let (nova_prog, mut cmd_args, root) = match probe_nova_launcher() {
+        Some(NovaLauncher::Frozen(path)) => (path, Vec::new(), None),
+        Some(launcher) => {
+            let root = match find_project_root() {
+                Some(root) => root,
+                None => {
+                    return Err("Could not locate the NOVA AI project (pyproject.toml). \
+                         Set NOVA_AI_ROOT to the repo path and try again."
+                        .into())
+                }
+            };
+            let (prog, prefix) = match launcher {
+                NovaLauncher::Uv => nova_launch_command_with(&resolve_bin("uv"), &root),
+                _ => nova_launch_command_with("uv", &root),
+            };
+            (prog, prefix, Some(root))
+        }
+        None => {
+            return Err(
+                "Could not find a Python environment to start the NOVA AI engine. \
+                 Install the NOVA AI CLI installer, Python 3.10+, or uv, then try again."
+                    .into(),
+            )
+        }
+    };
     cmd_args.extend(args.iter().cloned());
 
-    let mut cmd = tokio::process::Command::new(&uv_bin);
+    let mut cmd = tokio::process::Command::new(&nova_prog);
     cmd.args(&cmd_args);
-    // Run from the project root so `uv run nova` resolves the NOVA AI
-    // project regardless of the app's launch cwd. In a packaged install the
-    // cwd isn't the checkout, so without this `nova` isn't found and the
-    // backend never starts — the UI then shows "Failed to get response"
-    // (see #531).
-    if let Some(ref root) = find_project_root() {
+    if let Some(ref root) = root {
         cmd.current_dir(root);
     }
 
@@ -1919,7 +2203,8 @@ fn write_inference_config(cfg: &InferenceConfig) -> Result<(), String> {
         let _ = std::fs::create_dir_all(parent);
     }
     let json = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json + "\n").map_err(|e| format!("Failed to save inference config: {}", e))
+    std::fs::write(&path, json + "\n")
+        .map_err(|e| format!("Failed to save inference config: {}", e))
 }
 
 /// Upsert `[engine.<engine>] host = "<host>"` into an existing config.toml
@@ -2079,7 +2364,10 @@ mod native_overlay {
     // read/write the same file.
     // ------------------------------------------------------------------
 
-    use super::{overlay_load_conversation as load_conversation, overlay_save_conversation as save_conversation};
+    use super::{
+        overlay_load_conversation as load_conversation,
+        overlay_save_conversation as save_conversation,
+    };
 
     /// Apply every transparency trick to the WKWebView.
     /// Called once at creation and again after the page finishes loading.
@@ -2092,7 +2380,7 @@ mod native_overlay {
         // Also inject CSS to nuke any remaining background
         let js = nsstring(
             "document.documentElement.style.background='transparent';\
-             document.body.style.background='transparent';"
+             document.body.style.background='transparent';",
         );
         let nil: *mut Object = std::ptr::null_mut();
         let _: () = msg_send![wv, evaluateJavaScript: js completionHandler: nil];
@@ -2123,7 +2411,9 @@ mod native_overlay {
             let sup = Class::get("NSObject").unwrap();
             let mut decl = ClassDecl::new("NovaOverlayNavDelegate", sup).unwrap();
             extern "C" fn did_finish(_: &Object, _: Sel, wv: *mut Object, _nav: *mut Object) {
-                unsafe { force_transparent(wv); }
+                unsafe {
+                    force_transparent(wv);
+                }
             }
             decl.add_method(
                 sel!(webView:didFinishNavigation:),
@@ -2564,11 +2854,14 @@ pub fn run() {
                 #[cfg(not(target_os = "macos"))]
                 {
                     let alt_space = Shortcut::new(Some(Modifiers::ALT), Code::Space);
-                    if let Err(e) = app.global_shortcut().on_shortcut(alt_space, |app, _sc, ev| {
-                        if ev.state == ShortcutState::Pressed {
-                            quick_capture::toggle(app);
-                        }
-                    }) {
+                    if let Err(e) = app
+                        .global_shortcut()
+                        .on_shortcut(alt_space, |app, _sc, ev| {
+                            if ev.state == ShortcutState::Pressed {
+                                quick_capture::toggle(app);
+                            }
+                        })
+                    {
                         eprintln!("Warning: could not register Alt+Space: {e}");
                     }
                 }
@@ -2629,8 +2922,8 @@ pub fn run() {
 mod tests {
     use super::{
         boot_plan, default_local_model, format_uv_sync_failure, format_uv_sync_spawn_error,
-        normalize_host, parse_inference_config, upsert_engine_host, uv_sync_stderr_tail,
-        InferenceConfig, SourceKind,
+        normalize_host, nova_launch_command_with, nova_spawn_plan, parse_inference_config,
+        upsert_engine_host, uv_sync_stderr_tail, InferenceConfig, NovaLauncher, SourceKind,
     };
     use std::path::Path;
 
@@ -2700,10 +2993,10 @@ mod tests {
     #[test]
     fn default_local_model_picks_second_largest_that_fits() {
         // QWEN35_MODELS min_ram ladder: 4,6,8,12,24,32,96 GB
-        assert_eq!(default_local_model(4.0), "qwen3.5:0.8b");  // only one fits
-        assert_eq!(default_local_model(8.0), "qwen3.5:2b");    // fits 0.8/2/4 → 2nd-largest
-        assert_eq!(default_local_model(16.0), "qwen3.5:4b");   // fits ..9b → 2nd-largest
-        assert_eq!(default_local_model(32.0), "qwen3.5:27b");  // fits 0.8/2/4/9/27/35b → 2nd-largest is 27b
+        assert_eq!(default_local_model(4.0), "qwen3.5:0.8b"); // only one fits
+        assert_eq!(default_local_model(8.0), "qwen3.5:2b"); // fits 0.8/2/4 → 2nd-largest
+        assert_eq!(default_local_model(16.0), "qwen3.5:4b"); // fits ..9b → 2nd-largest
+        assert_eq!(default_local_model(32.0), "qwen3.5:27b"); // fits 0.8/2/4/9/27/35b → 2nd-largest is 27b
         assert_eq!(default_local_model(128.0), "qwen3.5:35b"); // fits all → 2nd-largest
     }
 
@@ -2714,8 +3007,14 @@ mod tests {
 
     #[test]
     fn parse_defaults_to_ollama_when_file_missing_or_garbage() {
-        assert!(matches!(parse_inference_config("").kind, SourceKind::Ollama));
-        assert!(matches!(parse_inference_config("not json").kind, SourceKind::Ollama));
+        assert!(matches!(
+            parse_inference_config("").kind,
+            SourceKind::Ollama
+        ));
+        assert!(matches!(
+            parse_inference_config("not json").kind,
+            SourceKind::Ollama
+        ));
     }
 
     #[test]
@@ -2731,21 +3030,39 @@ mod tests {
 
     #[test]
     fn normalize_host_strips_trailing_slash_and_v1() {
-        assert_eq!(normalize_host("http://localhost:1234/v1"), "http://localhost:1234");
-        assert_eq!(normalize_host("http://localhost:1234/v1/"), "http://localhost:1234");
-        assert_eq!(normalize_host("http://localhost:1234/"), "http://localhost:1234");
+        assert_eq!(
+            normalize_host("http://localhost:1234/v1"),
+            "http://localhost:1234"
+        );
+        assert_eq!(
+            normalize_host("http://localhost:1234/v1/"),
+            "http://localhost:1234"
+        );
+        assert_eq!(
+            normalize_host("http://localhost:1234/"),
+            "http://localhost:1234"
+        );
         assert_eq!(normalize_host("http://host:8000"), "http://host:8000");
     }
 
     #[test]
     fn boot_plan_ollama_launches_and_pulls_one_model() {
-        let cfg = InferenceConfig { kind: SourceKind::Ollama, ..Default::default() };
+        let cfg = InferenceConfig {
+            kind: SourceKind::Ollama,
+            ..Default::default()
+        };
         let plan = boot_plan(&cfg, 16.0);
         assert!(plan.launch_ollama);
         assert_eq!(plan.model_to_pull.as_deref(), Some("qwen3.5:4b"));
         assert!(plan.engine_host.is_none());
-        assert!(plan.serve_args.windows(2).any(|w| w == ["--engine", "ollama"]));
-        assert!(plan.serve_args.windows(2).any(|w| w == ["--model", "qwen3.5:4b"]));
+        assert!(plan
+            .serve_args
+            .windows(2)
+            .any(|w| w == ["--engine", "ollama"]));
+        assert!(plan
+            .serve_args
+            .windows(2)
+            .any(|w| w == ["--model", "qwen3.5:4b"]));
     }
 
     #[test]
@@ -2774,8 +3091,14 @@ mod tests {
             plan.engine_host,
             Some(("lmstudio".to_string(), "http://localhost:1234".to_string()))
         );
-        assert!(plan.serve_args.windows(2).any(|w| w == ["--engine", "lmstudio"]));
-        assert!(plan.serve_args.windows(2).any(|w| w == ["--model", "qwen2.5-7b"]));
+        assert!(plan
+            .serve_args
+            .windows(2)
+            .any(|w| w == ["--engine", "lmstudio"]));
+        assert!(plan
+            .serve_args
+            .windows(2)
+            .any(|w| w == ["--model", "qwen2.5-7b"]));
     }
 
     #[test]
@@ -2788,7 +3111,10 @@ mod tests {
         };
         let plan = boot_plan(&cfg, 16.0);
         assert_eq!(plan.engine_host.as_ref().unwrap().0, "lmstudio");
-        assert!(plan.serve_args.windows(2).any(|w| w == ["--engine", "lmstudio"]));
+        assert!(plan
+            .serve_args
+            .windows(2)
+            .any(|w| w == ["--engine", "lmstudio"]));
     }
 
     #[test]
@@ -2807,7 +3133,10 @@ mod tests {
     #[test]
     fn boot_plan_ollama_uses_fallback_model_on_low_ram() {
         // Below the smallest model's min_ram → default_local_model → FALLBACK_MODEL.
-        let cfg = InferenceConfig { kind: SourceKind::Ollama, ..Default::default() };
+        let cfg = InferenceConfig {
+            kind: SourceKind::Ollama,
+            ..Default::default()
+        };
         let plan = boot_plan(&cfg, 1.0);
         assert_eq!(plan.model_to_pull.as_deref(), Some(super::FALLBACK_MODEL));
     }
@@ -2827,8 +3156,14 @@ mod tests {
         let existing = "[intelligence]\ndefault_model = \"keep-me\"\n";
         let out = upsert_engine_host(existing, "vllm", "http://host:8000").unwrap();
         let doc: toml_edit::DocumentMut = out.parse().unwrap();
-        assert_eq!(doc["intelligence"]["default_model"].as_str(), Some("keep-me"));
-        assert_eq!(doc["engine"]["vllm"]["host"].as_str(), Some("http://host:8000"));
+        assert_eq!(
+            doc["intelligence"]["default_model"].as_str(),
+            Some("keep-me")
+        );
+        assert_eq!(
+            doc["engine"]["vllm"]["host"].as_str(),
+            Some("http://host:8000")
+        );
     }
 
     #[test]
@@ -2836,7 +3171,10 @@ mod tests {
         let existing = "[engine.lmstudio]\nhost = \"http://old:1\"\n";
         let out = upsert_engine_host(existing, "lmstudio", "http://new:2").unwrap();
         let doc: toml_edit::DocumentMut = out.parse().unwrap();
-        assert_eq!(doc["engine"]["lmstudio"]["host"].as_str(), Some("http://new:2"));
+        assert_eq!(
+            doc["engine"]["lmstudio"]["host"].as_str(),
+            Some("http://new:2")
+        );
     }
 
     // -----------------------------------------------------------------
@@ -2911,5 +3249,67 @@ mod tests {
                 std::env::remove_var("APPIMAGE");
             }
         }
+    }
+
+    // -----------------------------------------------------------------
+    // No-uv fallback — the desktop app must not hard-require uv
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn launch_prefers_uv_when_it_exists() {
+        // Any existing file stands in for a resolved uv binary.
+        let mut uv = std::env::temp_dir();
+        uv.push(format!("nova-uv-probe-{}.exe", std::process::id()));
+        std::fs::write(&uv, b"").unwrap();
+        let (prog, prefix) = nova_launch_command_with(uv.to_str().unwrap(), Path::new("/repo"));
+        assert_eq!(prog, uv.to_str().unwrap());
+        assert_eq!(prefix, vec!["run", "nova"]);
+        let _ = std::fs::remove_file(&uv);
+    }
+
+    #[test]
+    fn launch_falls_back_to_repo_venv_without_uv() {
+        // uv_bin == "uv" means resolve_bin found nothing → fallback paths.
+        let root = std::env::temp_dir().join(format!("nova-root-{}", std::process::id()));
+        #[cfg(target_os = "windows")]
+        let vpy = root.join(".venv").join("Scripts").join("python.exe");
+        #[cfg(not(target_os = "windows"))]
+        let vpy = root.join(".venv").join("bin").join("python");
+        std::fs::create_dir_all(vpy.parent().unwrap()).unwrap();
+        std::fs::write(&vpy, b"").unwrap();
+        let (prog, prefix) = nova_launch_command_with("uv", &root);
+        assert_eq!(prog, vpy.display().to_string());
+        assert_eq!(prefix, vec!["-m", "nova_ai.cli"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn launch_falls_back_to_path_python_without_uv_or_venv() {
+        let (prog, prefix) = nova_launch_command_with("uv", Path::new("/definitely/not/a/repo"));
+        assert_eq!(prefix, vec!["-m", "nova_ai.cli"]);
+        #[cfg(target_os = "windows")]
+        assert_eq!(prog, "python");
+        #[cfg(not(target_os = "windows"))]
+        assert_eq!(prog, "python3");
+    }
+
+    #[test]
+    fn launch_frozen_backend_uses_the_exe_directly() {
+        let (prog, prefix, start) = nova_spawn_plan(
+            &NovaLauncher::Frozen("C:/bin/nova-ai-windows-x64.exe".into()),
+            Path::new("/repo"),
+        );
+        assert_eq!(prog, "C:/bin/nova-ai-windows-x64.exe");
+        assert!(prefix.is_empty());
+        assert_eq!(start, 3);
+    }
+
+    #[test]
+    fn launch_plan_indices_match_prefix_lengths() {
+        // The 503-error hint re-prints nova's argv from this index — it must
+        // skip exactly the launcher prefix (uv: run+nova = 2, python:
+        // -m+nova_ai.cli = 2) plus serve/--port/<port> = 3.
+        assert_eq!(nova_spawn_plan(&NovaLauncher::Uv, Path::new("/r")).2, 5);
+        assert_eq!(nova_spawn_plan(&NovaLauncher::Python, Path::new("/r")).2, 5);
     }
 }

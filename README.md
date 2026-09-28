@@ -34,7 +34,7 @@ NOVA AI is local-first: the only hard requirement is Python. Everything else is 
 | **Python** | 3.10 – 3.13 | ✅ Required | 3.14 is not supported (no numpy 2.2 wheels — see `pyproject.toml`) |
 | **Node.js** | 18+ (CI uses 22) | Optional | Only needed to build the web UI, desktop app (Tauri), or the browser extension |
 | **Rust** | 1.90+ | Optional | Only needed when building from source, to compile the native `nova_ai_rust` extension (maturin). PyPI wheels bundle the compiled extension, so `pip install nova-ai-pro` needs no Rust |
-| **uv** | latest | Recommended | Fast Python env manager; auto-installed by `start.sh` and the installers |
+| **uv** | latest | Optional | Fast Python env manager; auto-installed by `start.sh` and the installers. The desktop app falls back to plain Python when uv is absent |
 | **Ollama** | latest | Optional | Local model server. Without it, use in-process GGUF models or cloud APIs |
 | **Git** | any recent | Recommended | Needed to clone the repo; checked by the installers |
 | **Tesseract OCR** | 5.x | Optional | Only for `nova screen` text extraction ([UB-Mannheim build](https://github.com/UB-Mannheim/tesseract/wiki) on Windows; `tesseract-ocr` on Linux, `brew install tesseract` on macOS) |
@@ -77,7 +77,9 @@ Other platforms: **macOS** → `NOVA.AI_1.2.10_universal.dmg` · **Linux** → `
 
 Launch **NOVA AI** from the Start menu (Windows) or Applications (macOS) — just like WhatsApp Desktop or Telegram. It opens in **its own window** with a sidebar of tabs (Chat, Dashboard, Agents, Model Hub, GGUF Hub, Settings, …), its own taskbar icon, and a system tray presence. A setup wizard on first run connects an engine and a model — no terminal involved.
 
-> Behind the scenes the app carries its own private engine (the same `nova` backend that the CLI uses), started automatically inside the app. You never see it and never open a browser — the window **is** the app.
+> Behind the scenes the app carries its own private engine (the same `nova` backend that the CLI uses), started automatically inside the app. You never see it and never open a browser — the window **is** the app. First launch may download the engine and dependencies (a couple of minutes); the app manages this itself.
+>
+> **No Python?** The app prefers [`uv`](https://astral.sh/uv) to manage the engine environment, but works without it: it falls back to any Python 3.10+ on the machine (installing the engine package itself on first run). Only if it finds *neither* Python nor uv does it stop and ask you to install one — follow the on-screen instructions and relaunch.
 
 **CLI users:** if you installed the CLI installer instead, verify it in PowerShell:
 
