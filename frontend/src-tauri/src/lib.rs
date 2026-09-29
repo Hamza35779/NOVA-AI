@@ -373,23 +373,26 @@ fn resolve_frozen_backend() -> Option<String> {
 }
 
 /// Concrete spawn plan for a launcher: program, argument prefix that goes
-/// before the nova subcommand, and the index of the first nova subcommand
-/// arg in the final argv (used by error hints that re-print the command).
+/// before the nova subcommand, and the index of the first argument AFTER
+/// `serve --host 127.0.0.1 --port <port>` in the final argv (used by error
+/// hints that re-print the command with its engine flags). The desktop app
+/// always injects the 4-element `--host 127.0.0.1 --port <port>` block after
+/// `serve`, so the index is prefix(2) + serve(1) + host block(4).
 fn nova_spawn_plan(
     launcher: &NovaLauncher,
     root: &std::path::Path,
 ) -> (String, Vec<String>, usize) {
     match launcher {
-        NovaLauncher::Frozen(path) => (path.clone(), Vec::new(), 3),
+        NovaLauncher::Frozen(path) => (path.clone(), Vec::new(), 5),
         NovaLauncher::Uv => {
             let (prog, prefix) = nova_launch_command_with(&resolve_bin("uv"), root);
-            (prog, prefix, 5)
+            (prog, prefix, 7)
         }
         NovaLauncher::Python => {
             // Prefix `-m nova_ai.cli` is also 2 elements, so nova's argv starts
             // at the same slot as under the uv launcher.
             let (prog, prefix) = nova_launch_command_with("uv", root);
-            (prog, prefix, 5)
+            (prog, prefix, 7)
         }
     }
 }
@@ -1545,10 +1548,57 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         let sync_output = sync_cmd.output().await;
         match sync_output {
             Ok(out) if !out.status.success() => {
+                // A broken checkout-local .venv (e.g. created by another
+                // tool against an interpreter that has since been
+                // upgraded/removed — "not a valid Python environment") must
+                // not brick the app: it is a cache, not user data. Delete it
+                // and retry the sync exactly once.
                 let stderr = String::from_utf8_lossy(&out.stderr);
-                let mut s = status.lock().await;
-                s.error = Some(format_uv_sync_failure(root, out.status.code(), &stderr));
-                return;
+                let venv_broken = stderr.contains("not a valid Python environment");
+                if venv_broken && repo_venv_python(root).is_none() {
+                    let venv_dir = root.join(".venv");
+                    let _ = std::fs::remove_dir_all(&venv_dir);
+                    {
+                        let mut s = status.lock().await;
+                        s.detail =
+                            "Repairing broken Python environment (recreating .venv)...".into();
+                    }
+                    let mut retry = tokio::process::Command::new(&uv_bin);
+                    retry
+                        .args([
+                            "sync",
+                            "--extra",
+                            "desktop",
+                            "--extra",
+                            "inference-cloud",
+                            "--extra",
+                            "inference-google",
+                        ])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::piped())
+                        .current_dir(root);
+                    prepare_subprocess_for_appimage(&mut retry);
+                    match retry.output().await {
+                        Ok(out2) if out2.status.success() => {} // repaired — fall through
+                        Ok(out2) => {
+                            let stderr2 = String::from_utf8_lossy(&out2.stderr);
+                            let mut s = status.lock().await;
+                            s.error =
+                                Some(format_uv_sync_failure(root, out2.status.code(), &stderr2));
+                            return;
+                        }
+                        Err(e) => {
+                            let mut s = status.lock().await;
+                            s.error =
+                                Some(format_uv_sync_spawn_error(root, &uv_bin, &e.to_string()));
+                            return;
+                        }
+                    }
+                } else {
+                    let mut s = status.lock().await;
+                    s.error = Some(format_uv_sync_failure(root, out.status.code(), &stderr));
+                    return;
+                }
             }
             Err(e) => {
                 let mut s = status.lock().await;
@@ -1587,7 +1637,16 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     // `python -m nova_ai.cli` (same chain as the dependency step above).
     let (nova_prog, launch_prefix, nova_argv_start) = nova_spawn_plan(&launcher, root);
     let mut serve_argv = launch_prefix;
-    serve_argv.extend(["serve".into(), "--port".into(), NOVA_PORT.to_string()]);
+    serve_argv.extend([
+        "serve".into(),
+        // The desktop app only ever talks to this server over loopback, and
+        // the security middleware refuses 0.0.0.0 without NOVA_AI_API_KEY —
+        // always pin the bind address so a config default can't block boot.
+        "--host".into(),
+        "127.0.0.1".into(),
+        "--port".into(),
+        NOVA_PORT.to_string(),
+    ]);
     serve_argv.extend(plan.serve_args.iter().cloned());
     let mut cmd = tokio::process::Command::new(&nova_prog);
     // If the Ollama pull fell back to a different tag than planned, serve the
@@ -3522,7 +3581,7 @@ mod tests {
         );
         assert_eq!(prog, "C:/bin/nova-ai-windows-x64.exe");
         assert!(prefix.is_empty());
-        assert_eq!(start, 3);
+        assert_eq!(start, 5);
     }
 
     #[test]
@@ -3554,8 +3613,9 @@ mod tests {
     fn launch_plan_indices_match_prefix_lengths() {
         // The 503-error hint re-prints nova's argv from this index — it must
         // skip exactly the launcher prefix (uv: run+nova = 2, python:
-        // -m+nova_ai.cli = 2) plus serve/--port/<port> = 3.
-        assert_eq!(nova_spawn_plan(&NovaLauncher::Uv, Path::new("/r")).2, 5);
-        assert_eq!(nova_spawn_plan(&NovaLauncher::Python, Path::new("/r")).2, 5);
+        // -m+nova_ai.cli = 2) plus serve + the injected host/port block
+        // (`--host 127.0.0.1 --port <port>` = 4 args).
+        assert_eq!(nova_spawn_plan(&NovaLauncher::Uv, Path::new("/r")).2, 7);
+        assert_eq!(nova_spawn_plan(&NovaLauncher::Python, Path::new("/r")).2, 7);
     }
 }
