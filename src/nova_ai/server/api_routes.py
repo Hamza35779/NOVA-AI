@@ -1047,8 +1047,83 @@ async def get_optimize_run(run_id: str, request: Request):
 
 @optimize_router.post("/runs")
 async def start_optimize_run(req: OptimizeRunRequest, request: Request):
-    """Start a new optimization run."""
-    return {"status": "started", "run_id": "placeholder"}
+    """Start a new optimization run in a background thread and return its id.
+
+    Mirrors the working ``nova optimize run`` CLI flow: builds the search
+    space, trial runner, and :class:`OptimizationEngine`, then executes the
+    loop off the event loop. The run is real and pollable via
+    ``GET /v1/optimize/runs/{run_id}``. Setup failures surface as HTTP
+    errors; failures inside the background loop are recorded on the run
+    (status ``failed``) through the store.
+    """
+    try:
+        import threading
+        import uuid
+
+        from nova_ai.core.config import DEFAULT_CONFIG_DIR
+        from nova_ai.learning.optimize.llm_optimizer import LLMOptimizer
+        from nova_ai.learning.optimize.optimizer import OptimizationEngine
+        from nova_ai.learning.optimize.search_space import DEFAULT_SEARCH_SPACE
+        from nova_ai.learning.optimize.store import OptimizationStore
+        from nova_ai.learning.optimize.trial_runner import TrialRunner
+        from nova_ai.learning.optimize.types import OptimizationRun
+
+        run_id = uuid.uuid4().hex[:16]
+        db_path = DEFAULT_CONFIG_DIR / "optimize.db"
+
+        def _new_run(status: str) -> OptimizationRun:
+            return OptimizationRun(
+                run_id=run_id,
+                search_space=DEFAULT_SEARCH_SPACE,
+                status=status,
+                optimizer_model=req.optimizer_model,
+                benchmark=req.benchmark,
+            )
+
+        # Pre-register the run so the client can poll immediately.
+        store = OptimizationStore(db_path)
+        try:
+            store.save_run(_new_run("running"))
+        finally:
+            store.close()
+
+        def _execute() -> None:
+            # sqlite3 connections are thread-affine by default — the loop
+            # must run on its own store connection, not the request's.
+            bg_store = OptimizationStore(db_path)
+            try:
+                engine = OptimizationEngine(
+                    search_space=DEFAULT_SEARCH_SPACE,
+                    llm_optimizer=LLMOptimizer(
+                        search_space=DEFAULT_SEARCH_SPACE,
+                        optimizer_model=req.optimizer_model,
+                    ),
+                    trial_runner=TrialRunner(
+                        benchmark=req.benchmark,
+                        max_samples=req.max_samples,
+                        output_dir="results/optimize/",
+                    ),
+                    store=bg_store,
+                    max_trials=req.max_trials,
+                    run_id=run_id,
+                )
+                engine.run()
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.exception("Background optimize run %s failed: %s", run_id, exc)
+                try:
+                    bg_store.save_run(_new_run("failed"))
+                except Exception:
+                    logger.exception("Could not record failure for run %s", run_id)
+            finally:
+                bg_store.close()
+
+        threading.Thread(target=_execute, name=f"optimize-{run_id}", daemon=True).start()
+        return {"status": "started", "run_id": run_id}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Failed to start optimization run: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to start optimization run: {exc}")
 
 
 def include_all_routes(app) -> None:

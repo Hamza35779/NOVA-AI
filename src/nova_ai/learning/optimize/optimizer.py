@@ -126,6 +126,7 @@ class OptimizationEngine:
         store: Optional[OptimizationStore] = None,
         max_trials: int = 20,
         early_stop_patience: int = 5,
+        run_id: Optional[str] = None,
     ) -> None:
         self.search_space = search_space
         self.llm_optimizer = llm_optimizer
@@ -133,6 +134,11 @@ class OptimizationEngine:
         self.store = store
         self.max_trials = max_trials
         self.early_stop_patience = early_stop_patience
+        # Optional pre-assigned run id — callers that must reference the run
+        # before ``run()`` executes (e.g. the HTTP API returning the id to a
+        # client ahead of the background loop) set this; otherwise ``run()``
+        # generates one as before.
+        self.run_id = run_id
 
     # ------------------------------------------------------------------
     # Public API
@@ -144,7 +150,7 @@ class OptimizationEngine:
     ) -> OptimizationRun:
         """Execute the full optimization loop.
 
-        1. Generate a run_id via uuid.
+        1. Generate (or reuse a pre-assigned) run_id.
         2. ``llm_optimizer.propose_initial()`` -> first config.
         3. Loop up to ``max_trials``:
            a. ``trial_runner.run_trial(config)`` -> TrialResult
@@ -159,11 +165,38 @@ class OptimizationEngine:
         5. If store, ``store.save_run(optimization_run)``.
         6. Return the :class:`OptimizationRun`.
 
+        If the loop raises, the run is recorded with status ``"failed"``
+        (when a store is attached) before the exception propagates — so a
+        pre-registered run never stays ``"running"`` forever.
+
         Args:
             progress_callback: Optional ``(trial_num, max_trials) -> None``
                 called after each trial completes.
         """
-        run_id = uuid.uuid4().hex[:16]
+        try:
+            return self._execute_loop(progress_callback)
+        except Exception:
+            failed = OptimizationRun(
+                run_id=self.run_id or uuid.uuid4().hex[:16],
+                search_space=self.search_space,
+                status="failed",
+                optimizer_model=self.llm_optimizer.optimizer_model,
+                benchmark=getattr(self.trial_runner, "benchmark", ""),
+            )
+            if self.store is not None:
+                try:
+                    self.store.save_run(failed)
+                except Exception:
+                    LOGGER.exception(
+                        "Could not record failed state for run %s", failed.run_id
+                    )
+            raise
+
+    def _execute_loop(
+        self,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> OptimizationRun:
+        run_id = self.run_id or uuid.uuid4().hex[:16]
         # Detect benchmark name(s) from the trial runner
         from nova_ai.learning.optimize.trial_runner import MultiBenchTrialRunner
 
