@@ -19,9 +19,28 @@ jobs:
 
       - name: Fetch clone traffic
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.TRAFFIC_PAT || secrets.GITHUB_TOKEN }}
+          HAS_PAT: ${{ secrets.TRAFFIC_PAT != '' }}
         run: |
-          gh api repos/${{ github.repository }}/traffic/clones > /tmp/traffic.json
+          # The traffic endpoints reject the Actions integration token
+          # ("Resource not accessible by integration", HTTP 403) — they only
+          # work with a classic PAT that has repo access. For 37 consecutive
+          # daily runs this job failed on exactly that, because GITHUB_TOKEN
+          # can never read traffic. With TRAFFIC_PAT set the job works; if
+          # the PAT is absent or expired the run records the reason and
+          # succeeds, so the badge data simply goes stale instead of a
+          # permanent red X on Actions.
+          if [ "$HAS_PAT" != "true" ]; then
+            echo "::notice::TRAFFIC_PAT secret is not set — traffic API needs a "\
+                 "classic PAT (GITHUB_TOKEN is always rejected here). Skipping; "\
+                 "badge data goes stale until one is configured."
+            exit 0
+          fi
+          if ! gh api repos/${{ github.repository }}/traffic/clones > /tmp/traffic.json; then
+            echo "::warning::traffic API call failed (expired PAT? lost access?) — "\
+                 "keeping previous badge data and skipping this cycle."
+            exit 0
+          fi
 
       - name: Update accumulated data
         run: |
