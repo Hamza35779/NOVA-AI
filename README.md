@@ -34,7 +34,7 @@ NOVA AI is local-first: the only hard requirement is Python. Everything else is 
 | **Python** | 3.10 – 3.13 | ✅ Required | 3.14 is not supported (no numpy 2.2 wheels — see `pyproject.toml`) |
 | **Node.js** | 18+ (CI uses 22) | Optional | Only needed to build the web UI, desktop app (Tauri), or the browser extension |
 | **Rust** | 1.90+ | Optional | Only needed when building from source, to compile the native `nova_ai_rust` extension (maturin). PyPI wheels bundle the compiled extension, so `pip install nova-ai-pro` needs no Rust |
-| **uv** | latest | Optional | Fast Python env manager; auto-installed by `start.sh` and the installers. The desktop app falls back to plain Python when uv is absent |
+| **uv** | latest | Optional | Fast Python env manager; auto-installed by `start.sh`, the installers, and the desktop app itself on first launch |
 | **Ollama** | latest | Optional | Local model server. Without it, use in-process GGUF models or cloud APIs |
 | **Git** | any recent | Recommended | Needed to clone the repo; checked by the installers |
 | **Tesseract OCR** | 5.x | Optional | Only for `nova screen` text extraction ([UB-Mannheim build](https://github.com/UB-Mannheim/tesseract/wiki) on Windows; `tesseract-ocr` on Linux, `brew install tesseract` on macOS) |
@@ -79,7 +79,7 @@ Launch **NOVA AI** from the Start menu (Windows) or Applications (macOS) — jus
 
 > Behind the scenes the app carries its own private engine (the same `nova` backend that the CLI uses), started automatically inside the app. You never see it and never open a browser — the window **is** the app. First launch may download the engine and dependencies (a couple of minutes); the app manages this itself.
 >
-> **No Python?** The app prefers [`uv`](https://astral.sh/uv) to manage the engine environment, but works without it: it falls back to any Python 3.10+ on the machine (installing the engine package itself on first run). Only if it finds *neither* Python nor uv does it stop and ask you to install one — follow the on-screen instructions and relaunch.
+> **No Python? No problem.** The app sets its engine up by itself: it installs the [`uv`](https://astral.sh/uv) tool if it's missing, downloads the engine source, and builds a private environment — no Python, git, or terminal knowledge needed (an internet connection is required for this one-time setup). If you already have Python, uv, or the CLI installed, the app reuses those instead.
 
 **CLI users:** if you installed the CLI installer instead, verify it in PowerShell:
 

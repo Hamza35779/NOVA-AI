@@ -425,6 +425,207 @@ fn nova_launch_command_with(uv_bin: &str, root: &std::path::Path) -> (String, Ve
     (py, vec!["-m".into(), "nova_ai.cli".into()])
 }
 
+/// Install uv via the official installer script (astral.sh) and return the
+/// path of the installed binary. This is the app's self-provisioning path:
+/// instead of telling the user to install uv, first launch just does it.
+///
+/// The installers are idempotent and safe to re-run. On Windows the script
+/// installs to `%USERPROFILE%\.local\bin\uv.exe` and works on stock
+/// PowerShell 5.1+ (no admin, no execution-policy change: the script is
+/// downloaded by Invoke-RestMethod and piped into a single PowerShell -c
+/// invocation). On macOS/Linux it installs to `$HOME/.local/bin`. Both
+/// locations are already probed by `resolve_bin`, so the fresh uv is found
+/// without waiting for a PATH refresh or a relaunch.
+/// The PowerShell -Command string used to self-provision uv on Windows.
+/// Pure so tests can pin the contract on every platform. The install dir is
+/// pinned to `<home>\.local\bin` (and PATH left untouched) so the caller can
+/// verify the binary landed exactly where `resolve_bin` probes.
+fn install_uv_windows_script(home: &str) -> String {
+    format!(
+        "$env:UV_INSTALL_DIR = '{home}\\.local\\bin'; \
+         $env:UV_NO_MODIFY_PATH = '1'; irm https://astral.sh/uv/install.ps1 | iex"
+    )
+}
+
+/// The sh -c string used to self-provision uv on macOS/Linux (same contract
+/// as the Windows variant).
+fn install_uv_unix_script(home: &str) -> String {
+    format!(
+        "UV_INSTALL_DIR='{home}/.local/bin' UV_NO_MODIFY_PATH=1 \
+         curl -LsSf https://astral.sh/uv/install.sh | sh"
+    )
+}
+
+async fn install_uv() -> Result<String, String> {
+    let home = home_dir();
+    #[cfg(target_os = "windows")]
+    let expected = format!("{home}\\.local\\bin\\uv.exe");
+    #[cfg(unix)]
+    let expected = format!("{home}/.local/bin/uv");
+    #[cfg(not(any(windows, unix)))]
+    let expected = String::new();
+
+    let (shell, args): (&str, Vec<String>) = if cfg!(target_os = "windows") {
+        (
+            "powershell",
+            vec![
+                "-NoProfile".to_string(),
+                "-ExecutionPolicy".to_string(),
+                "Bypass".to_string(),
+                "-Command".to_string(),
+                install_uv_windows_script(&home),
+            ],
+        )
+    } else {
+        ("sh", vec!["-c".to_string(), install_uv_unix_script(&home)])
+    };
+
+    let mut cmd = tokio::process::Command::new(shell);
+    cmd.args(&args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    prepare_subprocess_for_appimage(&mut cmd);
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| format!("Could not run the uv installer ({shell}): {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Installing uv failed (exit {}). Last output:\n\n{}\n\n\
+             Install it manually from https://astral.sh/uv and relaunch.",
+            output
+                .status
+                .code()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "unknown".into()),
+            uv_sync_stderr_tail(&stderr, 800),
+        ));
+    }
+
+    if expected.is_empty() || !std::path::Path::new(&expected).exists() {
+        return Err(
+            "The uv installer finished but the binary was not found where \
+             expected. Install it manually from https://astral.sh/uv and relaunch."
+                .into(),
+        );
+    }
+    Ok(expected)
+}
+
+/// Download the NOVA AI source into `target` without requiring git:
+/// first try a shallow `git clone` (better for developers — real history),
+/// then fall back to the codeload tarball via the built-in `tar` (present on
+/// Windows 10+/macOS/most Linux distros). Returns a ready-to-show error
+/// message on failure; on success `target` contains `pyproject.toml`.
+async fn acquire_repo(target: &std::path::Path) -> Result<(), String> {
+    let target_str = target.display().to_string();
+
+    // 1. git clone — only when git actually resolves.
+    let git_bin = resolve_bin("git");
+    if std::path::Path::new(&git_bin).exists() || git_bin != "git" {
+        let mut cmd = tokio::process::Command::new(&git_bin);
+        cmd.args([
+            "clone",
+            "--depth",
+            "1",
+            "https://github.com/Hamza35779/NOVA-AI.git",
+            &target_str,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
+        prepare_subprocess_for_appimage(&mut cmd);
+        match cmd.output().await {
+            Ok(out) if out.status.success() => return Ok(()),
+            Ok(out) => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                eprintln!(
+                    "git clone failed, falling back to tarball: {}",
+                    stderr.trim()
+                );
+            }
+            Err(e) => {
+                eprintln!("could not run git ({e}), falling back to tarball");
+            }
+        }
+    }
+
+    // 2. codeload tarball — no git needed.
+    {
+        let staging = target.with_extension("download");
+        let _ = std::fs::remove_dir_all(&staging);
+        std::fs::create_dir_all(&staging)
+            .map_err(|e| format!("Could not create {}: {e}", staging.display()))?;
+
+        let gz = staging.join("nova-ai.tar.gz");
+        let dl_err = |e: reqwest::Error| {
+            format!(
+                "Failed to download NOVA AI: {e}. Check your internet connection, \
+                     or install git from https://git-scm.com and clone \
+                     https://github.com/Hamza35779/NOVA-AI.git"
+            )
+        };
+        let resp =
+            reqwest::get("https://codeload.github.com/Hamza35779/NOVA-AI/tar.gz/refs/heads/main")
+                .await
+                .map_err(dl_err)?;
+        let resp = resp.error_for_status().map_err(dl_err)?;
+        let bytes = resp.bytes().await.map_err(dl_err)?;
+        std::fs::write(&gz, &bytes)
+            .map_err(|e| format!("Could not write the downloaded archive: {e}"))?;
+
+        let mut tar = tokio::process::Command::new("tar");
+        tar.args([
+            "-xzf",
+            &gz.display().to_string(),
+            "-C",
+            &staging.display().to_string(),
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
+        prepare_subprocess_for_appimage(&mut tar);
+        let out = tar
+            .output()
+            .await
+            .map_err(|e| format!("Could not run tar to extract the download: {e}"))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(format!(
+                "Extracting the NOVA AI download failed: {}. \
+                 Install git from https://git-scm.com and clone \
+                 https://github.com/Hamza35779/NOVA-AI.git, then relaunch.",
+                stderr.trim()
+            ));
+        }
+
+        // The archive extracts to NOVA-AI-<ref>/ — move it into place.
+        let extracted = std::fs::read_dir(&staging)
+            .map_err(|e| format!("Could not inspect the extracted download: {e}"))?;
+        let inner = extracted
+            .flatten()
+            .find(|e| e.path().join("pyproject.toml").exists())
+            .map(|e| e.path());
+        let Some(inner) = inner else {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err("The downloaded archive did not contain a NOVA AI project. \
+                 Please report this at https://github.com/Hamza35779/NOVA-AI/issues."
+                .into());
+        };
+        std::fs::rename(&inner, target).map_err(|e| {
+            let _ = std::fs::remove_dir_all(&staging);
+            format!(
+                "Could not move the download into place ({}): {e}. \
+                 Remove {} if it exists and relaunch.",
+                inner.display(),
+                target.display()
+            )
+        })?;
+        let _ = std::fs::remove_dir_all(&staging);
+        Ok(())
+    }
+}
+
 /// Best-effort `pip install -e .` into the first Python candidate that
 /// actually has pip. Returns a ready-to-show error message on failure.
 async fn install_python_deps(root: &std::path::Path) -> Result<(), String> {
@@ -956,36 +1157,32 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     // download. The desktop app does NOT hard-require uv: it falls back to the
     // self-contained CLI-backend install and then to any Python 3.10+ that can
     // `import nova_ai` (details on `probe_nova_launcher`).
-    let Some(launcher) = probe_nova_launcher() else {
-        let mut s = status.lock().await;
-        #[cfg(target_os = "windows")]
-        let msg = "Could not find a Python environment to start the NOVA AI engine. \
-                   Install ONE of the following, then close and relaunch this app:\n\n\
-                   1. The NOVA AI CLI installer (NOVA-AI-Setup-*.exe from the \
-                   Releases page — fully self-contained, no Python needed)\n\n\
-                   2. Python 3.10+ — https://www.python.org/downloads/ \
-                   (tick 'Add python.exe to PATH' in the installer)\n\n\
-                   3. uv — open PowerShell and run: \
-                   powershell -ExecutionPolicy Bypass -c \"irm https://astral.sh/uv/install.ps1 | iex\"\n\n\
-                   Already have the source elsewhere? Set the NOVA_AI_ROOT \
-                   environment variable to that folder and relaunch. \
-                   (If the install completes but the app still can't find Python, \
-                   log out and back in so PATH refreshes.)";
-        #[cfg(target_os = "macos")]
-        let msg = "Could not find a Python environment to start the NOVA AI engine. \
-                   Install ONE of the following, then relaunch this app:\n\n\
-                   1. Python 3.10+ — https://www.python.org/downloads/\n\n\
-                   2. uv — open Terminal and run: curl -LsSf https://astral.sh/uv/install.sh | sh";
-        #[cfg(target_os = "linux")]
-        let msg = "Could not find a Python environment to start the NOVA AI engine. \
-                   Install ONE of the following, then relaunch this app:\n\n\
-                   1. Python 3.10+ (e.g. sudo apt install python3 python3-pip)\n\n\
-                   2. uv — open a terminal and run: curl -LsSf https://astral.sh/uv/install.sh | sh";
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        let msg = "Could not find a Python environment to start the NOVA AI engine. \
-                   Install Python 3.10+ or uv (https://astral.sh/uv), then relaunch.";
-        s.error = Some(msg.into());
-        return;
+    let mut launcher = probe_nova_launcher();
+    if launcher.is_none() {
+        // No engine route on this machine — install uv ourselves so first
+        // launch is fully self-provisioning (no Python, no git, no manual
+        // steps). The installer drops the binary in ~/.local/bin, which
+        // resolve_bin already probes, so the fresh install is found
+        // immediately without a PATH refresh.
+        {
+            let mut s = status.lock().await;
+            s.detail = "Installing the uv tool (needed to set up the engine)...".into();
+        }
+        match install_uv().await {
+            Ok(path) => {
+                let mut s = status.lock().await;
+                s.detail = format!("uv installed at {}.", path);
+                launcher = Some(NovaLauncher::Uv);
+            }
+            Err(msg) => {
+                let mut s = status.lock().await;
+                s.error = Some(msg);
+                return;
+            }
+        }
+    }
+    let Some(launcher) = launcher else {
+        unreachable!("launcher is set by the uv self-provision above")
     };
 
     // Decide the inference source (default Ollama) before launching anything.
@@ -1163,22 +1360,14 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         project_root = find_project_root();
 
         if project_root.is_none() {
-            // Auto-clone on first launch
-            let git_bin = resolve_bin("git");
-
-            // Check that git is installed
-            if !std::path::Path::new(&git_bin).exists() && git_bin == "git" {
-                let mut s = status.lock().await;
-                s.error = Some(
-                    "Could not find 'git'. \
-                 Install it from https://git-scm.com then relaunch."
-                        .into(),
-                );
-                return;
-            }
-
+            // No checkout on this machine: download one automatically. The
+            // desktop app installs `uv` itself when missing (see the probe
+            // fallback at the top of boot), so first launch is fully
+            // self-provisioning: git clone when available, otherwise a
+            // codeload tarball (no git needed) that hatch-vcs builds fine
+            // thanks to its fallback_version.
             let target_path = std::path::PathBuf::from(home_dir()).join("NOVA AI");
-            let clone_target = target_path.display().to_string();
+            let target = target_path.display().to_string();
 
             // If the directory exists but is not a valid project, don't overwrite
             if target_path.exists() && !target_path.join("pyproject.toml").exists() {
@@ -1186,7 +1375,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 s.error = Some(format!(
                     "{} exists but is not a valid NOVA AI project. \
                  Remove it and relaunch, or set NOVA_AI_ROOT to the correct path.",
-                    clone_target,
+                    target,
                 ));
                 return;
             }
@@ -1196,51 +1385,11 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 s.detail = "Downloading NOVA AI (first launch)...".into();
             }
 
-            let clone_result = tokio::process::Command::new(&git_bin)
-                .args([
-                    "clone",
-                    "--depth",
-                    "1",
-                    "https://github.com/Hamza35779/NOVA-AI.git",
-                    &clone_target,
-                ])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::piped())
-                .spawn();
-
-            match clone_result {
-                Ok(child) => match child.wait_with_output().await {
-                    Ok(output) if output.status.success() => {
-                        project_root = Some(target_path);
-                    }
-                    Ok(output) => {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        let mut s = status.lock().await;
-                        s.error = Some(format!(
-                            "Failed to download NOVA AI: {}. \
-                         Clone manually: git clone https://github.com/Hamza35779/NOVA-AI.git {}",
-                            stderr.trim(),
-                            clone_target,
-                        ));
-                        return;
-                    }
-                    Err(e) => {
-                        let mut s = status.lock().await;
-                        s.error = Some(format!(
-                            "Failed to download NOVA AI: {}. \
-                         Clone manually: git clone https://github.com/Hamza35779/NOVA-AI.git {}",
-                            e, clone_target,
-                        ));
-                        return;
-                    }
-                },
-                Err(e) => {
+            match acquire_repo(&target_path).await {
+                Ok(()) => project_root = Some(target_path),
+                Err(msg) => {
                     let mut s = status.lock().await;
-                    s.error = Some(format!(
-                        "Could not run git: {}. \
-                     Install git from https://git-scm.com then relaunch.",
-                        e,
-                    ));
+                    s.error = Some(msg);
                     return;
                 }
             }
@@ -2922,9 +3071,81 @@ pub fn run() {
 mod tests {
     use super::{
         boot_plan, default_local_model, format_uv_sync_failure, format_uv_sync_spawn_error,
-        normalize_host, nova_launch_command_with, nova_spawn_plan, parse_inference_config,
-        upsert_engine_host, uv_sync_stderr_tail, InferenceConfig, NovaLauncher, SourceKind,
+        install_uv_unix_script, install_uv_windows_script, normalize_host,
+        nova_launch_command_with, nova_spawn_plan, parse_inference_config, upsert_engine_host,
+        uv_sync_stderr_tail, InferenceConfig, NovaLauncher, SourceKind,
     };
+
+    /// Build a real .tar.gz (via the tar binary present on the test host) and
+    /// unpack it with the same tar invocation `acquire_repo` uses, to prove
+    /// the extraction step handles the codeload layout (single top dir with
+    /// pyproject.toml inside) and cleans up its staging directory.
+    fn extract_tarball_fixture(root: std::path::PathBuf, project_dir: &str) {
+        let proj = root.join(project_dir);
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::write(proj.join("pyproject.toml"), b"[project]\n").unwrap();
+        std::fs::write(proj.join("README.md"), b"fixture\n").unwrap();
+        let gz = root.join("fixture.tar.gz");
+        let ok = std::process::Command::new("tar")
+            .args(
+                [
+                    "-czf",
+                    &gz.display().to_string(),
+                    "-C",
+                    &root.display().to_string(),
+                    project_dir,
+                ]
+                .iter()
+                .map(|s| s.as_ref())
+                .collect::<Vec<&std::ffi::OsStr>>(),
+            )
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(ok, "tar -czf must work for the fixture");
+
+        let staging = root.join("staging");
+        std::fs::create_dir_all(&staging).unwrap();
+        let status = std::process::Command::new("tar")
+            .args([
+                "-xzf",
+                &gz.display().to_string(),
+                "-C",
+                &staging.display().to_string(),
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let extracted = std::fs::read_dir(&staging)
+            .unwrap()
+            .flatten()
+            .find(|e| e.path().join("pyproject.toml").exists())
+            .map(|e| e.path());
+        assert!(extracted.is_some(), "pyproject.toml must be discoverable");
+        std::fs::rename(extracted.unwrap(), root.join("NOVA AI")).unwrap();
+        assert!(root.join("NOVA AI").join("pyproject.toml").exists());
+        let _ = std::fs::remove_dir_all(&staging);
+        let _ = std::fs::remove_dir_all(&proj);
+        let _ = std::fs::remove_file(&gz);
+    }
+
+    #[test]
+    fn tarball_extraction_matches_codeload_layout() {
+        let root = std::env::temp_dir().join(format!("nova-tar-fixture-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        extract_tarball_fixture(root, "NOVA-AI-abc1234");
+    }
+
+    #[test]
+    fn tarball_extraction_accepts_flat_layouts_too() {
+        // Some archives put files at the top level; our finder walks entries
+        // and accepts whichever one contains pyproject.toml.
+        let root = std::env::temp_dir().join(format!("nova-tar-flat-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        extract_tarball_fixture(root, "plain-dir");
+    }
     use std::path::Path;
 
     #[test]
@@ -3302,6 +3523,31 @@ mod tests {
         assert_eq!(prog, "C:/bin/nova-ai-windows-x64.exe");
         assert!(prefix.is_empty());
         assert_eq!(start, 3);
+    }
+
+    #[test]
+    fn uv_install_script_env_toggles_modify_path() {
+        // Regression guard for the self-provision installer: it must never
+        // mutate the user's PATH (UV_NO_MODIFY_PATH=1) — resolve_bin already
+        // probes ~/.local/bin, and env-var edits by a child process would be
+        // ineffective for the running app anyway.
+        assert!(
+            install_uv_windows_script("C:/Users/t")
+                .contains("$env:UV_INSTALL_DIR = 'C:/Users/t\\.local\\bin'"),
+            "windows installer must pin the install dir resolve_bin probes"
+        );
+        assert!(
+            install_uv_windows_script("C:/Users/t").contains("$env:UV_NO_MODIFY_PATH = '1'"),
+            "windows installer must not modify PATH"
+        );
+        assert!(
+            install_uv_unix_script("/home/t").contains("UV_INSTALL_DIR='/home/t/.local/bin'"),
+            "unix installer must pin the install dir resolve_bin probes"
+        );
+        assert!(
+            install_uv_unix_script("/home/t").contains("UV_NO_MODIFY_PATH=1"),
+            "unix installer must not modify PATH"
+        );
     }
 
     #[test]
