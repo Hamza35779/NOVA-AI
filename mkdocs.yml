@@ -150,6 +150,7 @@ nav:
       - Linux Guide: getting-started/linux.md
       - WSL2 Guide: getting-started/wsl2.md
       - Native Windows Guide: getting-started/windows-native.md
+      - Colibrì Engine: getting-started/colibri.md
       - Quick Start: getting-started/quickstart.md
       - Code Snippets: getting-started/snippets.md
       - Configuration: getting-started/configuration.md
