@@ -617,9 +617,15 @@ def _write_summary(
     n_err = sum(1 for r in rows if r.get("error"))
     successes = [r for r in rows if r.get("score") and r["score"].get("success")]
     acc = (len(successes) / n_done) if n_done else 0.0
+    from nova_ai.agents.hybrid import _cloud_energy
+
     total_cost = sum(r.get("cost_usd", 0.0) for r in rows)
     total_local = sum(r.get("tokens_local", 0) for r in rows)
     total_cloud = sum(r.get("tokens_cloud", 0) for r in rows)
+    # Estimated datacenter energy attributable to cloud tokens (audit item
+    # A3).  Kept strictly separate from ``energy_j_total`` (NVML-measured);
+    # see ``_cloud_energy.py`` for the method and env controls.
+    cloud_energy_est = _cloud_energy.estimate_summary_energy_j(rows)
     total_web_searches = sum(int(r.get("web_search_uses", 0) or 0) for r in rows)
     total_tool_calls = sum(int(r.get("tool_calls", 0) or 0) for r in rows)
     total_cloud_calls = sum(int(r.get("n_cloud_calls", 0) or 0) for r in rows)
@@ -669,18 +675,21 @@ def _write_summary(
         "cost_usd_total": total_cost,
         "wall_time_s": wall,
         # GPU energy integrated over the cell's wall-time across the GPUs
-        # visible to the runner host. Cloud energy is **not** included —
-        # see ``_energy.py``. Joules; sum of session + any prior resumes.
-        # TODO: decide whether to add a cloud J/token estimate; for now 0
-        # cloud contribution. (Patterson 2021 / Luccioni 2022 are options.)
+        # visible to the runner host. Joules; sum of session + any prior
+        # resumes. Cloud energy is **not** mixed in — it is reported
+        # separately as ``energy_j_cloud_estimated`` below.
         "energy_j_total": energy_j,
+        "energy_j_cloud_estimated": cloud_energy_est,
+        "energy_j_total_with_cloud_estimate": energy_j + cloud_energy_est,
+        "cloud_energy_note": _cloud_energy.summary_note(),
         "task_count": len(tasks),
     }
     summary_path.write_text(json.dumps(summary, indent=2))
     print(
         f"[summary] {cell_name}: n={n_done}/{cell['n']} err={n_err} "
         f"acc={acc:.3f} cost=${total_cost:.2f} time={wall / 60:.1f}m "
-        f"energy={energy_j / 1000:.1f}kJ "
+        f"energy={energy_j / 1000:.1f}kJ"
+        f"+{cloud_energy_est / 1000:.1f}kJ cloud(est) "
         f"(session +{elapsed / 60:.1f}m +{energy_j_session / 1000:.1f}kJ, "
         f"processed={n_processed})",
         flush=True,

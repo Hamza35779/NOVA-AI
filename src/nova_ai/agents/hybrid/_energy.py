@@ -21,10 +21,11 @@ Scope notes
 * ``CUDA_VISIBLE_DEVICES`` is *honored* for parity with vLLM: only those
   GPU indices are sampled. Unset = all GPUs on the host.
 * **Cloud energy is not measured** — cloud calls go over HTTPS to
-  Anthropic/OpenAI/Google, no measurable joules on our side. A future
-  pass could add a per-token J/token estimate (e.g. Patterson et al.
-  2021, Luccioni et al. 2022) but those numbers are vendor-opaque and
-  uncertain — leaving as a TODO until we explicitly decide to estimate.
+  Anthropic/OpenAI/Google, no measurable joules on our side.  It *is*
+  estimated per-token and reported separately: see ``_cloud_energy.py``
+  (``energy_j_cloud_estimated`` in ``summary.json``), derived from
+  published PUE / J-token figures in the spirit of Patterson et al. 2021
+  and Luccioni et al. 2022 — an estimate, never a measurement.
 """
 
 from __future__ import annotations
