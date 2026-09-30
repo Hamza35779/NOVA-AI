@@ -5,9 +5,11 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from nova_ai.core.utils import soft_fail
@@ -57,6 +59,14 @@ class OptimizeRunRequest(BaseModel):
     max_trials: int = 20
     optimizer_model: str = "claude-sonnet-4-6"
     max_samples: int = 50
+
+
+class SkillInstallRequest(BaseModel):
+    source: str
+    name: str
+    url: Optional[str] = None
+    with_scripts: bool = False
+    force: bool = False
 
 
 # ---- Agent routes ----
@@ -482,36 +492,174 @@ async def telemetry_energy(request: Request):
 skills_router = APIRouter(prefix="/v1/skills", tags=["skills"])
 
 
+def _skill_roots() -> List[Path]:
+    """Directories scanned for installed skills (same as ``nova skill``)."""
+    from nova_ai.core.paths import get_config_dir
+
+    return [get_config_dir() / "skills", Path("./skills")]
+
+
+def _build_skill_manager() -> Any:
+    """Create a SkillManager over the default skill roots."""
+    from nova_ai.core.events import EventBus
+    from nova_ai.skills.manager import SkillManager
+
+    return SkillManager(EventBus())
+
+
+def _get_skill_resolver(source: str, url: str = "") -> Any:
+    """Return a source resolver, mirroring ``nova skill install`` (CLI)."""
+    from nova_ai.core.paths import get_config_dir
+
+    if source == "hermes":
+        from nova_ai.skills.sources.hermes import HermesResolver
+
+        return HermesResolver()
+    if source == "openclaw":
+        from nova_ai.skills.sources.openclaw import OpenClawResolver
+
+        return OpenClawResolver()
+    if source == "github":
+        if not url:
+            raise ValueError("Installing from the 'github' source requires 'url'")
+        from nova_ai.skills.sources.github import GitHubResolver
+
+        repo = url.rstrip("/").rsplit("/", 1)[-1]
+        cache = get_config_dir() / "skill-cache" / "github" / repo
+        return GitHubResolver(cache_root=cache, repo_url=url)
+    raise ValueError(
+        f"Unknown skill source '{source}'; expected 'hermes', 'openclaw', or 'github'"
+    )
+
+
+def _manifest_summary(manifest: Any) -> Dict[str, Any]:
+    """Serialize a SkillManifest into a JSON-friendly dict."""
+    return {
+        "name": manifest.name,
+        "version": manifest.version,
+        "description": manifest.description,
+        "author": manifest.author,
+        "tags": list(manifest.tags),
+        "required_capabilities": list(manifest.required_capabilities),
+        "depends": list(manifest.depends),
+        "step_count": len(manifest.steps),
+        "disable_model_invocation": manifest.disable_model_invocation,
+    }
+
+
 @skills_router.get("")
 async def list_skills(request: Request):
-    """List installed skills."""
+    """Discover installed skills and return their manifests."""
     try:
-        from nova_ai.core.registry import SkillRegistry
-
-        skills = []
-        for key in sorted(SkillRegistry.keys()):
-            skills.append({"name": key})
-        return {"skills": skills}
+        manager = _build_skill_manager()
+        manager.discover(_skill_roots())
+        skills = [
+            _manifest_summary(manager.resolve(name)) for name in manager.skill_names()
+        ]
     except Exception as exc:
         logger.warning("Failed to list skills: %s", exc)
         return {"skills": []}
+    return {"skills": sorted(skills, key=lambda s: s["name"])}
+
+
+@skills_router.get("/{skill_name}")
+async def get_skill(skill_name: str, request: Request):
+    """Return one skill's manifest plus its on-disk install locations."""
+    manager = _build_skill_manager()
+    manager.discover(_skill_roots())
+    try:
+        manifest = manager.resolve(skill_name)
+    except KeyError:
+        raise HTTPException(
+            status_code=404, detail=f"Skill '{skill_name}' not found"
+        ) from None
+    summary = _manifest_summary(manifest)
+    summary["installed_paths"] = [
+        str(p) for p in manager.find_installed_paths(skill_name)
+    ]
+    return summary
 
 
 @skills_router.post("")
-async def install_skill(request: Request):
-    """Install a skill (placeholder)."""
-    return {
-        "status": "not_implemented",
-        "message": "Use TOML files in ~/.nova_ai/skills/",
-    }
+async def install_skill(body: SkillInstallRequest, request: Request):
+    """Install a skill from a source (hermes, openclaw, or github).
+
+    Mirrors ``nova skill install``: syncs the source resolver and installs
+    via SkillImporter into ``~/.nova_ai/skills/<source>/<name>/``.  Network
+    and filesystem work runs in a threadpool so the event loop stays
+    responsive.
+    """
+    source = body.source.strip().lower()
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Skill name must not be empty")
+
+    try:
+        resolver = _get_skill_resolver(source, body.url or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def _do_install() -> Dict[str, Any]:
+        resolver.sync()
+        if "/" in name:
+            category, _, skill_name = name.partition("/")
+            matches = [
+                s
+                for s in resolver.list_skills()
+                if s.name == skill_name and s.category == category
+            ]
+        else:
+            matches = [s for s in resolver.list_skills() if s.name == name]
+        if not matches:
+            raise FileNotFoundError(
+                f"No skill named '{name}' found in source '{source}'"
+            )
+
+        from nova_ai.skills.importer import SkillImporter
+        from nova_ai.skills.parser import SkillParser
+        from nova_ai.skills.tool_translator import ToolTranslator
+
+        importer = SkillImporter(parser=SkillParser(), tool_translator=ToolTranslator())
+        result = importer.import_skill(
+            matches[0], with_scripts=body.with_scripts, force=body.force
+        )
+        if not result.success:
+            raise RuntimeError("; ".join(result.warnings or ["unknown error"]))
+        return {
+            "status": "skipped" if result.skipped else "installed",
+            "name": name,
+            "source": source,
+            "path": str(result.target_path) if result.target_path else None,
+            "translated_tools": list(result.translated_tools),
+            "untranslated_tools": list(result.untranslated_tools),
+            "scripts_imported": result.scripts_imported,
+            "warnings": list(result.warnings),
+        }
+
+    try:
+        return await run_in_threadpool(_do_install)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Skill installation failed: {exc}"
+        ) from exc
 
 
 @skills_router.delete("/{skill_name}")
 async def remove_skill(skill_name: str, request: Request):
-    """Remove a skill (placeholder)."""
+    """Remove an installed skill from disk."""
+    manager = _build_skill_manager()
+    try:
+        removed = await run_in_threadpool(
+            manager.remove, skill_name, roots=_skill_roots()
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
-        "status": "not_implemented",
-        "message": "Skill removal not yet supported via API",
+        "status": "removed",
+        "name": skill_name,
+        "removed_paths": [str(p) for p in removed],
     }
 
 
