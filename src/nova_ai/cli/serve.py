@@ -81,6 +81,34 @@ def _resolve_server_model(
     return available[0] if available else ""
 
 
+def _resolve_serve_api_key(env_value: str, config_path) -> str:
+    """Resolve the server API key: env var → OS keyring → config file.
+
+    The OS keyring (audit item B3) is preferred over the legacy plaintext
+    ``[server.auth].api_key`` config field; any keyring problem (optional
+    extra not installed, locked vault, backend failure) falls through to
+    the next source instead of failing startup.
+    """
+    if env_value:
+        return env_value
+    try:
+        from nova_ai.security import keyring_store
+
+        key = keyring_store.read_secret("server", "api_key")
+        if key:
+            return key
+    except Exception:
+        logger.debug("Keyring lookup for the API key failed", exc_info=True)
+    try:
+        import tomllib
+
+        with open(config_path, "rb") as fh:
+            raw = tomllib.load(fh)
+        return raw.get("server", {}).get("auth", {}).get("api_key", "")
+    except (FileNotFoundError, ImportError):
+        return ""
+
+
 @click.command()
 @click.option("--host", default=None, help="Bind address (default: config).")
 @click.option(
@@ -620,17 +648,9 @@ def serve(
     # --- Channel Gateway: API key, sessions, ChannelBridge ---
     import os as _os
 
-    api_key = _os.environ.get("NOVA_AI_API_KEY", "")
-    if not api_key:
-        try:
-            import tomllib
-
-            _cfg_path = str(get_config_dir() / "config.toml")
-            with open(_cfg_path, "rb") as _f:
-                _raw = tomllib.load(_f)
-            api_key = _raw.get("server", {}).get("auth", {}).get("api_key", "")
-        except (FileNotFoundError, ImportError):
-            pass
+    api_key = _resolve_serve_api_key(
+        _os.environ.get("NOVA_AI_API_KEY", ""), get_config_dir() / "config.toml"
+    )
 
     from nova_ai.server.auth_middleware import check_bind_safety
 
