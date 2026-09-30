@@ -17,7 +17,7 @@ from nova_ai.core.config.hardware import (
     recommend_engine,
 )
 from nova_ai.core.config.sections import NovaConfig, apply_security_profile
-from nova_ai.core.paths import get_config_path
+from nova_ai.core.paths import ConfigurationError, get_config_path
 
 if TYPE_CHECKING:
     from nova_ai.mining._stubs import MiningConfig
@@ -163,8 +163,25 @@ def load_config(path: Path | None = None) -> NovaConfig:
     else:
         config_path = get_config_path()
     if config_path.exists():
-        with open(config_path, "rb") as fh:
-            data = tomllib.load(fh)
+        try:
+            with open(config_path, "rb") as fh:
+                data = tomllib.load(fh)
+        except tomllib.TOMLDecodeError as exc:
+            # A malformed config.toml (a duplicated [section] header is the
+            # most common cause after a hand-edit) would otherwise bubble a
+            # raw tomllib traceback to the user and, via `nova serve`, make
+            # the desktop show an inscrutable "server exited (code 1)".
+            # Raise an actionable message instead; `nova config reset` backs
+            # the file up and regenerates defaults.
+            raise ConfigurationError(
+                f"Your config file is not valid TOML and NOVA AI cannot "
+                f"start:\n"
+                f"  Path:  {config_path}\n"
+                f"  Error: {exc}\n\n"
+                f"Fix the syntax (look for a [section] header declared twice), "
+                f"or reset to defaults:\n"
+                f"  nova config reset    # keeps a timestamped backup first"
+            ) from exc
 
         # Run backward-compat migrations before applying
         _migrate_toml_data(data, cfg)

@@ -352,7 +352,27 @@ def main() -> None:
                     _stream.reconfigure(encoding="utf-8", errors="replace")
                 except (AttributeError, OSError):
                     pass
-    cli()
+    try:
+        cli()
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001 - only the config-error branch is handled
+        # A malformed/unusable configuration is a recoverable user error, not
+        # a crash: show an actionable message (no Python traceback) so e.g.
+        # `nova serve` / the desktop reports *why* it exited instead of a bare
+        # "server exited (code 1)". Every other exception keeps propagating so
+        # genuine bugs stay visible.
+        from nova_ai.core.paths import ConfigurationError
+
+        if isinstance(exc, ConfigurationError):
+            from rich.console import Console
+            from rich.markup import escape
+
+            Console(stderr=True).print(
+                f"[red bold]Configuration error[/red bold]\n\n{escape(str(exc))}"
+            )
+            raise SystemExit(1) from None
+        raise
 
 
 __all__ = ["LazyGroup", "cli", "main"]
