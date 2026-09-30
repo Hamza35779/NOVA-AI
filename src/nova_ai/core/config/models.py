@@ -37,6 +37,12 @@ def recommend_model(hw: HardwareInfo, engine: str) -> str:
     if engine == "lemonade":
         return _LEMONADE_DEFAULT_MODEL
 
+    if engine == "colibri":
+        # Colibrì serves whatever container its model directory holds; the
+        # generic RAM-tier catalog does not apply, so recommend nothing and
+        # let the engine's own /v1/models listing drive selection.
+        return ""
+
     # Build a lookup for quick engine-compatibility checks
     catalog = {spec.model_id: spec for spec in BUILTIN_MODELS}
 

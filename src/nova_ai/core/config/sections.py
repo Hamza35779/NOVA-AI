@@ -121,6 +121,13 @@ class LemonadeEngineConfig:
     host: str = "http://localhost:13305"
 
 
+@dataclass(slots=True)
+class ColibriEngineConfig:
+    """Per-engine config for Colibrì (``coli serve`` OpenAI-compatible gateway)."""
+
+    host: str = "http://localhost:8000"
+
+
 @dataclass
 class EngineConfig:
     """Inference engine settings with nested per-engine configs."""
@@ -138,6 +145,7 @@ class EngineConfig:
     apple_fm: AppleFmEngineConfig = field(default_factory=AppleFmEngineConfig)
     gemma_cpp: GemmaCppEngineConfig = field(default_factory=GemmaCppEngineConfig)
     lemonade: LemonadeEngineConfig = field(default_factory=LemonadeEngineConfig)
+    colibri: ColibriEngineConfig = field(default_factory=ColibriEngineConfig)
 
     # Backward-compat properties for old flat attribute names
     @property
@@ -247,6 +255,15 @@ class EngineConfig:
     @lemonade_host.setter
     def lemonade_host(self, value: str) -> None:
         self.lemonade.host = value
+
+    @property
+    def colibri_host(self) -> str:
+        """Deprecated: use ``engine.colibri.host``."""
+        return self.colibri.host
+
+    @colibri_host.setter
+    def colibri_host(self, value: str) -> None:
+        self.colibri.host = value
 
 
 @dataclass(slots=True)
@@ -848,7 +865,11 @@ class AnalyticsConfig:
     or hardware identifiers are ever sent. See ``docs/telemetry.md``.
     """
 
-    enabled: bool = True
+    # Opt-in: anonymous usage analytics is DISABLED by default. Users enable it
+    # explicitly via ``nova init`` (first-run consent) or
+    # ``nova config set analytics.enabled true``. This matches the local-first /
+    # privacy positioning and OSS norms. See docs/telemetry.md.
+    enabled: bool = False
     host: str = "https://34.231.106.201.sslip.io"
     key: str = "phc_ysKu72QaxzYNmDpHFcesD2ZZAe68zkdWJEKoYYkc5e3n"
     anon_id_path: str = field(default_factory=lambda: str(get_config_dir() / "anon_id"))

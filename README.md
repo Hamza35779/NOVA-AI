@@ -188,6 +188,7 @@ Then open **http://localhost:8000**. The in-app **GGUF Hub** can download a star
 | **Ollama** | [Install Ollama](https://ollama.com), then `ollama serve` and `ollama pull qwen2.5:7b` | Easiest local model management |
 | **Cloud APIs** | Export `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `GROQ_API_KEY`, or set them in the web UI Settings page | Maximum capability |
 | **vLLM** | `uv sync --extra inference-vllm`, run a vLLM OpenAI-compatible server, point NOVA AI at it | GPU servers, batch throughput |
+| **Colibrì** | Run `coli serve --model <dir>` (OpenAI-compatible API; frontier MoE models streamed from disk, no GPU required), point NOVA AI at it via `[engine.colibri] host` | Frontier-class models on consumer RAM/disk |
 
 Running `nova init` writes `~/.nova_ai/config.toml` with hardware-detected defaults (or start from a template in `configs/nova_ai/config.toml`).
 
