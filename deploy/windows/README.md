@@ -62,6 +62,71 @@ The available env vars: `NOVA_AI_SKIP_SERVICE`, `NOVA_AI_SERVICE`,
 `NOVA_AI_FORCE`. If you need richer control, save the script first
 (`irm ... -OutFile install.ps1; .\install.ps1 -Force`).
 
+## Deploy-anywhere bootstrap (`bootstrap-nova.ps1`)
+
+`install.ps1` above still *requires* Python and `git` on PATH (it fetches
+them via winget). For a **clean machine with nothing pre-installed**, use
+`deploy/windows/bootstrap-nova.ps1`. It needs only PowerShell + internet:
+`uv` downloads and manages its own CPython, so there is no dependency on a
+system "Store alias" Python or on winget.
+
+Copy the whole `NOVA AI` project folder onto the target PC, then from inside
+it run:
+
+```powershell
+# Core CLI + API server (recommended starter):
+powershell -ExecutionPolicy Bypass -File deploy\windows\bootstrap-nova.ps1 -Extras server
+
+# Also installs + starts Ollama and pulls a starter model (~1.8 GB):
+powershell -ExecutionPolicy Bypass -File deploy\windows\bootstrap-nova.ps1 -Full
+```
+
+What it does (all idempotent / re-runnable):
+
+1. Installs `uv` (https://astral.sh/uv) if it is not on PATH.
+2. Installs a **uv-managed CPython** (default 3.13) if one is absent.
+3. Locates the project folder (this script's repo root, `-RepoRoot`, or
+   clones if `git` happens to be available).
+4. Runs `uv sync --extra <Extras>` to build `.venv` with all runtime deps.
+5. Installs a robust `nova.cmd` launcher into `%USERPROFILE%\.local\bin`
+   (already on PATH). The launcher runs `.venv\Scripts\nova.exe` **directly**
+   — so `nova` needs no `uv`/PATH lookup at runtime — and only falls back to
+   `uv run --project` if the venv is ever missing.
+6. With `-Full`, installs/starts Ollama and pulls `-Model` (default `qwen2.5:0.5b`).
+7. Verifies with `nova --version`.
+
+Flags: `-Full`, `-SkipDeps`, `-Force`, `-Model <tag>`, `-Extras <list>`,
+`-PythonVersion <v>`, `-RepoRoot <dir>`.
+
+> After it finishes, open a **new** PowerShell so the PATH change takes
+> effect, then run `nova doctor` and `nova ask "..."`.
+
+## Fully OFFLINE deployment (air-gapped PCs)
+
+Two scripts bundle NOVA AI so it installs on a target PC with **zero
+internet**:
+
+1. On an online PC, build a self-contained bundle:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File deploy\windows\make-offline-bundle.ps1 -Extras server
+   # add -Zip for a single archive, or -Gguf C:\models\<file>.gguf for an offline model
+   ```
+   It produces `..\NOVA-AI-offline\` containing the `uv` binary, a
+   uv-managed CPython, a pre-populated wheel **cache**, the source, and
+   `install-offline.ps1`.
+2. Copy that folder to the offline PC and run:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File install-offline.ps1
+   ```
+   It drives `uv sync --frozen --offline` against the shipped cache, so
+   nothing is downloaded. A complete bundle installs; an incomplete one
+   fails loudly instead of phoning home.
+
+**Offline inference:** local chat still needs a model engine with no network.
+Either bundle a GGUF (`make-offline-bundle.ps1 -Gguf <file>` — its wheels must
+resolve during the online build) or pre-install Ollama on the target and
+`ollama pull <model>` once while it still has connectivity.
+
 ## Manual scheduled-task setup
 
 If you skipped the prompt during install, you can register / inspect /
