@@ -151,6 +151,55 @@ class TestCheckDefaultModel:
         assert result.status == "ok"
         assert "auto" in result.message.lower()
 
+    @staticmethod
+    def _patched_doctor_env(default_model: str, installed: list):
+        mock_config = MagicMock()
+        mock_config.intelligence.default_model = default_model
+        mock_config.intelligence.preferred_engine = ""
+        mock_config.engine.default = "ollama"
+        engine = MagicMock()
+        engine.health.return_value = True
+        engine.list_models.return_value = installed
+        return (
+            patch("nova_ai.cli.doctor_cmd.load_config", return_value=mock_config),
+            patch(
+                "nova_ai.cli.doctor_cmd._make_engines",
+                return_value={"ollama": engine},
+            ),
+            patch("nova_ai.cli.doctor_cmd._bounded_health", return_value=True),
+        )
+
+    def test_installed_default_model_is_ok(self) -> None:
+        """A default model the engine lists is reported as ok."""
+        patches = self._patched_doctor_env("qwen2.5:0.5b", ["qwen2.5:0.5b"])
+        with patches[0], patches[1], patches[2]:
+            result = _check_default_model()
+        assert result.status == "ok"
+        assert result.message == "qwen2.5:0.5b (on ollama)"
+
+    def test_missing_default_model_warns_with_actionable_details(self) -> None:
+        """A 404-prone config warns AND tells the customer how to fix it."""
+        patches = self._patched_doctor_env("qwen3.5:4b", ["qwen2.5:0.5b", "qwen3:0.6b"])
+        with patches[0], patches[1], patches[2]:
+            result = _check_default_model()
+        assert result.status == "warn"
+        assert "not found on any engine" in result.message
+        assert result.details is not None
+        assert "nova model pull qwen3.5:4b" in result.details
+        assert (
+            "nova config set intelligence.default_model qwen2.5:0.5b" in result.details
+        )
+
+    def test_missing_default_model_no_installed_alternative(self) -> None:
+        """Warn still names the pull fix when nothing is installed."""
+        patches = self._patched_doctor_env("qwen3.5:4b", [])
+        with patches[0], patches[1], patches[2]:
+            result = _check_default_model()
+        assert result.status == "warn"
+        assert result.details is not None
+        assert "nova model pull qwen3.5:4b" in result.details
+        assert "no models are installed" in result.details
+
 
 class TestCheckSpeechBackend:
     def test_check_speech_backend_ready(self) -> None:

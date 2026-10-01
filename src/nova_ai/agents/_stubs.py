@@ -102,6 +102,15 @@ class BaseAgent(ABC):
                     else getattr(self, "_default_max_tokens", 1024)
                 )
 
+    def set_model(self, model: str) -> None:
+        """Swap the model used for subsequent calls.
+
+        Lets an interactive caller (e.g. the ``nova chat`` REPL) recover
+        from a mid-session "model not found" — the configured model was
+        uninstalled while chatting — without rebuilding the agent.
+        """
+        self._model = model
+
     # ------------------------------------------------------------------
     # Concrete helpers
     # ------------------------------------------------------------------

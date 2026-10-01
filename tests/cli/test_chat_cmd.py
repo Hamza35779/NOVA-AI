@@ -56,6 +56,17 @@ class _ToolChatAgent(ToolUsingAgent):
         return AgentResult(content=result.content, tool_results=[result], turns=1)
 
 
+class _RecoverAgent(BaseAgent):
+    """Only answers once its model has been swapped to an installed one."""
+
+    agent_id = "recover_agent"
+
+    def run(self, input, context: AgentContext | None = None, **kwargs):
+        if self._model != "qwen2.5:0.5b":
+            raise RuntimeError("Ollama returned 404: model 'qwen3.5:4b' not found")
+        return AgentResult(content="agent recovered", turns=1)
+
+
 class TestChatCommand:
     """Test the Click command definition and help output."""
 
@@ -169,11 +180,22 @@ class TestChatModelFallback:
         cls,
         config: NovaConfig,
         engine: MagicMock,
-        discovered: dict,
+        discovered: dict | list,
         args: list[str] | None = None,
     ):
+        """Run the REPL with discovery stubbed.
+
+        ``discovered`` is either a single snapshot dict, or a list of
+        snapshots consumed across successive discovery calls (startup,
+        then mid-session recovery).
+        """
         engine.engine_id = "ollama"
         engine.generate.return_value = {"content": "repl reply"}
+        discovery_kwargs = (
+            {"side_effect": list(discovered)}
+            if isinstance(discovered, list)
+            else {"return_value": discovered}
+        )
         with (
             patch("nova_ai.cli.chat_cmd.load_config", return_value=config),
             patch("nova_ai.engine.get_engine", return_value=("ollama", engine)),
@@ -182,7 +204,7 @@ class TestChatModelFallback:
                 "nova_ai.engine.discover_engines",
                 return_value=[("ollama", engine)],
             ),
-            patch("nova_ai.engine.discover_models", return_value=discovered),
+            patch("nova_ai.engine.discover_models", **discovery_kwargs),
         ):
             return CliRunner().invoke(chat, list(args or []), input="hello\n/quit\n")
 
@@ -253,3 +275,41 @@ class TestChatModelFallback:
         assert result.exit_code == 0
         assert "not reachable" not in result.output
         assert engine.generate.call_args.kwargs["model"] == "qwen3.5:4b"
+
+    def test_midsession_missing_model_recovers_and_retries(self) -> None:
+        """404 on generate mid-session -> swap to an installed model, retry."""
+        engine = MagicMock()
+        config = self._make_config("qwen3.5:4b")
+        engine.generate.side_effect = [
+            RuntimeError("Ollama returned 404: model 'qwen3.5:4b' not found"),
+            {"content": "recovered reply"},
+        ]
+        # Discovery empty at startup (engine still warming up), models
+        # visible by the time the recovery re-check runs.
+        result = self._invoke_chat(
+            config,
+            engine,
+            [{}, {"ollama": ["qwen2.5:0.5b", "qwen3:0.6b"]}],
+        )
+
+        assert result.exit_code == 0
+        assert "not reachable" in result.output
+        assert "recovered reply" in result.output
+        assert engine.generate.call_count == 2
+        assert engine.generate.call_args.kwargs["model"] == "qwen2.5:0.5b"
+
+    def test_midsession_recovery_swaps_agent_model(self) -> None:
+        """Agent-mode turns recover too: notice + set_model + retry."""
+        engine = MagicMock()
+        config = self._make_config("qwen3.5:4b")
+        AgentRegistry.register_value("recover_agent", _RecoverAgent)
+        result = self._invoke_chat(
+            config,
+            engine,
+            [{}, {"ollama": ["qwen2.5:0.5b"]}],
+            args=["--agent", "recover_agent"],
+        )
+
+        assert result.exit_code == 0
+        assert "not reachable" in result.output
+        assert "agent recovered" in result.output

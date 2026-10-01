@@ -515,3 +515,55 @@ class TestNovaSystemClose:
         )
         assert system.agent_scheduler is None
         assert system.agent_executor is None
+
+
+class TestBuilderResolveModelFallback:
+    """SystemBuilder._resolve_model must not return a model the engine
+    can't serve (audit FP-A — same rule as nova ask / nova chat)."""
+
+    @staticmethod
+    def _engine(models):
+        engine = MagicMock()
+        engine.list_models.return_value = models
+        return engine
+
+    def test_configured_model_missing_falls_back_to_installed(self):
+        config = NovaConfig()
+        config.intelligence.default_model = "ghost-model"
+        builder = SystemBuilder(config)
+        assert builder._resolve_model(config, self._engine(["a", "b"])) == "a"
+
+    def test_configured_fallback_model_preferred(self):
+        config = NovaConfig()
+        config.intelligence.default_model = "ghost-model"
+        config.intelligence.fallback_model = "b"
+        builder = SystemBuilder(config)
+        assert builder._resolve_model(config, self._engine(["a", "b"])) == "b"
+
+    def test_reachable_configured_model_kept(self):
+        config = NovaConfig()
+        config.intelligence.default_model = "a"
+        builder = SystemBuilder(config)
+        assert builder._resolve_model(config, self._engine(["a"])) == "a"
+
+    def test_explicit_model_override_wins(self):
+        config = NovaConfig()
+        config.intelligence.default_model = "cfg-model"
+        builder = SystemBuilder(config)
+        builder.model("explicit-model")
+        # Even an engine listing nothing keeps the explicit override.
+        assert builder._resolve_model(config, self._engine([])) == "explicit-model"
+
+    def test_empty_config_uses_first_engine_model(self):
+        config = NovaConfig()
+        config.intelligence.default_model = ""
+        builder = SystemBuilder(config)
+        assert builder._resolve_model(config, self._engine(["m1", "m2"])) == "m1"
+
+    def test_list_models_failure_keeps_configured_model(self):
+        config = NovaConfig()
+        config.intelligence.default_model = "cfg-model"
+        engine = MagicMock()
+        engine.list_models.side_effect = RuntimeError("boom")
+        builder = SystemBuilder(config)
+        assert builder._resolve_model(config, engine) == "cfg-model"

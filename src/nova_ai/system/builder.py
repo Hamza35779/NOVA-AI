@@ -11,6 +11,10 @@ from nova_ai.core.config import NovaConfig, load_config
 from nova_ai.core.events import EventBus, get_event_bus
 from nova_ai.core.paths import get_config_dir
 from nova_ai.core.types import ToolCall
+from nova_ai.engine._model_fallback import (
+    pick_fallback_from_engine_models,
+    unreachable_model_notice,
+)
 from nova_ai.engine._stubs import InferenceEngine
 from nova_ai.system.core import NovaSystem
 from nova_ai.tools._stubs import BaseTool, ToolExecutor
@@ -416,14 +420,24 @@ class SystemBuilder:
     def _resolve_model(self, config: NovaConfig, engine: InferenceEngine) -> str:
         if self._model:
             return self._model
-        if config.intelligence.default_model:
-            return config.intelligence.default_model
+        configured = config.intelligence.default_model
         try:
             models = engine.list_models()
-            if models:
-                return models[0]
         except Exception as exc:
             logger.warning("Failed to list models from engine: %s", exc)
+            models = []
+        if configured:
+            # Only use the configured default when the engine can actually
+            # serve it (audit FP-A — same rule as nova ask / nova chat).
+            fallback = pick_fallback_from_engine_models(
+                models, configured, config.intelligence.fallback_model
+            )
+            if fallback is not None:
+                logger.warning("%s", unreachable_model_notice(configured, fallback))
+                return fallback
+            return configured
+        if models:
+            return models[0]
         return config.intelligence.fallback_model or ""
 
     def _setup_telemetry(self, config, bus):

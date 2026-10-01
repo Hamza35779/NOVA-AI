@@ -13,7 +13,6 @@ from rich.console import Console
 from rich.table import Table
 
 from nova_ai.cli._banner import print_banner
-from nova_ai.cli._model_fallback import pick_reachable_fallback
 from nova_ai.cli._tool_names import resolve_tool_names
 from nova_ai.cli.hints import hint_no_engine
 from nova_ai.core.config import load_config
@@ -24,6 +23,10 @@ from nova_ai.engine import (
     discover_engines,
     discover_models,
     get_engine,
+)
+from nova_ai.engine._model_fallback import (
+    pick_reachable_fallback,
+    unreachable_model_notice,
 )
 from nova_ai.intelligence import (
     merge_discovered_models,
@@ -855,8 +858,7 @@ def ask(
         )
         if fallback is not None:
             console.print(
-                f"[yellow]Configured model {configured_model!r} is not "
-                f"reachable; using {fallback!r}.[/yellow]"
+                f"[yellow]{unreachable_model_notice(configured_model, fallback)}[/yellow]"
             )
             model_name = fallback
     if not model_name:

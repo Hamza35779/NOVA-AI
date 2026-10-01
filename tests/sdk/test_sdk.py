@@ -295,3 +295,65 @@ class TestNovaLifecycle:
         j = Nova(config=NovaConfig())
         j.close()
         j.close()  # should not raise
+
+
+class TestResolveModelFallback:
+    """_resolve_model must not hand back a model the engine can't serve
+    (audit FP-A — same rule as nova ask / nova chat)."""
+
+    @staticmethod
+    def _make_nova(engine: MagicMock, config: NovaConfig) -> Nova:
+        with patch("nova_ai.sdk.get_engine", return_value=("mock", engine)):
+            j = Nova(config=config)
+            j._ensure_engine()
+        return j
+
+    def test_configured_model_missing_falls_back_to_installed(self):
+        engine = _make_engine()
+        engine.list_models.return_value = ["qwen2.5:0.5b", "qwen3:0.6b"]
+        config = NovaConfig()
+        config.intelligence.default_model = "qwen3.5:4b"
+        j = self._make_nova(engine, config)
+        assert j._resolve_model("hi") == "qwen2.5:0.5b"
+
+    def test_configured_fallback_model_preferred(self):
+        engine = _make_engine()
+        engine.list_models.return_value = ["qwen2.5:0.5b", "qwen3:0.6b"]
+        config = NovaConfig()
+        config.intelligence.default_model = "qwen3.5:4b"
+        config.intelligence.fallback_model = "qwen3:0.6b"
+        j = self._make_nova(engine, config)
+        assert j._resolve_model("hi") == "qwen3:0.6b"
+
+    def test_reachable_configured_model_kept(self):
+        engine = _make_engine()
+        engine.list_models.return_value = ["qwen2.5:0.5b"]
+        config = NovaConfig()
+        config.intelligence.default_model = "qwen2.5:0.5b"
+        j = self._make_nova(engine, config)
+        assert j._resolve_model("hi") == "qwen2.5:0.5b"
+
+    def test_empty_discovery_keeps_configured_model(self):
+        """Engine lists nothing -> never a hard gate, keep the configured model."""
+        engine = _make_engine()
+        engine.list_models.return_value = []
+        config = NovaConfig()
+        config.intelligence.default_model = "some-model"
+        j = self._make_nova(engine, config)
+        assert j._resolve_model("hi") == "some-model"
+
+    def test_list_models_failure_keeps_configured_model(self):
+        engine = _make_engine()
+        engine.list_models.side_effect = RuntimeError("boom")
+        config = NovaConfig()
+        config.intelligence.default_model = "some-model"
+        j = self._make_nova(engine, config)
+        assert j._resolve_model("hi") == "some-model"
+
+    def test_empty_config_uses_first_engine_model(self):
+        engine = _make_engine()
+        engine.list_models.return_value = ["m1", "m2"]
+        config = NovaConfig()
+        config.intelligence.default_model = ""
+        j = self._make_nova(engine, config)
+        assert j._resolve_model("hi") == "m1"

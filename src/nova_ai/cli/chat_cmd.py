@@ -9,10 +9,13 @@ import click
 from rich.console import Console
 from rich.markdown import Markdown
 
-from nova_ai.cli._model_fallback import pick_reachable_fallback
 from nova_ai.cli._tool_names import resolve_tool_names
-from nova_ai.core.config import load_config
+from nova_ai.core.config import NovaConfig, load_config
 from nova_ai.core.types import Message, Role
+from nova_ai.engine._model_fallback import (
+    pick_reachable_fallback,
+    unreachable_model_notice,
+)
 
 
 def _read_input(prompt: str = "You> ") -> Optional[str]:
@@ -21,6 +24,38 @@ def _read_input(prompt: str = "You> ") -> Optional[str]:
         return input(prompt)
     except (EOFError, KeyboardInterrupt):
         return None
+
+
+def _recover_model(
+    exc: Exception,
+    config: NovaConfig,
+    engine_name: str,
+    current_model: str,
+) -> Optional[str]:
+    """Pick an installed replacement model after a failed generate call.
+
+    Only reacts to errors that look like a missing-model failure (e.g.
+    Ollama's ``404: model 'x' not found``) — the model can disappear
+    mid-session (uninstalled while chatting) or never have been visible
+    at startup when discovery returned nothing. Returns ``None`` for any
+    other error or when no reachable alternative exists; the caller then
+    surfaces the original error unchanged.
+    """
+    text = str(exc)
+    if "not found" not in text and "404" not in text:
+        return None
+    try:
+        from nova_ai.engine import discover_engines, discover_models
+
+        fresh_models = discover_models(discover_engines(config))
+    except Exception:
+        return None
+    return pick_reachable_fallback(
+        fresh_models,
+        engine_name,
+        current_model,
+        getattr(config.intelligence, "fallback_model", ""),
+    )
 
 
 @click.command()
@@ -121,8 +156,7 @@ def chat(
         )
         if fallback is not None:
             console.print(
-                f"[yellow]Configured model {model!r} is not reachable; "
-                f"using {fallback!r}.[/yellow]"
+                f"[yellow]{unreachable_model_notice(model, fallback)}[/yellow]"
             )
             model = fallback
 
@@ -229,6 +263,21 @@ def chat(
     if system_prompt:
         history.append(Message(role=Role.SYSTEM, content=system_prompt))
 
+    def _generate_turn(text: str) -> str:
+        """Run one turn through the agent (if any) or straight to the engine."""
+        if agent is not None:
+            response = agent.run(text)
+            return response.content if hasattr(response, "content") else str(response)
+        result = engine.generate(history, model=model)
+        return result.get("content", "") if isinstance(result, dict) else str(result)
+
+    def _emit_turn(content: str) -> None:
+        """Record the assistant reply in history and render it."""
+        history.append(Message(role=Role.ASSISTANT, content=content))
+        console.print()
+        console.print(Markdown(content))
+        console.print()
+
     # REPL loop
     while True:
         for note in _notifications.diff(get_status()):
@@ -282,29 +331,29 @@ def chat(
         # Add user message
         history.append(Message(role=Role.USER, content=user_input))
 
-        # Generate response
+        # Generate response (with one-shot recovery when the model vanished
+        # mid-session — see _recover_model)
         try:
-            if agent is not None:
-                response = agent.run(user_input)
-                content = (
-                    response.content if hasattr(response, "content") else str(response)
-                )
-            else:
-                result = engine.generate(history, model=model)
-                content = (
-                    result.get("content", "")
-                    if isinstance(result, dict)
-                    else str(result)
-                )
-
-            history.append(Message(role=Role.ASSISTANT, content=content))
-            console.print()
-            console.print(Markdown(content))
-            console.print()
+            _emit_turn(_generate_turn(user_input))
         except KeyboardInterrupt:
             console.print("\n[dim]Generation interrupted.[/dim]")
         except Exception as exc:
-            console.print(f"\n[red]Error: {exc}[/red]\n")
+            recovered = _recover_model(exc, config, engine_name, model)
+            if recovered is not None:
+                console.print(
+                    f"[yellow]{unreachable_model_notice(model, recovered)}[/yellow]"
+                )
+                model = recovered
+                if agent is not None and hasattr(agent, "set_model"):
+                    agent.set_model(model)
+                try:
+                    _emit_turn(_generate_turn(user_input))
+                except KeyboardInterrupt:
+                    console.print("\n[dim]Generation interrupted.[/dim]")
+                except Exception as retry_exc:
+                    console.print(f"\n[red]Error: {retry_exc}[/red]\n")
+            else:
+                console.print(f"\n[red]Error: {exc}[/red]\n")
 
 
 __all__ = ["chat"]

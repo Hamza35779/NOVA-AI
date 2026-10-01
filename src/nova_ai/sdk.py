@@ -12,6 +12,10 @@ from nova_ai.core.config import NovaConfig, load_config
 from nova_ai.core.events import EventBus
 from nova_ai.core.types import Message, Role
 from nova_ai.engine._discovery import get_engine
+from nova_ai.engine._model_fallback import (
+    pick_fallback_from_engine_models,
+    unreachable_model_notice,
+)
 from nova_ai.system import NovaSystem, SystemBuilder
 from nova_ai.telemetry.instrumented_engine import InstrumentedEngine
 from nova_ai.telemetry.store import TelemetryStore
@@ -425,16 +429,28 @@ class Nova:
         }
 
     def _resolve_model(self, query: str) -> Optional[str]:
-        """Resolve model using config fallback chain."""
-        if self._config.intelligence.default_model:
-            return self._config.intelligence.default_model
-        # Try first available from engine
+        """Resolve model using config fallback chain.
+
+        The configured default is only used when the engine can actually
+        serve it; otherwise fall back to ``intelligence.fallback_model`` or
+        the first installed model (audit FP-A — same rule as the CLI).
+        """
+        configured = self._config.intelligence.default_model
         try:
             models = self._engine.list_models()
-            if models:
-                return models[0]
         except Exception as exc:
             logger.warning("Failed to list models from engine: %s", exc)
+            models = []
+        if configured:
+            fallback = pick_fallback_from_engine_models(
+                models, configured, self._config.intelligence.fallback_model
+            )
+            if fallback is not None:
+                logger.warning("%s", unreachable_model_notice(configured, fallback))
+                return fallback
+            return configured
+        if models:
+            return models[0]
         return self._config.intelligence.fallback_model or None
 
     def _run_agent(

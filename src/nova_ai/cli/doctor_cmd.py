@@ -269,6 +269,7 @@ def _check_default_model() -> CheckResult:
     check_order += [k for k in sorted(EngineRegistry.keys()) if k != preferred]
 
     engines = _make_engines(config)
+    installed: list = []
     for key in check_order:
         engine = engines.get(key)
         if engine is None:
@@ -276,6 +277,7 @@ def _check_default_model() -> CheckResult:
         try:
             if _bounded_health(engine):
                 models = engine.list_models()
+                installed.extend(models)
                 if default_model in models:
                     return CheckResult(
                         "Default model",
@@ -286,10 +288,23 @@ def _check_default_model() -> CheckResult:
             soft_fail(logger, exc, "optional CLI step")
             continue
 
+    # Actionable fix instead of a bare warning: point at the two ways out.
+    suggestion = (
+        f"Install it with 'nova model pull {default_model}', or switch to "
+        "an installed model with "
+        "'nova config set intelligence.default_model <model>'"
+    )
+    if installed:
+        suggestion += (
+            f" — e.g. 'nova config set intelligence.default_model {installed[0]}'"
+        )
+    else:
+        suggestion += " (no models are installed on any reachable engine yet)"
     return CheckResult(
         "Default model",
         "warn",
         f"{default_model} not found on any engine",
+        details=suggestion,
     )
 
 
