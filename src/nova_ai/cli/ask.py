@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from nova_ai.cli._banner import print_banner
+from nova_ai.cli._model_fallback import pick_reachable_fallback
 from nova_ai.cli._tool_names import resolve_tool_names
 from nova_ai.cli.hints import hint_no_engine
 from nova_ai.core.config import load_config
@@ -32,21 +33,6 @@ from nova_ai.telemetry.instrumented_engine import InstrumentedEngine
 from nova_ai.telemetry.store import TelemetryStore
 
 logger = logging.getLogger(__name__)
-
-
-def _model_reachable(
-    all_models: dict, engine_name: str, model: str
-) -> bool:
-    """Best-effort check that ``model`` is installed on ``engine_name``.
-
-    Uses the discovery snapshot when it lists models for the engine. When
-    discovery returned nothing useful (mocked tests, unknown engine), the
-    model is assumed reachable — this must never turn into a hard gate.
-    """
-    engine_models = all_models.get(engine_name)
-    if not engine_models:
-        return True
-    return model in engine_models
 
 
 def _run_research(
@@ -861,16 +847,18 @@ def ask(
         # configured model was never pulled (audit FP-A), while the server
         # path already falls back to an installed model. Mirror that here.
         configured_model = model_name
-        if not _model_reachable(all_models, engine_name, configured_model):
-            fallback = config.intelligence.fallback_model or next(
-                iter(all_models.get(engine_name, []) or []), None
+        fallback = pick_reachable_fallback(
+            all_models,
+            engine_name,
+            configured_model,
+            config.intelligence.fallback_model,
+        )
+        if fallback is not None:
+            console.print(
+                f"[yellow]Configured model {configured_model!r} is not "
+                f"reachable; using {fallback!r}.[/yellow]"
             )
-            if fallback and fallback != configured_model:
-                console.print(
-                    f"[yellow]Configured model {configured_model!r} is not "
-                    f"reachable; using {fallback!r}.[/yellow]"
-                )
-                model_name = fallback
+            model_name = fallback
     if not model_name:
         model_name = config.intelligence.fallback_model
     if not model_name:

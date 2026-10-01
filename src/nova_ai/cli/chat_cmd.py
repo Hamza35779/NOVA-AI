@@ -9,6 +9,7 @@ import click
 from rich.console import Console
 from rich.markdown import Markdown
 
+from nova_ai.cli._model_fallback import pick_reachable_fallback
 from nova_ai.cli._tool_names import resolve_tool_names
 from nova_ai.core.config import load_config
 from nova_ai.core.types import Message, Role
@@ -87,25 +88,43 @@ def chat(
         sys.exit(1)
 
     engine_name, engine = resolved
+
+    from nova_ai.engine import discover_engines, discover_models
+
+    all_engines = discover_engines(config)
+    all_models = discover_models(all_engines)
+
     model = model_name or config.intelligence.default_model
     if not model:
-        from nova_ai.engine import discover_engines, discover_models
-
-        all_engines = discover_engines(config)
-        all_models = discover_models(all_engines)
         engine_models = all_models.get(engine_name, [])
         if engine_models:
             model = engine_models[0]
+        elif getattr(engine, "is_cloud", False):
+            model = "gpt-4o-mini"
         else:
-            # Check if engine is cloud
-            if getattr(engine, "is_cloud", False):
-                model = "gpt-4o-mini"
-            else:
-                console.print(
-                    f"\n[bold yellow]⚠️ Connected to {engine_name}, but no models are installed yet.[/bold yellow]\n"
-                    f"Run [cyan]ollama pull llama3[/cyan] or specify [cyan]--model <name>[/cyan].\n"
-                )
-                sys.exit(1)
+            console.print(
+                f"\n[bold yellow]⚠️ Connected to {engine_name}, but no models are installed yet.[/bold yellow]\n"
+                f"Run [cyan]ollama pull llama3[/cyan] or specify [cyan]--model <name>[/cyan].\n"
+            )
+            sys.exit(1)
+    else:
+        # The config (or --model) named a model — verify it is actually
+        # installed before starting the REPL. Without this check the first
+        # message died with a raw `Ollama returned 404: model 'x' not found`
+        # whenever the configured model was never pulled (audit FP-A), while
+        # `nova ask` and `nova serve` already fall back. Mirror that here.
+        fallback = pick_reachable_fallback(
+            all_models,
+            engine_name,
+            model,
+            config.intelligence.fallback_model,
+        )
+        if fallback is not None:
+            console.print(
+                f"[yellow]Configured model {model!r} is not reachable; "
+                f"using {fallback!r}.[/yellow]"
+            )
+            model = fallback
 
     # Resolve agent (optional)
     agent = None

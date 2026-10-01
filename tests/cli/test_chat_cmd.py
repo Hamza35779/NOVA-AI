@@ -145,3 +145,111 @@ class TestChatAgents:
         assert result.exit_code == 0
         assert "Confirm:" in result.output
         assert "chat executed!" in result.output
+
+
+class TestChatModelFallback:
+    """The REPL must not die on a configured-but-missing model (audit FP-A).
+
+    ``nova ask`` and ``nova serve`` fall back to an installed model with a
+    notice when the configured default isn't installed; ``nova chat`` used
+    to trust the config blindly and hit a raw ``Ollama returned 404`` on
+    the first message. These tests pin the mirrored fallback behavior.
+    """
+
+    @staticmethod
+    def _make_config(default_model: str, fallback_model: str = "") -> NovaConfig:
+        config = NovaConfig()
+        config.intelligence.default_model = default_model
+        config.intelligence.fallback_model = fallback_model
+        config.agent.default_agent = ""  # direct-to-engine mode
+        return config
+
+    @classmethod
+    def _invoke_chat(
+        cls,
+        config: NovaConfig,
+        engine: MagicMock,
+        discovered: dict,
+        args: list[str] | None = None,
+    ):
+        engine.engine_id = "ollama"
+        engine.generate.return_value = {"content": "repl reply"}
+        with (
+            patch("nova_ai.cli.chat_cmd.load_config", return_value=config),
+            patch("nova_ai.engine.get_engine", return_value=("ollama", engine)),
+            patch("nova_ai.intelligence.register_builtin_models"),
+            patch(
+                "nova_ai.engine.discover_engines",
+                return_value=[("ollama", engine)],
+            ),
+            patch("nova_ai.engine.discover_models", return_value=discovered),
+        ):
+            return CliRunner().invoke(chat, list(args or []), input="hello\n/quit\n")
+
+    def test_missing_configured_model_falls_back_to_installed(self) -> None:
+        """Config default not installed -> notice + first installed model."""
+        engine = MagicMock()
+        config = self._make_config("qwen3.5:4b")
+        result = self._invoke_chat(
+            config,
+            engine,
+            {"ollama": ["qwen2.5:0.5b", "qwen3:0.6b"]},
+        )
+
+        assert result.exit_code == 0
+        assert "not reachable" in result.output
+        assert "qwen2.5:0.5b" in result.output
+        assert engine.generate.call_args.kwargs["model"] == "qwen2.5:0.5b"
+
+    def test_fallback_model_from_config_preferred(self) -> None:
+        """intelligence.fallback_model wins over first discovered model."""
+        engine = MagicMock()
+        config = self._make_config("qwen3.5:4b", fallback_model="qwen3:0.6b")
+        result = self._invoke_chat(
+            config,
+            engine,
+            {"ollama": ["qwen2.5:0.5b", "qwen3:0.6b"]},
+        )
+
+        assert result.exit_code == 0
+        assert "not reachable" in result.output
+        assert engine.generate.call_args.kwargs["model"] == "qwen3:0.6b"
+
+    def test_explicit_model_flag_also_falls_back(self) -> None:
+        """--model naming an uninstalled model falls back too (like ask)."""
+        engine = MagicMock()
+        config = self._make_config("")
+        result = self._invoke_chat(
+            config,
+            engine,
+            {"ollama": ["qwen2.5:0.5b"]},
+            args=["--model", "ghost-model"],
+        )
+
+        assert result.exit_code == 0
+        assert "not reachable" in result.output
+        assert engine.generate.call_args.kwargs["model"] == "qwen2.5:0.5b"
+
+    def test_reachable_configured_model_is_untouched(self) -> None:
+        """No notice and no substitution when the model is installed."""
+        engine = MagicMock()
+        config = self._make_config("qwen3:0.6b")
+        result = self._invoke_chat(
+            config,
+            engine,
+            {"ollama": ["qwen2.5:0.5b", "qwen3:0.6b"]},
+        )
+
+        assert result.exit_code == 0
+        assert "not reachable" not in result.output
+        assert engine.generate.call_args.kwargs["model"] == "qwen3:0.6b"
+
+    def test_empty_discovery_keeps_configured_model(self) -> None:
+        """Discovery useless (no models listed) -> never a hard gate."""
+        engine = MagicMock()
+        config = self._make_config("qwen3.5:4b")
+        result = self._invoke_chat(config, engine, {})
+
+        assert result.exit_code == 0
+        assert "not reachable" not in result.output
+        assert engine.generate.call_args.kwargs["model"] == "qwen3.5:4b"
