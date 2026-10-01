@@ -234,10 +234,41 @@ Pick your platform and start in seconds:
 
 ### Start Working with NOVA AI
 
-```bash
-# Interactive Chat
-nova chat
+### Everyday Commands (Cheat Sheet)
 
+All commands run in a terminal from the project folder. On Windows PowerShell, activate the environment first (`.venv\Scripts\Activate.ps1`); on Linux/macOS use `source .venv/bin/activate`. If you use `uv`, prefix any command with `uv run` instead.
+
+```bash
+# Interactive Chat (REPL) — type a message, /quit to exit
+nova chat                      # same as running bare: nova
+nova                           # shortcut that opens the chat REPL
+
+# One-shot questions
+nova ask "What is 2+2?"        # answer straight to the terminal
+nova ask -m qwen2.5:0.5b "hi"  # force a specific model
+
+# Models — list, inspect, download
+nova model list                # models available on your engines
+nova model info qwen2.5:0.5b   # details for one model
+nova model pull qwen3.5:4b     # download a model (Ollama: ollama pull)
+
+# Engines & health
+nova doctor                    # hardware, GPU, engine + model health check
+nova serve                     # web UI + API at http://localhost:8000
+
+# Configuration
+nova config show               # view current config
+nova config set intelligence.default_model qwen2.5:0.5b
+
+# Troubleshooting a missing model
+# If a configured model was never pulled, NOVA falls back to an installed
+# model automatically and tells you. To use the configured one instead:
+nova model pull qwen3.5:4b
+```
+
+> Tip: `nova doctor` flags a configured-but-missing model and prints the exact `nova model pull ...` / `nova config set ...` command to fix it.
+
+```bash
 # Hands-free Voice Conversation
 nova voice --push-to-talk
 
