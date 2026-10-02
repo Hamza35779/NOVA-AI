@@ -73,6 +73,18 @@ Other platforms: **macOS** → `NOVA.AI_1.2.14_universal.dmg` · **Linux** → `
 
 **Portable zip:** right-click → **Extract All…**, then open the extracted folder.
 
+### What works after install (zero setup)
+
+New to NOVA AI? This is what works right away, before touching any settings:
+
+- **Chat on first launch** — the desktop app's first-run wizard connects an engine and a starter model by itself (a couple of minutes, no terminal); CLI users can chat immediately with `nova chat` or `nova ask "..."`.
+- **Local models without Ollama** — the built-in **GGUF Hub** downloads and runs models on your own disk, fully offline.
+- **Auto-fallback for missing models** — if a configured model was never downloaded, NOVA switches to an installed one automatically and tells you the exact command to fetch the original; `nova doctor` shows the same fix commands.
+- **Hardware-aware defaults** — your CPU/GPU/RAM is detected on first run; `nova init` writes matching defaults to `~/.nova_ai/config.toml`.
+- **Self-updating desktop app** — the app updates itself through a signed update channel, like any desktop messenger.
+
+Ollama and cloud API keys are optional engines, never requirements. A slower machine just gets a smaller recommended model — every feature works the same.
+
 ### Step 3 — First launch
 
 Launch **NOVA AI** from the Start menu (Windows) or Applications (macOS) — just like WhatsApp Desktop or Telegram. It opens in **its own window** with a sidebar of tabs (Chat, Dashboard, Agents, Model Hub, GGUF Hub, Settings, …), its own taskbar icon, and a system tray presence. A setup wizard on first run connects an engine and a model — no terminal involved.
