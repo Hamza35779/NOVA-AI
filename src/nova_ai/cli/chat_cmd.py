@@ -13,6 +13,7 @@ from nova_ai.cli._tool_names import resolve_tool_names
 from nova_ai.core.config import NovaConfig, load_config
 from nova_ai.core.types import Message, Role
 from nova_ai.engine._model_fallback import (
+    missing_model_hint,
     pick_reachable_fallback,
     unreachable_model_notice,
 )
@@ -354,6 +355,16 @@ def chat(
                     console.print(f"\n[red]Error: {retry_exc}[/red]\n")
             else:
                 console.print(f"\n[red]Error: {exc}[/red]\n")
+                # Fresh-install case: the engine is healthy but has no
+                # models, so nothing was recoverable — give the exact fix.
+                hint = missing_model_hint(
+                    exc,
+                    engine_name,
+                    model,
+                    is_cloud=getattr(engine, "is_cloud", False),
+                )
+                if hint is not None:
+                    console.print(f"[yellow]{hint}[/yellow]")
 
 
 __all__ = ["chat"]

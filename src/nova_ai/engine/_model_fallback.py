@@ -69,6 +69,41 @@ def pick_reachable_fallback(
     )
 
 
+def missing_model_hint(
+    exc: Exception,
+    engine_name: str,
+    model: str,
+    *,
+    is_cloud: bool = False,
+) -> str | None:
+    """Actionable next step for a generate call that failed on a missing model.
+
+    Used after the recovery helpers find no installed alternative — the
+    fresh-install case where the engine is healthy but has zero models:
+    discovery lists nothing, the startup guard cannot prove the configured
+    model is absent, and there is nothing to fall back to, so the user
+    would otherwise see a bare ``Ollama returned 404`` with no way forward.
+    Returns ``None`` when the error does not look like a missing-model
+    failure, or for cloud engines where "pull" advice would be wrong.
+    """
+    text = str(exc)
+    if "not found" not in text and "404" not in text:
+        return None
+    if is_cloud:
+        return (
+            f"Model {model!r} was not found on cloud engine {engine_name!r}. "
+            f"Pick an installed model instead (`nova model list`, or the "
+            f"Model Hub in the desktop app)."
+        )
+    return (
+        f"Model {model!r} is not installed on {engine_name!r} and no "
+        f"alternative model is available. Get one with:\n"
+        f"  nova model pull {model}\n"
+        f"or pick an installed model (`nova model list`, or the GGUF Hub "
+        f"in the desktop app)."
+    )
+
+
 def unreachable_model_notice(configured_model: str, fallback: str) -> str:
     """Plain-text notice for a configured-but-unreachable model.
 
@@ -83,6 +118,7 @@ def unreachable_model_notice(configured_model: str, fallback: str) -> str:
 
 
 __all__ = [
+    "missing_model_hint",
     "model_reachable",
     "model_reachable_in_list",
     "pick_fallback_from_engine_models",

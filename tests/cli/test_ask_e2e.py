@@ -100,3 +100,107 @@ class TestAskCommand:
         CliRunner().invoke(cli, ["ask", "Hello"])
         db_path = tmp_path / "telemetry.db"
         assert db_path.exists()
+
+
+class TestAskMissingModelHint:
+    """Direct-mode 404s must print the fix, not escape as a traceback.
+
+    Fresh install with a healthy engine but zero models: the startup
+    fallback has nothing to switch to, and ``nova ask`` only used to catch
+    ``EngineConnectionError`` — the Ollama missing-model ``RuntimeError``
+    surfaced as an unhandled traceback.
+    """
+
+    def test_missing_model_404_prints_pull_hint(self, monkeypatch, tmp_path) -> None:
+        cfg = NovaConfig()
+        cfg.agent.default_agent = ""  # direct-to-engine mode
+        cfg.intelligence.default_model = "qwen3.5:4b"
+        cfg.telemetry.db_path = str(tmp_path / "telemetry.db")
+        monkeypatch.setattr(_ask_mod, "load_config", lambda: cfg)
+
+        fake_engine = mock.MagicMock()
+        fake_engine.engine_id = "ollama"
+        fake_engine.generate.side_effect = RuntimeError(
+            "Ollama returned 404: model 'qwen3.5:4b' not found"
+        )
+        monkeypatch.setattr(
+            _ask_mod, "get_engine", lambda *a, **kw: ("ollama", fake_engine)
+        )
+        monkeypatch.setattr(
+            _ask_mod, "discover_engines", lambda c: [("ollama", fake_engine)]
+        )
+        monkeypatch.setattr(
+            _ask_mod, "discover_models", lambda e: {"ollama": []}
+        )
+
+        result = CliRunner().invoke(cli, ["ask", "Hello"])
+
+        assert result.exit_code == 1
+        assert "Error: Ollama returned 404" in result.output
+        assert "nova model pull qwen3.5:4b" in result.output
+        assert "Traceback" not in result.output
+
+    def test_unrelated_error_still_raises(self, monkeypatch, tmp_path) -> None:
+        """Non-missing-model failures keep their original traceback."""
+        cfg = NovaConfig()
+        cfg.agent.default_agent = ""
+        cfg.telemetry.db_path = str(tmp_path / "telemetry.db")
+        monkeypatch.setattr(_ask_mod, "load_config", lambda: cfg)
+
+        fake_engine = mock.MagicMock()
+        fake_engine.engine_id = "ollama"
+        fake_engine.generate.side_effect = RuntimeError("disk on fire")
+        monkeypatch.setattr(
+            _ask_mod, "get_engine", lambda *a, **kw: ("ollama", fake_engine)
+        )
+        monkeypatch.setattr(
+            _ask_mod, "discover_engines", lambda c: [("ollama", fake_engine)]
+        )
+        monkeypatch.setattr(
+            _ask_mod, "discover_models", lambda e: {"ollama": []}
+        )
+
+        result = CliRunner().invoke(cli, ["ask", "Hello"])
+
+        assert result.exit_code != 0
+        assert "nova model pull" not in result.output
+
+    def test_agent_mode_missing_model_404_prints_pull_hint(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """The default 'simple' agent surfaces the hint too (fresh install).
+
+        ``nova init`` writes ``agent.default_agent = 'simple'``, so a new
+        user's first ``nova ask`` goes through agent mode, not direct mode.
+        """
+        from nova_ai.agents.simple import SimpleAgent
+        from nova_ai.core.registry import AgentRegistry
+
+        if not AgentRegistry.contains("simple"):
+            AgentRegistry.register_value("simple", SimpleAgent)
+
+        cfg = NovaConfig()  # default_agent="simple" -> agent mode
+        cfg.intelligence.default_model = "qwen3.5:4b"
+        cfg.telemetry.db_path = str(tmp_path / "telemetry.db")
+        monkeypatch.setattr(_ask_mod, "load_config", lambda: cfg)
+
+        fake_engine = mock.MagicMock()
+        fake_engine.engine_id = "ollama"
+        fake_engine.generate.side_effect = RuntimeError(
+            "Ollama returned 404: model 'qwen3.5:4b' not found"
+        )
+        monkeypatch.setattr(
+            _ask_mod, "get_engine", lambda *a, **kw: ("ollama", fake_engine)
+        )
+        monkeypatch.setattr(
+            _ask_mod, "discover_engines", lambda c: [("ollama", fake_engine)]
+        )
+        monkeypatch.setattr(
+            _ask_mod, "discover_models", lambda e: {"ollama": []}
+        )
+
+        result = CliRunner().invoke(cli, ["ask", "Hello"])
+
+        assert result.exit_code == 1
+        assert "nova model pull qwen3.5:4b" in result.output
+        assert "Traceback" not in result.output

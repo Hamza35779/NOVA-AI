@@ -190,6 +190,7 @@ class TestChatModelFallback:
         then mid-session recovery).
         """
         engine.engine_id = "ollama"
+        engine.is_cloud = False
         engine.generate.return_value = {"content": "repl reply"}
         discovery_kwargs = (
             {"side_effect": list(discovered)}
@@ -313,3 +314,33 @@ class TestChatModelFallback:
         assert result.exit_code == 0
         assert "not reachable" in result.output
         assert "agent recovered" in result.output
+
+    def test_zero_models_404_prints_pull_hint(self) -> None:
+        """Fresh install: engine healthy, zero models -> hint with fix cmd.
+
+        Discovery lists nothing so the startup guard cannot prove the
+        configured model is missing; recovery finds no alternative either.
+        The user must still get the exact ``nova model pull`` command
+        instead of a bare ``Ollama returned 404``.
+        """
+        engine = MagicMock()
+        config = self._make_config("qwen3.5:4b")
+        engine.generate.side_effect = RuntimeError(
+            "Ollama returned 404: model 'qwen3.5:4b' not found"
+        )
+        result = self._invoke_chat(config, engine, {"ollama": []})
+
+        assert result.exit_code == 0
+        assert "Error: Ollama returned 404" in result.output
+        assert "nova model pull qwen3.5:4b" in result.output
+
+    def test_unrelated_generate_error_gets_no_hint(self) -> None:
+        """Failures that don't look like a missing model keep plain output."""
+        engine = MagicMock()
+        config = self._make_config("qwen3.5:4b")
+        engine.generate.side_effect = RuntimeError("connection reset by peer")
+        result = self._invoke_chat(config, engine, {"ollama": []})
+
+        assert result.exit_code == 0
+        assert "connection reset by peer" in result.output
+        assert "nova model pull" not in result.output

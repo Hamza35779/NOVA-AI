@@ -25,6 +25,7 @@ from nova_ai.engine import (
     get_engine,
 )
 from nova_ai.engine._model_fallback import (
+    missing_model_hint,
     pick_reachable_fallback,
     unreachable_model_notice,
 )
@@ -36,6 +37,21 @@ from nova_ai.telemetry.instrumented_engine import InstrumentedEngine
 from nova_ai.telemetry.store import TelemetryStore
 
 logger = logging.getLogger(__name__)
+
+# Engines that run on the user's own machine — used for the image privacy
+# guard and to tailor missing-model hints (a local model can be pulled;
+# a cloud model cannot).
+_LOCAL_ENGINES = {
+    "ollama",
+    "llamacpp",
+    "vllm",
+    "sglang",
+    "exo",
+    "nexa",
+    "uzu",
+    "apple_fm",
+    "gemma_cpp",
+}
 
 
 def _run_research(
@@ -907,6 +923,21 @@ def ask(
             console.print(f"[red]Engine error:[/red] {exc}")
             console.print(hint_no_engine())
             sys.exit(1)
+        except Exception as exc:
+            # Missing-model 404s used to escape as a raw traceback here too
+            # (the default ``simple`` agent routes fresh installs through
+            # this branch). Give the exact fix; anything else re-raises.
+            hint = missing_model_hint(
+                exc,
+                engine_name,
+                model_name,
+                is_cloud=engine_name not in _LOCAL_ENGINES,
+            )
+            if hint is None:
+                raise
+            console.print(f"[red]Error: {exc}[/red]")
+            console.print(hint)
+            sys.exit(1)
 
         if output_json:
             click.echo(
@@ -950,17 +981,6 @@ def ask(
     # Privacy guard: a screenshot/image is sensitive, and NOVA AI is
     # local-first. If the active engine isn't local, warn before the image
     # leaves the machine rather than silently uploading it to a third party.
-    _LOCAL_ENGINES = {
-        "ollama",
-        "llamacpp",
-        "vllm",
-        "sglang",
-        "exo",
-        "nexa",
-        "uzu",
-        "apple_fm",
-        "gemma_cpp",
-    }
     if image_b64 and engine_name not in _LOCAL_ENGINES:
         console.print(
             f"[yellow]Privacy warning:[/yellow] sending {len(image_b64)} "
@@ -1015,6 +1035,21 @@ def ask(
     except EngineConnectionError as exc:
         console.print(f"[red]Engine error:[/red] {exc}")
         console.print(hint_no_engine())
+        sys.exit(1)
+    except Exception as exc:
+        # A missing-model 404 used to escape as a raw traceback here (the
+        # direct path only caught EngineConnectionError). Give the exact
+        # fix instead; anything else keeps its original traceback.
+        hint = missing_model_hint(
+            exc,
+            engine_name,
+            model_name,
+            is_cloud=engine_name not in _LOCAL_ENGINES,
+        )
+        if hint is None:
+            raise
+        console.print(f"[red]Error: {exc}[/red]")
+        console.print(hint)
         sys.exit(1)
 
     # Output
