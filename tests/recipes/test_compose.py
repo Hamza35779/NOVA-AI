@@ -473,3 +473,11 @@ class TestBuiltinRecipes:
         assert r is not None
         assert r.kind == "operator"
         assert r.schedule_type == "interval"
+
+    def test_ops_monitor_loads(self) -> None:
+        r = resolve_recipe("ops-monitor")
+        assert r is not None
+        assert r.kind == "operator"
+        assert r.schedule_type == "interval"
+        assert "system_monitor" in r.tools
+        assert "shell_exec" not in r.tools
