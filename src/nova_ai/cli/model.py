@@ -17,6 +17,7 @@ from nova_ai.core.config import load_config
 from nova_ai.core.registry import ModelRegistry
 from nova_ai.core.utils import soft_fail
 from nova_ai.engine import discover_engines, discover_models
+from nova_ai.engine.gguf import GGUF_CATALOG, download_gguf_model
 from nova_ai.intelligence import merge_discovered_models, register_builtin_models
 from nova_ai.intelligence.model_catalog import BUILTIN_MODELS
 
@@ -198,6 +199,75 @@ def find_model_spec(model_name: str):
     return None
 
 
+def _gguf_runtime_ready(console: Console) -> bool:
+    """Check llama-cpp-python is importable, with install guidance if not.
+
+    Failing fast *before* a multi-GB download avoids the worst outcome:
+    a fully downloaded model the engine cannot run.
+    """
+    try:
+        import llama_cpp  # noqa: F401
+
+        return True
+    except ImportError:
+        console.print(
+            "[red]GGUF runtime not installed.[/red] The in-process GGUF "
+            "engine needs llama-cpp-python:\n"
+            "  [cyan]uv sync --extra inference-gguf[/cyan]  (or: "
+            "[cyan]pip install llama-cpp-python --prefer-binary[/cyan])\n"
+            "On Windows without a build chain, grab a prebuilt wheel from\n"
+            "[cyan]https://github.com/abetlen/llama-cpp-python/releases[/cyan]."
+        )
+        return False
+
+
+def gguf_pull(model_name: str, console: Console) -> bool:
+    """Download a GGUF from Hugging Face into ``~/.nova_ai/models``.
+
+    Accepts built-in GGUF catalog ids (``qwen2.5-0.5b``), intelligence-
+    catalog model ids that carry ``hf_repo``/``gguf_file`` metadata
+    (``qwen3.5:9b``), and any custom ``owner/repo::file.gguf`` pair from
+    the Hub. Uses the resilient downloader so the file lands where the
+    in-process GGUF engine discovers it — no huggingface-cli, no Ollama.
+    """
+    target = model_name
+    if "::" not in model_name:
+        engine_entry = next((m for m in GGUF_CATALOG if m["id"] == model_name), None)
+        if engine_entry is not None:
+            target = f"{engine_entry['repo_id']}::{engine_entry['filename']}"
+        else:
+            spec = find_model_spec(model_name)
+            repo = spec.metadata.get("hf_repo", "") if spec else ""
+            gguf = spec.metadata.get("gguf_file", "") if spec else ""
+            if repo and gguf:
+                target = f"{repo}::{gguf}"
+    if "::" not in target:
+        console.print(
+            f"[red]No GGUF download info for {model_name}[/red]\n"
+            "For any Hugging Face model use: [cyan]nova model pull "
+            "owner/repo::model-file.gguf --engine gguf[/cyan]"
+        )
+        return False
+    repo, _, filename = target.partition("::")
+    console.print(f"Downloading [cyan]{filename}[/cyan] from {repo}...")
+
+    def _progress(done: int, total: int) -> None:
+        if total:
+            console.print(
+                f"  {done / 1_048_576:.0f} / {total / 1_048_576:.0f} MB", end="\r"
+            )
+
+    try:
+        path = download_gguf_model(target, progress_callback=_progress)
+    except Exception as exc:
+        console.print(f"\n[red]Download failed:[/red] {exc}")
+        return False
+    console.print(f"\n[green]Saved to {path}[/green]")
+    console.print("Run it locally (no Ollama needed):")
+    console.print(f"  [cyan]nova chat --engine gguf --model {path.name}[/cyan]")
+    return True
+
+
 def hf_download(repo: str, filename: str | None, console: Console) -> bool:
     """Download from HuggingFace via huggingface-cli. Returns True on success."""
     cmd = ["huggingface-cli", "download", repo]
@@ -236,19 +306,22 @@ def pull(model_name: str, engine: str | None) -> None:
         ).rstrip("/")
         if not ollama_pull(host, model_name, console):
             sys.exit(1)
-    elif engine == "llamacpp":
-        spec = find_model_spec(model_name)
-        if not spec:
-            console.print(f"[red]Model not in catalog:[/red] {model_name}")
-            sys.exit(1)
-        repo = spec.metadata.get("hf_repo", "")
-        gguf = spec.metadata.get("gguf_file", "")
-        # Catalog entries can name an Ollama registry tag directly (added
-        # when the HF repo named by the catalog does not host a pullable
-        # GGUF, e.g. granite4.0-*). Prefer the registry when present.
-        registry_tag = spec.metadata.get("ollama_registry_tag", "")
-        if not repo or not gguf:
-            if registry_tag:
+    elif engine in ("gguf", "llamacpp"):
+        # Both routes download into ~/.nova_ai/models via the resilient
+        # downloader: the in-process GGUF engine discovers loose files
+        # there, and a llama.cpp server can serve the same files. The old
+        # huggingface-cli route dropped files into the HF cache, which no
+        # NOVA engine reads, leaving pulls unusable.
+        if engine == "llamacpp":
+            spec = find_model_spec(model_name)
+            registry_tag = spec.metadata.get("ollama_registry_tag", "") if spec else ""
+            has_gguf = bool(
+                spec and spec.metadata.get("hf_repo") and spec.metadata.get("gguf_file")
+            )
+            # Catalog entries can name an Ollama registry tag directly (added
+            # when the HF repo named by the catalog does not host a pullable
+            # GGUF, e.g. granite4.0-*). Prefer the registry when present.
+            if registry_tag and not has_gguf and "::" not in model_name:
                 console.print(
                     f"[cyan]{model_name}[/cyan] is served by the Ollama "
                     f"registry as [cyan]{registry_tag}[/cyan]; pulling it."
@@ -265,10 +338,9 @@ def pull(model_name: str, engine: str | None) -> None:
                     f"pass that name when generating with this model."
                 )
                 return
-            console.print(f"[red]No GGUF download info for {model_name}[/red]")
+        if not _gguf_runtime_ready(console):
             sys.exit(1)
-        console.print(f"Downloading [cyan]{gguf}[/cyan] from {repo}...")
-        if not hf_download(repo, gguf, console):
+        if not gguf_pull(model_name, console):
             sys.exit(1)
     elif engine == "mlx":
         spec = find_model_spec(model_name)

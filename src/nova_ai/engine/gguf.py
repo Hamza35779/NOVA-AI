@@ -212,12 +212,27 @@ def get_model_path(model_id: str) -> Optional[Path]:
 
 
 def list_installed_gguf_models() -> List[str]:
-    """Return IDs of GGUF catalog models that are already downloaded."""
+    """Return IDs of locally available GGUF models.
+
+    Two sources, so any Hugging Face-downloaded ``.gguf`` file dropped into
+    the models dir works without Ollama:
+
+    1. Built-in catalog entries whose file is cached (by catalog id).
+    2. Any loose ``*.gguf`` file in the models dir (by filename), unless it
+       already belongs to a catalog entry — catalog ids win because they
+       carry size/RAM metadata.
+    """
     models_dir = get_models_dir()
-    installed = []
+    installed: List[str] = []
+    catalog_filenames: set[str] = set()
     for entry in GGUF_CATALOG:
         if (models_dir / entry["filename"]).exists():
             installed.append(entry["id"])
+            catalog_filenames.add(entry["filename"].lower())
+    for path in sorted(models_dir.glob("*.gguf")):
+        if path.name.lower() in catalog_filenames:
+            continue
+        installed.append(path.name)
     return installed
 
 
@@ -236,17 +251,31 @@ def download_gguf_model(
         Local path to the downloaded ``.gguf`` file.
 
     Raises:
-        ValueError: If the model ID is not found in the catalog.
+        ValueError: If the model ID is not found in the catalog and is not
+            a ``repo_id::filename`` pair.
         RuntimeError: If the download fails.
     """
 
-    # Resolve catalog entry
-    entry = next((m for m in GGUF_CATALOG if m["id"] == model_id), None)
-    if entry is None:
-        raise ValueError(
-            f"Unknown model ID: {model_id!r}. "
-            f"Available: {[m['id'] for m in GGUF_CATALOG]}"
-        )
+    # Custom Hugging Face model outside the built-in catalog:
+    # "owner/repo::file.gguf" downloads straight from the Hub into the
+    # shared models dir, where list_installed_gguf_models() then finds it.
+    if "::" in model_id and next(
+        (m for m in GGUF_CATALOG if m["id"] == model_id), None
+    ) is None:
+        repo_id, _, filename = model_id.partition("::")
+        if not repo_id or not filename:
+            raise ValueError(
+                f"Invalid model ID: {model_id!r}. Use "
+                f"'owner/repo::filename.gguf' for custom Hugging Face models."
+            )
+        entry = {"repo_id": repo_id, "filename": filename}
+    else:
+        entry = next((m for m in GGUF_CATALOG if m["id"] == model_id), None)
+        if entry is None:
+            raise ValueError(
+                f"Unknown model ID: {model_id!r}. "
+                f"Available: {[m['id'] for m in GGUF_CATALOG]}"
+            )
 
     repo_id: str = entry["repo_id"]
     filename: str = entry["filename"]
