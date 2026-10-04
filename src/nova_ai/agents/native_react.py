@@ -52,6 +52,24 @@ the response can take one of two forms:
 
 {skill_examples}{tool_descriptions}"""
 
+# Appended to custom (recipe/operator) system prompts, which usually carry
+# task instructions but not the Thought/Action/Final-Answer contract the
+# response parser depends on.
+REACT_FORMAT_CONTRACT = """\
+
+## Response Format
+
+For each step, respond with exactly one of:
+
+1. To think and act:
+Thought: <your reasoning>
+Action: <tool_name>
+Action Input: <json arguments>
+
+2. To give a final answer:
+Thought: <your reasoning>
+Final Answer: <your answer>"""
+
 
 @AgentRegistry.register("native_react")
 class NativeReActAgent(ToolUsingAgent):
@@ -75,6 +93,7 @@ class NativeReActAgent(ToolUsingAgent):
         interactive: bool = False,
         confirm_callback=None,
         skill_few_shot_examples: Optional[List[str]] = None,
+        system_prompt: Optional[str] = None,
     ) -> None:
         super().__init__(
             engine,
@@ -87,6 +106,7 @@ class NativeReActAgent(ToolUsingAgent):
             interactive=interactive,
             confirm_callback=confirm_callback,
             skill_few_shot_examples=skill_few_shot_examples,
+            system_prompt=system_prompt,
         )
 
     def _parse_response(self, text: str) -> dict:
@@ -145,20 +165,41 @@ class NativeReActAgent(ToolUsingAgent):
             )
         else:
             skill_examples_block = ""
-        # Respect $NOVA_AI_HOME override for the base template (M2+ work).
-        prompt_template = (
-            load_system_prompt_override("native_react") or REACT_SYSTEM_PROMPT
-        )
-        # External overrides may not include the {skill_examples} slot.
-        try:
-            system_prompt = prompt_template.format(
-                tool_descriptions=tool_desc,
-                skill_examples=skill_examples_block,
-            )
-        except KeyError:
-            system_prompt = prompt_template.format(tool_descriptions=tool_desc)
+        if self._system_prompt:
+            # Custom prompt (recipe/operator): use it verbatim. Substitute
+            # the {tool_descriptions}/{skill_examples} slots when present,
+            # otherwise append the tool list so the agent still knows what
+            # it can call, plus the response-format contract the parser
+            # depends on (custom prompts rarely repeat it).
+            system_prompt = self._system_prompt
+            if "{tool_descriptions}" in system_prompt:
+                system_prompt = system_prompt.replace(
+                    "{tool_descriptions}", tool_desc
+                )
+            else:
+                system_prompt = (
+                    system_prompt + "\n\n## Available Tools\n\n" + tool_desc
+                )
             if skill_examples_block:
                 system_prompt = system_prompt + "\n\n" + skill_examples_block
+            system_prompt = system_prompt + REACT_FORMAT_CONTRACT
+        else:
+            # Respect $NOVA_AI_HOME override for the base template (M2+ work).
+            prompt_template = (
+                load_system_prompt_override("native_react") or REACT_SYSTEM_PROMPT
+            )
+            # External overrides may not include the {skill_examples} slot.
+            try:
+                system_prompt = prompt_template.format(
+                    tool_descriptions=tool_desc,
+                    skill_examples=skill_examples_block,
+                )
+            except KeyError:
+                system_prompt = prompt_template.format(
+                    tool_descriptions=tool_desc
+                )
+                if skill_examples_block:
+                    system_prompt = system_prompt + "\n\n" + skill_examples_block
 
         messages = self._build_messages(input, context, system_prompt=system_prompt)
 

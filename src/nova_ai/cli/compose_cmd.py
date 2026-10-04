@@ -159,7 +159,35 @@ def compose_show(name: str) -> None:
 @click.argument("name")
 @click.argument("query", nargs=-1, required=True)
 @click.option("--json", "output_json", is_flag=True, help="Output raw JSON result.")
-def compose_run(name: str, query: tuple[str, ...], output_json: bool) -> None:
+@click.option(
+    "-e",
+    "--engine",
+    "engine_override",
+    default=None,
+    help="Override the recipe's engine (e.g. cloud, gguf, ollama).",
+)
+@click.option(
+    "-m",
+    "--model",
+    "model_override",
+    default=None,
+    help="Override the recipe's model.",
+)
+@click.option(
+    "--max-tokens",
+    "max_tokens_override",
+    default=None,
+    type=int,
+    help="Override the per-request token budget (useful on metered APIs).",
+)
+def compose_run(
+    name: str,
+    query: tuple[str, ...],
+    output_json: bool,
+    engine_override: Optional[str],
+    model_override: Optional[str],
+    max_tokens_override: Optional[int],
+) -> None:
     """Run a composition against a single query."""
     console = Console(stderr=True)
     query_text = " ".join(query)
@@ -173,10 +201,15 @@ def compose_run(name: str, query: tuple[str, ...], output_json: bool) -> None:
             sys.exit(1)
 
         kwargs = recipe.to_builder_kwargs()
+        if engine_override:
+            kwargs["engine_key"] = engine_override
+        if model_override:
+            kwargs["model"] = model_override
         console.print(
             f"[dim]Running [cyan]{recipe.name}[/cyan] "
             f"({recipe.agent_type or 'direct'} / "
-            f"{recipe.model or 'default'})...[/dim]"
+            f"{kwargs.get('model') or 'default'} on "
+            f"{kwargs.get('engine_key') or 'default'})...[/dim]"
         )
 
         from nova_ai.system import SystemBuilder
@@ -199,6 +232,9 @@ def compose_run(name: str, query: tuple[str, ...], output_json: bool) -> None:
                 agent_kwargs["system_prompt"] = kwargs["system_prompt"]
             if kwargs.get("temperature"):
                 agent_kwargs["temperature"] = kwargs["temperature"]
+
+            if max_tokens_override is not None:
+                agent_kwargs["max_tokens"] = max_tokens_override
 
             result = system.ask(query_text, **agent_kwargs)
 

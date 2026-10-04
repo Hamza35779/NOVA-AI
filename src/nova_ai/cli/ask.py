@@ -360,6 +360,23 @@ def _run_agent(
 
     agent_cls = AgentRegistry.get(agent_name)
 
+    # A tool request on a tool-blind agent (e.g. the default ``simple``,
+    # which is single-turn by design) used to silently drop the tools —
+    # the model never saw them and answered from its own imagination.
+    # Upgrade to the tool-capable ReAct agent instead of discarding the
+    # explicit tool selection.
+    if tool_names and not getattr(agent_cls, "accepts_tools", False):
+        if AgentRegistry.contains("native_react") and getattr(
+            AgentRegistry.get("native_react"), "accepts_tools", False
+        ):
+            agent_cls = AgentRegistry.get("native_react")
+            agent_name = "native_react"
+            click.echo(
+                "Agent 'simple' is single-turn and cannot use tools; "
+                "switched to 'native_react' for this request.",
+                err=True,
+            )
+
     # Build tools — local registry tools + MCP server tools from config
     # (#461 — MCP tools were silently dropped because ask.py only used
     # ToolRegistry).

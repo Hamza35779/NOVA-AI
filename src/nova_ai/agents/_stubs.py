@@ -342,6 +342,7 @@ class ToolUsingAgent(BaseAgent):
         confirm_callback: Optional[Any] = None,
         skill_few_shot_examples: Optional[List[str]] = None,
         prompt_builder: Optional[Any] = None,
+        system_prompt: Optional[str] = None,
     ) -> None:
         super().__init__(
             engine,
@@ -354,6 +355,9 @@ class ToolUsingAgent(BaseAgent):
         from nova_ai.tools._stubs import ToolExecutor
 
         self._tools = tools or []
+        # Custom system prompt (e.g. from a composed recipe/operator);
+        # agents honor it in place of their built-in template.
+        self._system_prompt = system_prompt
         # Plan 2B I3: store optimized few-shot examples for agents to inject
         # into their own system prompt templates as appropriate.
         self._skill_few_shot_examples = list(skill_few_shot_examples or [])

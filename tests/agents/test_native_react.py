@@ -179,6 +179,38 @@ class TestNativeReActParsing:
 
 
 class TestNativeReActAgent:
+    def test_custom_system_prompt_with_tools(self):
+        """A recipe/operator custom prompt replaces the template but keeps tools."""
+        engine = MagicMock()
+        engine.engine_id = "mock"
+        engine.generate.side_effect = [
+            _engine_response(
+                "Thought: I need to calculate.\n"
+                "Action: calculator\n"
+                'Action Input: {"expression": "2+2"}'
+            ),
+            _engine_response("Thought: Done.\nFinal Answer: 4"),
+        ]
+        bus = EventBus(record_history=True)
+        agent = NativeReActAgent(
+            engine,
+            "test-model",
+            tools=[_CalculatorStub()],
+            bus=bus,
+            system_prompt="You are a research analyst. Follow your process.",
+        )
+        result = agent.run("What is 2+2?")
+        assert result.content == "4"
+        assert result.turns == 2
+        first_call = engine.generate.call_args_list[0]
+        messages = first_call.args[0]
+        system_msg = messages[0].content
+        assert "research analyst" in system_msg
+        assert "calculator" in system_msg
+        assert "No tools available" not in system_msg
+        # The ReAct response-format contract survives prompt replacement.
+        assert "Final Answer:" in system_msg
+
     def test_simple_no_tool_response(self):
         """Engine returns Final Answer on first call."""
         engine = MagicMock()

@@ -64,6 +64,17 @@ class MCPServer:
         Does not rely on ToolRegistry state — imports each tool class
         directly and attempts instantiation with no arguments.
         """
+        # Import the tool package first so every @ToolRegistry.register()
+        # decorator fires. Without this, callers that never imported
+        # nova_ai.tools (e.g. nova compose) saw only the hardcoded subset
+        # below — document_generator, data_analyzer, http_request,
+        # system_monitor and the rest silently vanished from every
+        # composed system.
+        try:
+            import nova_ai.tools  # noqa: F401
+        except ImportError:
+            pass
+
         tools: List[BaseTool] = []
         _tool_classes: List[type] = []
 

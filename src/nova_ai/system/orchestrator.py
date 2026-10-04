@@ -224,10 +224,27 @@ class QueryOrchestrator:
         try:
             ag = agent_cls(s.engine, s.model, **agent_kwargs)
         except TypeError:
+            # Retry with only the kwargs the agent actually accepts. The
+            # previous bare re-instantiation silently discarded tools AND
+            # the system_prompt for any agent whose __init__ didn't accept
+            # the full set — composed recipes ran with default prompts and
+            # no tools while looking completely normal.
+            import inspect as _inspect
+
             try:
-                ag = agent_cls(s.engine, s.model)
+                accepted = _inspect.signature(agent_cls.__init__).parameters
+                has_var_kw = any(
+                    p.kind == _inspect.Parameter.VAR_KEYWORD
+                    for p in accepted.values()
+                )
+                filtered = {
+                    k: v
+                    for k, v in agent_kwargs.items()
+                    if has_var_kw or k in accepted
+                }
+                ag = agent_cls(s.engine, s.model, **filtered)
             except TypeError:
-                ag = agent_cls()
+                ag = agent_cls(s.engine, s.model)
 
         telemetry_events: List[Dict[str, Any]] = []
 

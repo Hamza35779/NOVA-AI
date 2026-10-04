@@ -481,3 +481,12 @@ class TestBuiltinRecipes:
         assert r.schedule_type == "interval"
         assert "system_monitor" in r.tools
         assert "shell_exec" not in r.tools
+
+    def test_research_report_loads(self) -> None:
+        r = resolve_recipe("research-report")
+        assert r is not None
+        assert r.kind == "discrete"
+        assert r.agent_type == "native_react"
+        assert "document_generator" in r.tools
+        assert "web_search" in r.tools
+        assert r.system_prompt is not None

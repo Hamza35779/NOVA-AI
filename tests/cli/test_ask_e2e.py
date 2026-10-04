@@ -83,6 +83,29 @@ class TestAskCommand:
         result = CliRunner().invoke(cli, ["ask", "Hello"])
         assert result.exit_code != 0
 
+    def test_tools_upgrade_simple_to_native_react(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        """--tools on a tool-blind default agent must not silently drop them."""
+        from nova_ai.agents.native_react import NativeReActAgent
+        from nova_ai.agents.simple import SimpleAgent
+        from nova_ai.core.registry import AgentRegistry
+
+        if not AgentRegistry.contains("simple"):
+            AgentRegistry.register_value("simple", SimpleAgent)
+        if not AgentRegistry.contains("native_react"):
+            AgentRegistry.register_value("native_react", NativeReActAgent)
+        _patch_ask(monkeypatch, tmp_path)
+        result = CliRunner().invoke(cli, ["ask", "--tools", "think", "Hello"])
+        assert result.exit_code == 0, result.output
+        assert "switched to 'native_react'" in result.output
+
+    def test_no_tools_keeps_default_agent(self, monkeypatch, tmp_path: Path) -> None:
+        _patch_ask(monkeypatch, tmp_path)
+        result = CliRunner().invoke(cli, ["ask", "Hello"])
+        assert result.exit_code == 0
+        assert "switched to" not in result.output
+
     def test_model_override(self, monkeypatch, tmp_path: Path) -> None:
         _patch_ask(monkeypatch, tmp_path)
         result = CliRunner().invoke(cli, ["ask", "-m", "custom-model", "Hello"])

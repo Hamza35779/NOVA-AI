@@ -62,7 +62,10 @@ inference-mlx = ["mlx-lm>=0.31.1; sys_platform == 'darwin'"]
 inference-vllm = ["vllm>=0.16.0"]
 inference-cloud = [
     "openai>=1.30",
-    "anthropic>=0.30",
+    # anthropic 1.x removed messages.create(temperature=...) and changed
+    # the streaming surface the cloud engine codes against — cap to 0.x
+    # until engine/cloud.py is ported to the new API.
+    "anthropic>=0.30,<1.0",
 ]
 inference-google = [
     "google-genai>=1.0",
