@@ -1,7 +1,14 @@
 """Document & Presentation Generator tool.
 
-Generates Microsoft Word (.docx), PowerPoint (.pptx), PDF (.pdf), and rich Markdown
-documents on disk with structured sections, tables, styling, and bullet hierarchy.
+Generates Microsoft Word (.docx), PowerPoint (.pptx), and PDF (.pdf) documents
+on disk with structured sections, tables, styling, and bullet hierarchy.
+
+Native generation requires the optional ``doc-gen`` extra:
+
+    uv pip install "nova-ai-pro[doc-gen]"
+
+Without it, requests fail loudly with a per-library install hint rather than
+silently downgrading to Markdown/TXT fallbacks.
 """
 
 from __future__ import annotations
@@ -17,6 +24,18 @@ from nova_ai.engine.self_optimizer import track_execution
 from nova_ai.tools._stubs import BaseTool, ToolSpec
 
 logger = logging.getLogger(__name__)
+
+
+class DocLibraryMissing(RuntimeError):
+    """Raised when the native document library for the requested format is absent."""
+
+    def __init__(self, package: str) -> None:
+        self.package = package
+        super().__init__(
+            f"{package} is required to generate native files with document_generator. "
+            'Install it with: uv pip install "nova-ai-pro[doc-gen]" '
+            f'(or: uv pip install {package})'
+        )
 
 
 def _create_docx(target_path: Path, title: str, sections: List[Dict[str, Any]]) -> Path:
@@ -80,21 +99,7 @@ def _create_docx(target_path: Path, title: str, sections: List[Dict[str, Any]]) 
         doc.save(str(target_path))
         return target_path
     except ImportError:
-        # Fallback: create standard rich document format
-        content = [f"# {title}\n"]
-        for sec in sections:
-            if "heading" in sec:
-                content.append(f"\n## {sec['heading']}\n")
-            if "body" in sec:
-                content.append(f"{sec['body']}\n")
-            for b in sec.get("bullets", []):
-                content.append(f"* {b}")
-            if "table" in sec and isinstance(sec["table"], list):
-                for row in sec["table"]:
-                    content.append("| " + " | ".join(str(c) for c in row) + " |")
-        fallback = target_path.with_suffix(".md")
-        fallback.write_text("\n".join(content), encoding="utf-8")
-        return fallback
+        raise DocLibraryMissing("python-docx") from None
 
 
 def _create_pptx(target_path: Path, title: str, slides: List[Dict[str, Any]]) -> Path:
@@ -131,18 +136,7 @@ def _create_pptx(target_path: Path, title: str, slides: List[Dict[str, Any]]) ->
         prs.save(str(target_path))
         return target_path
     except ImportError:
-        # Fallback to Markdown presentation
-        md_lines = [f"# {title}\n"]
-        for s in slides:
-            md_lines.append(f"---\n\n## {s.get('title', 'Slide')}\n")
-            if s.get("body"):
-                md_lines.append(s["body"])
-            for b in s.get("bullets", []):
-                md_lines.append(f"- {b}")
-            md_lines.append("\n")
-        fallback = target_path.with_suffix(".md")
-        fallback.write_text("\n".join(md_lines), encoding="utf-8")
-        return fallback
+        raise DocLibraryMissing("python-pptx") from None
 
 
 def _create_pdf(target_path: Path, title: str, content: str) -> Path:
@@ -167,9 +161,7 @@ def _create_pdf(target_path: Path, title: str, content: str) -> Path:
         doc.build(story)
         return target_path
     except ImportError:
-        fallback = target_path.with_suffix(".txt")
-        fallback.write_text(f"{title}\n\n{content}", encoding="utf-8")
-        return fallback
+        raise DocLibraryMissing("reportlab") from None
 
 
 @ToolRegistry.register("document_generator")
@@ -250,16 +242,13 @@ class DocumentGeneratorTool(BaseTool):
         target_dir.mkdir(parents=True, exist_ok=True)
 
         target_file = target_dir / filename
-        actual_file = target_file  # Track actual output path (may differ in fallback)
-        fallback_used = False
+        actual_file = target_file
 
         try:
             if doc_type == "docx":
                 actual_file = _create_docx(target_file, title, items)
-                fallback_used = actual_file.suffix != ".docx"
             elif doc_type == "pptx":
                 actual_file = _create_pptx(target_file, title, items)
-                fallback_used = actual_file.suffix != ".pptx"
             elif doc_type == "pdf":
                 body_text = (
                     "\n\n".join(
@@ -270,13 +259,19 @@ class DocumentGeneratorTool(BaseTool):
                     or title
                 )
                 actual_file = _create_pdf(target_file, title, body_text)
-                fallback_used = actual_file.suffix != ".pdf"
             else:
                 return ToolResult(
                     tool_name="document_generator",
                     content=f"Unsupported document type: {doc_type}. Must be docx, pptx, or pdf.",
                     success=False,
                 )
+        except DocLibraryMissing as e:
+            return ToolResult(
+                tool_name="document_generator",
+                content=f"Error: {e}",
+                success=False,
+                metadata={"missing_package": e.package},
+            )
         except Exception as e:
             return ToolResult(
                 tool_name="document_generator",
@@ -284,19 +279,14 @@ class DocumentGeneratorTool(BaseTool):
                 success=False,
             )
 
-        note = ""
-        if fallback_used:
-            note = f" (Note: {doc_type} library not installed, created as {actual_file.suffix} fallback)"
-
         return ToolResult(
             tool_name="document_generator",
-            content=f"Created '{actual_file.name}' at {actual_file}{note}",
+            content=f"Created '{actual_file.name}' at {actual_file}",
             success=True,
             metadata={
                 "doc_type": doc_type,
                 "title": title,
                 "file_path": str(actual_file),
-                "fallback": fallback_used,
             },
         )
 
