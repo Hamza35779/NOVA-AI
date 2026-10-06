@@ -153,7 +153,15 @@ def info(model_name: str) -> None:
 
 
 def ollama_pull(host: str, model_name: str, console: Console) -> bool:
-    """Pull a model via Ollama API. Returns True on success."""
+    """Pull a model via Ollama API. Returns True on success.
+
+    The pull stream can fail *after* the manifest step (disk full, network
+    drop, registry rejecting the tag) by emitting an ``{"error": ...}``
+    event instead of raising, so the stream is checked for error events
+    and the result is verified against the server before success is
+    reported — a silent failure here leaves the user with no model and a
+    green message.
+    """
     console.print(f"Pulling [cyan]{model_name}[/cyan] via Ollama...")
     try:
         with httpx.stream(
@@ -173,6 +181,9 @@ def ollama_pull(host: str, model_name: str, console: Console) -> bool:
                 except Exception as exc:
                     soft_fail(logger, exc, "optional CLI step")
                     continue
+                if "error" in data:
+                    console.print(f"\n[red]Ollama error:[/red] {data['error']}")
+                    return False
                 status = data.get("status", "")
                 if "total" in data and "completed" in data:
                     total = data["total"]
@@ -181,6 +192,22 @@ def ollama_pull(host: str, model_name: str, console: Console) -> bool:
                     console.print(f"  {status}: {pct}%", end="\r")
                 elif status:
                     console.print(f"  {status}")
+        # Verify the model actually exists server-side before claiming
+        # success (catches truncated streams and name mismatches).
+        with httpx.stream(
+            "POST",
+            f"{host}/api/show",
+            json={"model": model_name},
+            timeout=30.0,
+        ) as verify:
+            if verify.status_code != 200:
+                console.print(
+                    f"\n[red]Pull reported success but {model_name!r} is "
+                    "not served by Ollama.[/red]\n"
+                    f"Check the exact registry name with "
+                    f"[cyan]ollama list[/cyan] and retry."
+                )
+                return False
         console.print(f"\n[green]Successfully pulled {model_name}[/green]")
         return True
     except httpx.ConnectError:

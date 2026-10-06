@@ -18,18 +18,19 @@ class TestOllamaPull:
         import io
 
         console = Console(file=io.StringIO())
-        mock_lines = [
-            '{"status": "pulling manifest"}',
-            '{"status": "downloading", "total": 100, "completed": 100}',
-            '{"status": "success"}',
-        ]
-        mock_resp = mock.MagicMock()
-        mock_resp.raise_for_status = mock.MagicMock()
-        mock_resp.iter_lines.return_value = iter(mock_lines)
-        mock_resp.__enter__ = mock.MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = mock.MagicMock(return_value=False)
+        mock_resp = self._stream_response(
+            [
+                '{"status": "pulling manifest"}',
+                '{"status": "downloading", "total": 100, "completed": 100}',
+                '{"status": "success"}',
+            ]
+        )
+        show_resp = mock.MagicMock()
+        show_resp.status_code = 200
+        show_resp.__enter__ = mock.MagicMock(return_value=show_resp)
+        show_resp.__exit__ = mock.MagicMock(return_value=False)
 
-        with mock.patch("httpx.stream", return_value=mock_resp):
+        with mock.patch("httpx.stream", side_effect=[mock_resp, show_resp]):
             result = ollama_pull("http://localhost:11434", "qwen3.5:2b", console)
         assert result is True
 
@@ -40,6 +41,69 @@ class TestOllamaPull:
 
         console = Console(file=io.StringIO())
         with mock.patch("httpx.stream", side_effect=httpx.ConnectError("refused")):
+            result = ollama_pull("http://localhost:11434", "qwen3.5:2b", console)
+        assert result is False
+
+    def _stream_response(self, lines: list[str]):
+        mock_resp = mock.MagicMock()
+        mock_resp.raise_for_status = mock.MagicMock()
+        mock_resp.iter_lines.return_value = iter(lines)
+        mock_resp.__enter__ = mock.MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = mock.MagicMock(return_value=False)
+        return mock_resp
+
+    def test_ollama_pull_error_event_fails(self) -> None:
+        """An {\"error\": ...} stream event must fail the pull.
+
+        Ollama reports manifest errors (unknown tag) mid-stream instead of
+        raising; swallowing the event printed a false "Successfully
+        pulled" and left no model behind.
+        """
+        import io
+
+        console = Console(file=io.StringIO())
+        mock_resp = self._stream_response(
+            [
+                '{"status": "pulling manifest"}',
+                '{"error": "pull model manifest: file does not exist"}',
+            ]
+        )
+        with mock.patch("httpx.stream", return_value=mock_resp) as m:
+            result = ollama_pull("http://localhost:11434", "qwen2.5-7b", console)
+        assert result is False
+        # The error path must return before any verification call.
+        assert m.call_count == 1
+
+    def test_ollama_pull_verified_against_server(self) -> None:
+        """Success requires the model to exist server-side post-pull."""
+        import io
+
+        console = Console(file=io.StringIO())
+        pull_resp = self._stream_response(
+            ['{"status": "success"}']
+        )
+        show_resp = mock.MagicMock()
+        show_resp.status_code = 200
+        show_resp.__enter__ = mock.MagicMock(return_value=show_resp)
+        show_resp.__exit__ = mock.MagicMock(return_value=False)
+        with mock.patch("httpx.stream", side_effect=[pull_resp, show_resp]):
+            result = ollama_pull("http://localhost:11434", "qwen3.5:2b", console)
+        assert result is True
+
+    def test_ollama_pull_truncated_stream_fails_verification(self) -> None:
+        """A stream that ends without the model landing must not report
+        success even though no error event was seen."""
+        import io
+
+        console = Console(file=io.StringIO())
+        pull_resp = self._stream_response(
+            ['{"status": "pulling manifest"}']  # stream dies mid-pull
+        )
+        show_resp = mock.MagicMock()
+        show_resp.status_code = 404
+        show_resp.__enter__ = mock.MagicMock(return_value=show_resp)
+        show_resp.__exit__ = mock.MagicMock(return_value=False)
+        with mock.patch("httpx.stream", side_effect=[pull_resp, show_resp]):
             result = ollama_pull("http://localhost:11434", "qwen3.5:2b", console)
         assert result is False
 
