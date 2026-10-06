@@ -153,6 +153,139 @@ testpaths = ["tests"]
             "README.md": "# {name}\n\n{description}\n\n## Run\n\n```bash\nflutter pub get\nflutter run\nflutter test\n```\n",
         },
     },
+    "tauri_app": {
+        "description": "Tauri 2 desktop app with Vite + React frontend and a working Rust #[tauri::command] backend",
+        "files": {
+            "package.json": """{{
+  "name": "{name_kebab}",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {{
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  }},
+  "dependencies": {{
+    "@tauri-apps/api": "^2.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }},
+  "devDependencies": {{
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
+  }}
+}}
+""",
+            "index.html": """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{name}</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
+""",
+            "src/main.tsx": "import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\n\nReactDOM.createRoot(document.getElementById('root')!).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>\n);\n",
+            "src/App.tsx": "import {{ useState }} from 'react';\nimport {{ invoke }} from '@tauri-apps/api/core';\n\nfunction App() {{\n  const [greeting, setGreeting] = useState('');\n\n  async function greet() {{\n    const message = await invoke<string>('greet', {{ name: 'NOVA' }});\n    setGreeting(message);\n  }}\n\n  return (\n    <div style={{{{ padding: '2rem', fontFamily: 'system-ui' }}}}>\n      <h1>{name}</h1>\n      <p>{description}</p>\n      <button onClick={{greet}}>Greet from Rust</button>\n      <p>{{greeting}}</p>\n    </div>\n  );\n}}\n\nexport default App;\n",
+            "vite.config.ts": "import {{ defineConfig }} from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({{\n  plugins: [react()],\n  // Tauri expects a fixed dev port; the build target matches the bundled WebView.\n  server: {{\n    port: 1420,\n    strictPort: true,\n    clearScreen: false,\n  }},\n  envPrefix: ['VITE_', 'TAURI_'],\n  build: {{\n    target: 'chrome105',\n    minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,\n    sourcemap: !!process.env.TAURI_DEBUG,\n  }},\n}});\n",
+            "tsconfig.json": '{{\n  "compilerOptions": {{\n    "target": "ES2020",\n    "module": "ESNext",\n    "jsx": "react-jsx",\n    "strict": true,\n    "moduleResolution": "bundler"\n  }},\n  "include": ["src"]\n}}\n',
+            "src-tauri/Cargo.toml": "[package]\nname = \"{name_kebab}\"\nversion = \"0.1.0\"\nedition = \"2021\"\ndescription = \"{description}\"\n\n[build-dependencies]\ntauri-build = {{ version = \"2\", features = [] }}\n\n[dependencies]\nserde = {{ version = \"1\", features = [\"derive\"] }}\nserde_json = \"1\"\ntauri = {{ version = \"2\", features = [] }}\n",
+            "src-tauri/build.rs": "fn main() {{\n    tauri_build::build()\n}}\n",
+            "src-tauri/src/main.rs": "// Prevents an extra console window on Windows in release builds.\n#![cfg_attr(not(debug_assertions), windows_subsystem = \"windows\")]\n\n/// Greet command callable from the React frontend via invoke('greet').\n#[tauri::command]\nfn greet(name: &str) -> String {{\n    format!(\"Hello, {{}}! From {name}.\", name)\n}}\n\nfn main() {{\n    tauri::Builder::default()\n        .invoke_handler(tauri::generate_handler![greet])\n        .run(tauri::generate_context!())\n        .expect(\"error while running tauri application\");\n}}\n",
+            "src-tauri/tauri.conf.json": """{{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "{name}",
+  "version": "0.1.0",
+  "identifier": "com.{name_kebab}.app",
+  "build": {{
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  }},
+  "app": {{
+    "windows": [
+      {{
+        "title": "{name}",
+        "width": 800,
+        "height": 600,
+        "resizable": true
+      }}
+    ],
+    "security": {{
+      "csp": null
+    }}
+  }},
+  "bundle": {{
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }}
+}}
+""",
+            "src-tauri/.gitignore": "/target\n/gen/schemas\n",
+            ".gitignore": "node_modules/\ndist/\nsrc-tauri/target/\n",
+            "README.md": "# {name}\n\n{description}\n\nTauri 2 + Vite + React desktop app. The Rust backend exposes a working\n`greet` command via `#[tauri::command]`; the frontend calls it with\n`invoke('greet')` from `@tauri-apps/api/core`.\n\n## Setup\n\n```bash\nnpm install\n```\n\nGenerate the bundle icons once (requires a square source PNG, e.g. `app-icon.png`):\n\n```bash\nnpx @tauri-apps/cli icon app-icon.png\n```\n\n## Development\n\n```bash\nnpm run tauri dev\n```\n\nThe Vite dev server runs on port 1420 (`devUrl` in `src-tauri/tauri.conf.json`).\n\n## Production build\n\n```bash\nnpm run tauri build\n```\n",
+        },
+    },
+    "electron_app": {
+        "description": "Electron desktop app with Vite + React renderer, contextIsolation, and a typed IPC bridge over a main-process handler",
+        "files": {
+            "package.json": """{{
+  "name": "{name_kebab}",
+  "private": true,
+  "version": "0.1.0",
+  "main": "dist-electron/main.js",
+  "scripts": {{
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "compile:main": "tsc -p tsconfig.electron.json",
+    "start": "npm run compile:main && electron ."
+  }},
+  "dependencies": {{
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }},
+  "devDependencies": {{
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "electron": "^30.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
+  }}
+}}
+""",
+            "electron/main.ts": "import {{ app, BrowserWindow, ipcMain }} from 'electron';\nimport * as path from 'path';\n\nconst DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;\nconst PRELOAD_PATH = path.join(__dirname, 'preload.js');\n\n// Typed IPC bridge target: every channel the preload exposes has a\n// matching ipcMain.handle here. Registered once at startup, not per window.\nipcMain.handle('greet', (_event, name: string) => `Hello, ${{name}}! From {name}.`);\n\nfunction createWindow(): void {{\n  const win = new BrowserWindow({{\n    width: 1024,\n    height: 768,\n    webPreferences: {{\n      preload: PRELOAD_PATH,\n      contextIsolation: true,\n      nodeIntegration: false,\n      sandbox: false\n    }}\n  }});\n\n  if (DEV_SERVER_URL) {{\n    win.loadURL(DEV_SERVER_URL);\n  }} else {{\n    win.loadFile(path.join(__dirname, '../dist/index.html'));\n  }}\n}}\n\napp.whenReady().then(createWindow);\n\napp.on('window-all-closed', () => {{\n  if (process.platform !== 'darwin') app.quit();\n}});\n\napp.on('activate', () => {{\n  if (BrowserWindow.getAllWindows().length === 0) createWindow();\n}});\n",
+            "electron/preload.ts": "import {{ contextBridge, ipcRenderer }} from 'electron';\n\n// Typed IPC bridge exposed to the renderer as window.novaApi.\n// Every method maps 1:1 to an ipcMain.handle channel in main.ts.\nconst novaApi = {{\n  greet: (name: string): Promise<string> => ipcRenderer.invoke('greet', name)\n}};\n\nexport type NovaApi = typeof novaApi;\n\ncontextBridge.exposeInMainWorld('novaApi', novaApi);\n",
+            "src/types/global.d.ts": "import type {{ NovaApi }} from '../../electron/preload';\n\ndeclare global {{\n  interface Window {{\n    novaApi: NovaApi;\n  }}\n}}\n\nexport {{}};\n",
+            "src/main.tsx": "import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\n\nReactDOM.createRoot(document.getElementById('root')!).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>\n);\n",
+            "src/App.tsx": "import {{ useState }} from 'react';\n\nfunction App() {{\n  const [greeting, setGreeting] = useState('');\n\n  async function greet() {{\n    const message = await window.novaApi.greet('NOVA');\n    setGreeting(message);\n  }}\n\n  return (\n    <div style={{{{ padding: '2rem', fontFamily: 'system-ui' }}}}>\n      <h1>{name}</h1>\n      <p>{description}</p>\n      <button onClick={{greet}}>Greet from main process</button>\n      <p>{{greeting}}</p>\n    </div>\n  );\n}}\n\nexport default App;\n",
+            "vite.config.ts": "import {{ defineConfig }} from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({{\n  plugins: [react()],\n  // Relative asset paths so the built index.html loads via file:// in Electron.\n  base: './',\n  server: {{\n    port: 5173,\n    strictPort: true\n  }}\n}});\n",
+            "tsconfig.json": "{{\n  \"compilerOptions\": {{\n    \"target\": \"ES2022\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"bundler\",\n    \"jsx\": \"react-jsx\",\n    \"strict\": true,\n    \"esModuleInterop\": true,\n    \"skipLibCheck\": true,\n    \"noEmit\": true,\n    \"lib\": [\"ES2022\", \"DOM\", \"DOM.Iterable\"]\n  }},\n  \"include\": [\"src\", \"electron/preload.ts\"]\n}}\n",
+            "tsconfig.electron.json": "{{\n  \"compilerOptions\": {{\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"moduleResolution\": \"node\",\n    \"outDir\": \"dist-electron\",\n    \"strict\": true,\n    \"esModuleInterop\": true,\n    \"skipLibCheck\": true,\n    \"sourceMap\": true\n  }},\n  \"include\": [\"electron/**/*.ts\"]\n}}\n",
+            ".gitignore": "node_modules/\ndist/\ndist-electron/\n",
+            "README.md": "# {name}\n\n{description}\n\nThe main process (`electron/main.ts`) registers an `ipcMain.handle('greet')`\nhandler; the preload script (`electron/preload.ts`) exposes a typed\n`window.novaApi` bridge with `contextIsolation: true`.\n\n## Development (two terminals)\n\n```bash\nnpm install\nnpm run dev\n# second terminal — point Electron at the Vite dev server:\nVITE_DEV_SERVER_URL=http://localhost:5173 npm start\n```\n\nOn Windows PowerShell:\n\n```powershell\n$env:VITE_DEV_SERVER_URL='http://localhost:5173'; npm start\n```\n\n## Production\n\n```bash\nnpm run build\nnpm start\n```\n",
+        },
+    },
 }
 
 
@@ -229,7 +362,7 @@ class CodeScaffolderTool(BaseTool):
                 "Generate full project structures from starter templates, OR create individual "
                 "source files in any programming language. "
                 "Project templates: python_package, fastapi_app, react_app, cli_tool, rust_app, "
-                "go_app, cpp_app, nodejs_ts, django_app, flutter_app. "
+                "go_app, cpp_app, nodejs_ts, django_app, flutter_app, tauri_app, electron_app. "
                 "Single-file mode: set template='file' and provide a filename with extension "
                 "(.py, .rs, .go, .ts, .cpp, .java, .kt, .swift, .dart, .rb, .php, .cs, "
                 ".lua, .sh, .ps1, .sql, .html, .css, .json, .yaml, .toml, .md, etc.)."

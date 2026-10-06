@@ -164,6 +164,7 @@ try:
     import nova_ai.tools.data_analyzer  # noqa: F401
     import nova_ai.tools.file_converter  # noqa: F401
     import nova_ai.tools.git_manager  # noqa: F401
+    import nova_ai.tools.notebook_generator  # noqa: F401
     import nova_ai.tools.scheduler_tool  # noqa: F401
     import nova_ai.tools.system_monitor  # noqa: F401
 except ImportError:
