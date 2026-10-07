@@ -79,6 +79,9 @@ tools-search = [
     "tavily-python>=0.3",
     "ddgs>=9.11.4",
 ]
+tools-excel = [
+    "openpyxl>=3.1",
+]
 memory-faiss = [
     "faiss-cpu>=1.7",
     "sentence-transformers>=2.2",

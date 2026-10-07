@@ -67,12 +67,14 @@ class OllamaEngine(InferenceEngine):
         host: str | None = None,
         *,
         timeout: float = 1800.0,
+        thinking: bool = False,
     ) -> None:
         if host is None:
             env_host = os.environ.get("OLLAMA_HOST")
             host = env_host or self._DEFAULT_HOST
         self._host = host.rstrip("/")
         self._timeout = timeout
+        self._thinking = thinking
         self._client = httpx.Client(base_url=self._host, timeout=timeout)
         # Async counterpart for stream()/stream_full()/​_run_stream(): the sync
         # client's request methods block, so calling them from these async
@@ -115,9 +117,11 @@ class OllamaEngine(InferenceEngine):
         }
         # Disable extended thinking by default (Qwen3.5 etc.).
         # When enabled, thinking tokens consume the entire budget and
-        # the visible content comes back empty.
+        # the visible content comes back empty. The configured default
+        # ([intelligence] ollama_thinking) can opt in; an explicit caller
+        # kwarg always wins.
         if "think" not in kwargs:
-            payload["think"] = False
+            payload["think"] = self._thinking
         elif kwargs["think"] is not None:
             payload["think"] = kwargs["think"]
         # Pass tools if provided
@@ -250,7 +254,7 @@ class OllamaEngine(InferenceEngine):
         # stream for 60+ seconds before any tokens reach the client, which
         # frontends interpret as a "Load failed" timeout.
         if "think" not in kwargs:
-            payload["think"] = False
+            payload["think"] = self._thinking
         elif kwargs["think"] is not None:
             payload["think"] = kwargs["think"]
         # Ollama OOMs allocating the KV cache when num_ctx is too large for

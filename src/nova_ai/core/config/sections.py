@@ -284,6 +284,9 @@ class IntelligenceConfig:
     top_k: int = 40
     repetition_penalty: float = 1.0
     stop_sequences: str = ""  # Comma-separated stop strings
+    # Ollama only: send think=true to thinking-capable models (Qwen3 etc.).
+    # Default off so offline responses never burn tokens on a think trace.
+    ollama_thinking: bool = False
 
 
 @dataclass(slots=True)

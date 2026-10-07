@@ -47,10 +47,16 @@ def _make_engine(key: str, config: NovaConfig) -> InferenceEngine:
         )
 
     host_attr = _HOST_MAP.get(key)
-    if host_attr is not None:
-        host = getattr(config.engine, host_attr, None)
-        if host:
-            return cls(host=host)
+    host = getattr(config.engine, host_attr, None) if host_attr is not None else None
+    # Ollama always gets the thinking config; an empty host is fine (the
+    # engine itself falls back to OLLAMA_HOST and its own default).
+    if key == "ollama":
+        return cls(
+            host=host or None,
+            thinking=getattr(config.intelligence, "ollama_thinking", False),
+        )
+    if host:
+        return cls(host=host)
     return cls()
 
 

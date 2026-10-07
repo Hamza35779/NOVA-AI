@@ -100,3 +100,64 @@ class TestOllamaStream:
             ):
                 tokens.append(tok)
         assert "Hello" in tokens
+
+
+class TestOllamaThinking:
+    """The [intelligence] ollama_thinking config must control payload["think"]."""
+
+    def _chat_payload(self, engine: OllamaEngine) -> dict:
+        with respx.mock:
+            route = respx.post("http://testhost:11434/api/chat").mock(
+                return_value=httpx.Response(
+                    200,
+                    json={
+                        "message": {"role": "assistant", "content": "ok"},
+                        "model": "qwen3:8b",
+                    },
+                )
+            )
+            engine.generate([Message(role=Role.USER, content="Hi")], model="qwen3:8b")
+        return json.loads(route.calls.last.request.content)
+
+    def test_thinking_disabled_by_default(self) -> None:
+        engine = OllamaEngine(host="http://testhost:11434")
+        payload = self._chat_payload(engine)
+        assert payload["think"] is False
+
+    def test_config_enabled_sends_think_true(self) -> None:
+        engine = OllamaEngine(host="http://testhost:11434", thinking=True)
+        payload = self._chat_payload(engine)
+        assert payload["think"] is True
+
+    def test_explicit_caller_kwarg_wins_over_config(self) -> None:
+        engine = OllamaEngine(host="http://testhost:11434", thinking=True)
+        payload = self._chat_payload(engine)
+        with respx.mock:
+            route = respx.post("http://testhost:11434/api/chat").mock(
+                return_value=httpx.Response(
+                    200,
+                    json={
+                        "message": {"role": "assistant", "content": "ok"},
+                        "model": "qwen3:8b",
+                    },
+                )
+            )
+            engine.generate(
+                [Message(role=Role.USER, content="Hi")],
+                model="qwen3:8b",
+                think=False,
+            )
+        payload = json.loads(route.calls.last.request.content)
+        assert payload["think"] is False
+
+    def test_discovery_plumbs_config_to_engine(self) -> None:
+        from nova_ai.core.config import load_config
+        from nova_ai.core.registry import EngineRegistry
+        from nova_ai.engine._discovery import _make_engine
+
+        EngineRegistry.register_value("ollama", OllamaEngine)
+        config = load_config()
+        config.intelligence.ollama_thinking = True
+        engine = _make_engine("ollama", config)
+        assert isinstance(engine, OllamaEngine)
+        assert engine._thinking is True
