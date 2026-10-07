@@ -70,7 +70,7 @@ class GitManagerTool(BaseTool):
             name="git_manager",
             description=(
                 "Execute Git version control operations on a repository. "
-                "Supports: status, diff, log, commit, branch, checkout, stash, add, push, pull, blame, and show."
+                "Supports: status, diff, log, commit, branch, checkout, merge, stash, add, push, pull, blame, and show."
             ),
             parameters={
                 "type": "object",
@@ -89,6 +89,7 @@ class GitManagerTool(BaseTool):
                             "branch",
                             "branch_list",
                             "checkout",
+                            "merge",
                             "stash",
                             "stash_pop",
                             "push",
@@ -154,6 +155,7 @@ class GitManagerTool(BaseTool):
             "branch": ["branch", args] if args else ["branch"],
             "branch_list": ["branch", "-a"],
             "checkout": ["checkout"] + extra,
+            "merge": ["merge", "--no-edit"] + extra,
             "stash": ["stash", "push", "-m", args or "NOVA AI stash"],
             "stash_pop": ["stash", "pop"],
             "push": ["push"] + extra,

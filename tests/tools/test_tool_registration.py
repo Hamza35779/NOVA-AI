@@ -68,6 +68,18 @@ EXPECTED_TOOLS = {
     "kg_add_relation",
     "kg_query",
     "kg_neighbors",
+    # git_manager.py
+    "git_manager",
+    # notebook_generator.py
+    "notebook_generator",
+    # test_runner.py
+    "test_runner",
+    # calendar_tool.py
+    "calendar_tool",
+    # process_manager.py
+    "process_manager",
+    # screenshot_diff.py
+    "screenshot_diff",
 }
 
 

@@ -81,6 +81,32 @@ def _gcal_api_event_patch(
     return resp.json()
 
 
+def _gcal_api_event_insert(
+    token: str,
+    calendar_id: str,
+    body: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Create a calendar event via the ``events.insert`` endpoint."""
+    resp = httpx.post(
+        f"{_GCAL_API_BASE}/calendars/{calendar_id}/events",
+        headers={"Authorization": f"Bearer {token}"},
+        json=body,
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _gcal_api_event_delete(token: str, calendar_id: str, event_id: str) -> None:
+    """Delete a calendar event via the ``events.delete`` endpoint."""
+    resp = httpx.delete(
+        f"{_GCAL_API_BASE}/calendars/{calendar_id}/events/{event_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+
+
 def _gcal_api_calendars_list(token: str) -> Dict[str, Any]:
     """Call the Calendar ``calendarList.list`` endpoint.
 
@@ -469,6 +495,39 @@ class GCalendarConnector(BaseConnector):
         if not found and user_email:
             updated.append({"email": user_email, "responseStatus": "declined"})
         _gcal_api_event_patch(token, calendar_id, event_id, {"attendees": updated})
+
+    def get_event(
+        self, event_id: str, calendar_id: str = "primary"
+    ) -> Dict[str, Any]:
+        """Fetch a single event resource."""
+        return _gcal_api_event_get(self._get_token(), calendar_id, event_id)
+
+    def create_event(
+        self,
+        summary: str,
+        start: Dict[str, str],
+        end: Dict[str, str],
+        calendar_id: str = "primary",
+        **fields: Any,
+    ) -> Dict[str, Any]:
+        """Create an event. *start*/*end* are ``{"dateTime": ...}`` mappings."""
+        body: Dict[str, Any] = {"summary": summary, "start": start, "end": end}
+        body.update({k: v for k, v in fields.items() if v is not None})
+        return _gcal_api_event_insert(self._get_token(), calendar_id, body)
+
+    def update_event(
+        self,
+        event_id: str,
+        calendar_id: str = "primary",
+        **fields: Any,
+    ) -> Dict[str, Any]:
+        """Patch an event with the given fields."""
+        body = {k: v for k, v in fields.items() if v is not None}
+        return _gcal_api_event_patch(self._get_token(), calendar_id, event_id, body)
+
+    def delete_event(self, event_id: str, calendar_id: str = "primary") -> None:
+        """Delete an event."""
+        _gcal_api_event_delete(self._get_token(), calendar_id, event_id)
 
     def sync_status(self) -> SyncStatus:
         """Return sync progress from the most recent :meth:`sync` call."""

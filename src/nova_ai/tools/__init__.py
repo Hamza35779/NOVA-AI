@@ -161,6 +161,7 @@ except ImportError:
 try:
     import nova_ai.tools.api_tester  # noqa: F401
     import nova_ai.tools.browser  # noqa: F401
+    import nova_ai.tools.calendar_tool  # noqa: F401
     import nova_ai.tools.code_scaffolder  # noqa: F401
     import nova_ai.tools.data_analyzer  # noqa: F401
     import nova_ai.tools.excel_tool  # noqa: F401
@@ -168,7 +169,9 @@ try:
     import nova_ai.tools.git_manager  # noqa: F401
     import nova_ai.tools.knowledge_search  # noqa: F401
     import nova_ai.tools.notebook_generator  # noqa: F401
+    import nova_ai.tools.process_manager  # noqa: F401
     import nova_ai.tools.scheduler_tool  # noqa: F401
+    import nova_ai.tools.screenshot_diff  # noqa: F401
     import nova_ai.tools.system_monitor  # noqa: F401
     import nova_ai.tools.test_runner  # noqa: F401
 except ImportError:
