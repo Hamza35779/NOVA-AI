@@ -99,6 +99,51 @@ class TestExcelWrite:
         assert result.success is False
         assert "different keys" in result.content
 
+    def test_write_reorders_dict_rows_to_header_order(
+        self, tool: ExcelTool, tmp_path
+    ):
+        target = tmp_path / "ordered.xlsx"
+        result = tool.execute(
+            action="write",
+            path=str(target),
+            rows=[{"b": 2, "a": 1}],
+            headers=["a", "b"],
+        )
+        assert result.success is True
+        check = tool.execute(action="read", path=str(target), header=False)
+        assert check.metadata["rows"] == [["a", "b"], [1, 2]]
+
+    def test_write_rejects_headers_not_matching_dict_keys(
+        self, tool: ExcelTool, tmp_path
+    ):
+        result = tool.execute(
+            action="write",
+            path=str(tmp_path / "out.xlsx"),
+            rows=[{"a": 1}],
+            headers=["x", "y"],
+        )
+        assert result.success is False
+        assert "do not match" in result.content
+
+    def test_read_corrupt_file_fails_with_verbatim_error(
+        self, tool: ExcelTool, tmp_path
+    ):
+        target = tmp_path / "corrupt.xlsx"
+        target.write_bytes(b"not a real xlsx file")
+        result = tool.execute(action="read", path=str(target))
+        assert result.success is False
+        assert "Error" in result.content
+
+    def test_sheets_reports_dimensions(self, tool: ExcelTool, tmp_path):
+        target = tmp_path / "dims.xlsx"
+        wb = openpyxl.Workbook()
+        wb.active.append(["a", "b", "c"])
+        wb.save(target)
+        result = tool.execute(action="sheets", path=str(target))
+        assert result.success is True
+        assert result.metadata["sheets"][0]["rows"] == 1
+        assert result.metadata["sheets"][0]["cols"] == 3
+
     def test_write_creates_parent_directories(self, tool: ExcelTool, tmp_path):
         target = tmp_path / "deep" / "nested" / "out.xlsx"
         result = tool.execute(action="write", path=str(target), rows=[[1]])
@@ -142,6 +187,19 @@ class TestExcelRead:
         result = tool.execute(action="read", path=str(target), max_rows=3)
         assert result.success is True
         assert result.metadata["row_count"] == 3
+
+    def test_read_duplicate_headers_are_made_unique(self, tool: ExcelTool, tmp_path):
+        target = tmp_path / "dup.xlsx"
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["name", "name", ""])
+        ws.append(["a", "b", "c"])
+        wb.save(target)
+
+        result = tool.execute(action="read", path=str(target))
+        assert result.success is True
+        assert result.metadata["headers"] == ["name", "name_2", "column_3"]
+        assert result.metadata["rows"] == [{"name": "a", "name_2": "b", "column_3": "c"}]
 
     def test_read_dates_are_json_safe(self, tool: ExcelTool, tmp_path):
         import datetime as dt

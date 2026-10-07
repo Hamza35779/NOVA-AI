@@ -159,6 +159,14 @@ class TestRunnerTool(BaseTool):
                 ),
                 success=False,
             )
+        if not isinstance(max_failure_details, int) or isinstance(
+            max_failure_details, bool
+        ):
+            return ToolResult(
+                tool_name="test_runner",
+                content="Error: max_failure_details must be an integer.",
+                success=False,
+            )
 
         target = Path(path)
         if not target.exists():
@@ -215,11 +223,18 @@ class TestRunnerTool(BaseTool):
 
             if not xml_path.exists():
                 # pytest never wrote the report (usage error / crash before run).
+                last_output = (proc.stdout or proc.stderr or "")[-2000:]
+                hint = ""
+                if "No module named pytest" in last_output:
+                    hint = (
+                        "\npytest is not installed in this environment. "
+                        "Install it with: uv sync --extra dev (or: uv pip install pytest)."
+                    )
                 return ToolResult(
                     tool_name="test_runner",
                     content=(
                         f"Error: pytest produced no report (exit code {proc.returncode}). "
-                        f"Last output:\n{(proc.stdout or proc.stderr or '')[-2000:]}"
+                        f"Last output:\n{last_output}{hint}"
                     ),
                     success=False,
                     metadata={"path": str(target), "exit_code": proc.returncode},

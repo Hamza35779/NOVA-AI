@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import datetime as _dt
 from pathlib import Path
-from typing import Any, List
+from typing import Any, Dict, List
 
 from nova_ai.core.registry import ToolRegistry
 from nova_ai.core.types import ToolResult
@@ -54,11 +54,26 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
-def _load_workbook(path: Path, write_mode: bool = False) -> Any:
+def _unique_headers(first_row: List[Any]) -> List[str]:
+    """Build header names for a row: blanks get column_N, duplicates get _2/_3."""
+    counts: Dict[str, int] = {}
+    names: List[str] = []
+    for index, value in enumerate(first_row):
+        name = f"column_{index + 1}" if value in (None, "") else str(value)
+        if name in counts:
+            counts[name] += 1
+            name = f"{name}_{counts[name]}"
+        else:
+            counts[name] = 1
+        names.append(name)
+    return names
+
+
+def _load_workbook(path: Path, read_only: bool = True) -> Any:
     openpyxl = _import_openpyxl()
     return openpyxl.load_workbook(
         path,
-        read_only=not write_mode,
+        read_only=read_only,
         data_only=True,
     )
 
@@ -275,6 +290,14 @@ class ExcelTool(BaseTool):
                 content=f"Error: could not access workbook — {exc}",
                 success=False,
             )
+        except Exception as exc:
+            # Corrupt files, unsupported content, and library-internal errors
+            # surface verbatim so the agent can diagnose and retry.
+            return ToolResult(
+                tool_name="excel_tool",
+                content=f"Error: {type(exc).__name__}: {exc}",
+                success=False,
+            )
         return ToolResult(
             tool_name="excel_tool",
             content=(
@@ -312,7 +335,7 @@ class ExcelTool(BaseTool):
             wb.close()
 
         if header and grid:
-            headers = [f"column_{i + 1}" if h in (None, "") else str(h) for i, h in enumerate(grid[0])]
+            headers = _unique_headers(grid[0])
             data_rows = grid[1:]
             records = [dict(zip(headers, row)) for row in data_rows]
         else:
@@ -345,10 +368,14 @@ class ExcelTool(BaseTool):
                 success=False,
             )
 
-        wb = _load_workbook(target)
+        wb = _load_workbook(target, read_only=False)
         try:
             sheets = [
-                {"name": name, "rows": wb[name].max_row, "cols": wb[name].max_column}
+                {
+                    "name": name,
+                    "rows": wb[name].max_row or 0,
+                    "cols": wb[name].max_column or 0,
+                }
                 for name in wb.sheetnames
             ]
         finally:
@@ -376,6 +403,7 @@ class ExcelTool(BaseTool):
                 tool_name="excel_tool", content=error, success=False
             )
 
+        dict_rows = bool(rows) and all(isinstance(r, dict) for r in rows)
         if headers is not None:
             if not isinstance(headers, list) or not all(
                 isinstance(h, str) for h in headers
@@ -385,8 +413,21 @@ class ExcelTool(BaseTool):
                     content="Error: headers must be a list of strings.",
                     success=False,
                 )
+            if dict_rows:
+                # Reorder each dict row to match the given header order.
+                keys = [str(k) for k in rows[0].keys()]
+                if sorted(keys) != sorted(headers):
+                    return ToolResult(
+                        tool_name="excel_tool",
+                        content=(
+                            "Error: headers do not match the rows' keys. "
+                            f"Row keys: {sorted(keys)}; headers: {sorted(headers)}."
+                        ),
+                        success=False,
+                    )
+                data = [[_json_safe(r.get(h)) for h in headers] for r in rows]
             data = [list(headers)] + data
-        elif rows and all(isinstance(r, dict) for r in rows):
+        elif dict_rows:
             # _rows_to_lists kept the dict key order; emit the header row.
             data = [list(rows[0].keys())] + data
 

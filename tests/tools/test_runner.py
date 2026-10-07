@@ -64,6 +64,14 @@ class TestTestRunnerTool:
         assert result.success is False
         assert "list of strings" in result.content
 
+    @pytest.mark.parametrize("bad", ["3", True, 1.5])
+    def test_max_failure_details_type_check(self, tool: TestRunnerTool, tmp_path, bad):
+        test_file = tmp_path / "test_pass.py"
+        test_file.write_text(_PASSING_TEST, encoding="utf-8")
+        result = tool.execute(path=str(test_file), max_failure_details=bad)
+        assert result.success is False
+        assert "must be an integer" in result.content
+
     def test_passing_suite(self, tool: TestRunnerTool, tmp_path):
         test_file = tmp_path / "test_pass.py"
         test_file.write_text(_PASSING_TEST, encoding="utf-8")

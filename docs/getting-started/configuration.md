@@ -168,6 +168,7 @@ max_tokens = 1024
 # top_k = 40
 # repetition_penalty = 1.0
 # stop_sequences = ""
+# ollama_thinking = false
 ```
 
 **Model identity fields:**
@@ -192,6 +193,7 @@ max_tokens = 1024
 | `top_k` | int | `40` | Top-k sampling: only consider the top-k tokens at each step. |
 | `repetition_penalty` | float | `1.0` | Penalize repeated tokens. Values > 1 reduce repetition. |
 | `stop_sequences` | string | `""` | Comma-separated stop strings. Generation halts when any stop string is produced. |
+| `ollama_thinking` | bool | `false` | Ollama only: send `think=true` to thinking-capable models (Qwen3 etc.). Keep off for low-RAM machines — thinking traces consume the generation budget before any visible output. |
 
 When both `default_model` and `fallback_model` are empty, NOVA AI uses the configured router policy (see `[learning]`) to select a model from those available on the active engine.
 
