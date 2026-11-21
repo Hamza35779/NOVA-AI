@@ -13,9 +13,7 @@
 
 ---
 
-<div align="center">
-  <img alt="NOVA AI demo reel" src="assets/nova_ai_demo_reel.webp" width="75%">
-</div>
+
 
 ---
 
